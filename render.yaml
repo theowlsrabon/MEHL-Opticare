@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: mehl-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node -r tsx/esm server.ts
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false   # Set this in the Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false   # Set this in the Render dashboard
+      - key: FRONTEND_URL
+        sync: false   # Set to your Vercel app URL e.g. https://mehl.vercel.app

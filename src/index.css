@@ -1,0 +1,377 @@
+@import url('https://fonts.maateen.me/kalpurush/font.css');
+@import "tailwindcss";
+
+@theme {
+  /* =====================================================================
+     PHARMAPULSE OS ENTERPRISE PALETTE (MINIMALIST & PROFESSIONAL)
+     Vibrant Emerald Mint & Deep Midnight Slate Architecture
+     ===================================================================== */
+
+  /* Primary Accent: Electric Mint / Emerald */
+  --color-primary: #00c49f;
+  --color-primary-hover: #00af8e;
+  --color-primary-container: #00382d;
+  --color-on-primary-container: #00f5b4;
+  --color-primary-fixed: #c3faec;
+  --color-on-primary-fixed: #00211a;
+  --color-primary-fixed-dim: #00e5a3;
+
+  /* Brand Palette Tokens */
+  --color-madina-teal: #00c49f;
+  --color-madina-teal-hover: #00af8e;
+  --color-madina-teal-light: #e6fbf5;
+  --color-madina-slate: #7a8c9e;
+  --color-madina-dark: #090d12;
+  --color-madina-deep-teal: #0d141b;
+  --color-madina-black: #05070a;
+  --color-madina-white: #ffffff;
+
+  /* Retained functional utility mappings routed to PharmaPulse emerald */
+  --color-extej-orange: #00c49f;
+  --color-extej-orange-hover: #00af8e;
+  --color-extej-mint: #00c49f;
+  --color-extej-coral: #ef4444;
+  --color-extej-purple: #121c26;
+
+  --color-secondary: #121c26;
+  --color-secondary-container: #192633;
+  --color-secondary-fixed: #d2eef0;
+  --color-on-secondary-fixed: #09131a;
+  --color-secondary-fixed-dim: #7ee0d6;
+
+  --color-tertiary: #f39c12;
+  --color-tertiary-container: #ff9f43;
+  --color-tertiary-fixed: #fef3c7;
+  --color-on-tertiary-fixed-variant: #78350f;
+  --color-tertiary-fixed-dim: #fde68a;
+
+  /* Light Mode Surfaces (Clean, Clinical, PharmaPulse Light Style) */
+  --color-background: #edf1f5;
+  --color-surface: #edf1f5;
+  --color-surface-bright: #ffffff;
+  --color-surface-dim: #e2e8f0;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f8fafc;
+  --color-surface-container: #f1f5f9;
+  --color-surface-container-high: #e2e8f0;
+  --color-surface-container-highest: #cbd5e1;
+
+  --color-on-surface: #0f172a;
+  --color-on-surface-variant: #64748b;
+  --color-outline: #94a3b8;
+  --color-outline-variant: #e2e8f0;
+  --color-error: #ef4444;
+  --color-error-container: #fee2e2;
+  --color-on-error-container: #991b1b;
+
+  /* Minimalist High-End Typography */
+  --font-headline-lg: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', sans-serif;
+  --font-headline-md: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', sans-serif;
+  --font-headline-sm: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', sans-serif;
+  --font-body-lg: 'Inter', 'Plus Jakarta Sans', 'Hind Siliguri', sans-serif;
+  --font-body-md: 'Inter', 'Plus Jakarta Sans', 'Hind Siliguri', sans-serif;
+  --font-body-sm: 'Inter', 'Plus Jakarta Sans', 'Hind Siliguri', sans-serif;
+  --font-label-md: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', sans-serif;
+  --font-label-sm: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', sans-serif;
+  --font-display-lg: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-data-rx: 'JetBrains Mono', 'Hind Siliguri', monospace;
+  --font-data-rx-sm: 'JetBrains Mono', 'Hind Siliguri', monospace;
+  --font-data-pos: 'JetBrains Mono', 'Hind Siliguri', monospace;
+}
+
+/* =====================================================================
+   DARK MODE (EXACT PHARMAPULSE MIDNIGHT SLATE & GLOWING EMERALD MINT)
+   ===================================================================== */
+.dark {
+  --color-background: #090d12;
+  --color-surface: #090d12;
+  --color-surface-bright: #121c26;
+  --color-surface-dim: #05070a;
+  --color-surface-container-lowest: #0d141b;
+  --color-surface-container-low: #0f1720;
+  --color-surface-container: #121c26;
+  --color-surface-container-high: #162330;
+  --color-surface-container-highest: #1c2d3d;
+
+  --color-on-surface: #f0f6fc;
+  --color-on-surface-variant: #7d91a3;
+  --color-outline: #52667a;
+  --color-outline-variant: #182531;
+
+  --color-primary: #00c49f;
+  --color-primary-container: #00382d;
+  --color-on-primary-container: #00f5b4;
+}
+
+/* Base Body Styling */
+body {
+  font-family: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.01em;
+}
+
+/* Bengali Diacritics & Font Optimizations */
+body.font-bangla {
+  font-family: 'Hind Siliguri', 'Kalpurush', 'Plus Jakarta Sans', sans-serif;
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+}
+
+body.font-bangla input,
+body.font-bangla button,
+body.font-bangla select,
+body.font-bangla textarea {
+  font-family: 'Hind Siliguri', 'Kalpurush', 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Numbers & Monospace Currency Alignment */
+.font-data-rx,
+.font-mono {
+  font-family: 'JetBrains Mono', 'Hind Siliguri', monospace !important;
+  font-feature-settings: "tnum" 1, "cv01" 1;
+}
+
+/* =====================================================================
+   SEAMLESS PHARMAPULSE CSS TRANSFORMATIONS FOR ALL EXISTING COMPONENTS
+   (Transforms visual design without touching or changing component content)
+   ===================================================================== */
+
+/* Top Navigation Bar & Sidebar Elevation & Hairline Borders */
+header {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03) !important;
+}
+
+.dark header {
+  background-color: #0d141b !important;
+  border-bottom: 1px solid #182531 !important;
+  box-shadow: 0 1px 12px 0 rgba(0, 0, 0, 0.35) !important;
+}
+
+aside {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+.dark aside {
+  background-color: #0d141b !important;
+  border-right: 1px solid #182531 !important;
+}
+
+/* Main Workspace Background */
+main {
+  background-color: #edf1f5 !important;
+}
+
+.dark main {
+  background-color: #090d12 !important;
+}
+
+/* Cards & Surface Containers */
+.dark [class*="bg-surface-container-lowest"],
+.dark [class*="bg-[#1a1d26]"],
+.dark [class*="bg-[#15181f]"],
+.dark [class*="bg-[#181c25]"],
+.dark [class*="bg-[#111317]"] {
+  background-color: #0d141b !important;
+  border-color: #182531 !important;
+}
+
+.dark [class*="bg-[#f8fafc]"],
+.dark [class*="bg-[#f1f4f9]"],
+.dark [class*="bg-[#1c202a]"],
+.dark [class*="bg-[#1e2330]"],
+.dark [class*="bg-[#202533]"],
+.dark [class*="bg-[#202430]"],
+.dark [class*="bg-[#212532]"] {
+  background-color: #121c26 !important;
+  border-color: #1e2d3d !important;
+}
+
+/* Clean Hairline Borders in Dark Mode */
+.dark [class*="border-outline-variant"],
+.dark [class*="border-[#242936]"],
+.dark [class*="border-[#262c3b]"],
+.dark [class*="border-[#272d3b]"],
+.dark [class*="border-[#282e3b]"],
+.dark [class*="border-[#292f3e]"],
+.dark [class*="border-[#2b3140]"],
+.dark [class*="border-[#2b3243]"],
+.dark [class*="border-[#2d3344]"],
+.dark [class*="border-[#2d3444]"],
+.dark [class*="border-[#2f3547]"] {
+  border-color: #182531 !important;
+}
+
+/* Light Mode Card Polishing */
+[class*="bg-surface-container-lowest"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Primary Button & Active Gradients (Vibrant PharmaPulse Mint) */
+[class*="from-[#169b90]"][class*="to-[#295559]"],
+[class*="from-teal-600"][class*="to-emerald-600"],
+[class*="bg-[#169b90]"],
+button.bg-primary {
+  background: linear-gradient(135deg, #00c49f 0%, #009e7e 100%) !important;
+  color: #ffffff !important;
+  border-color: #00c49f !important;
+  box-shadow: 0 2px 10px -1px rgba(0, 196, 159, 0.35) !important;
+}
+
+[class*="from-[#169b90]"][class*="to-[#295559]"]:hover,
+[class*="bg-[#169b90]"]:hover {
+  background: linear-gradient(135deg, #00d9b0 0%, #00af8c 100%) !important;
+  box-shadow: 0 4px 16px -1px rgba(0, 196, 159, 0.45) !important;
+}
+
+/* Secondary & Glowing Border Badges */
+.dark [class*="bg-[#169b90]/10"],
+.dark [class*="bg-[#169b90]/15"],
+.dark [class*="bg-[#169b90]/20"] {
+  background-color: rgba(0, 196, 159, 0.12) !important;
+  color: #00f5b4 !important;
+  border-color: rgba(0, 196, 159, 0.28) !important;
+}
+
+[class*="bg-[#169b90]/10"],
+[class*="bg-[#169b90]/15"],
+[class*="bg-[#169b90]/20"] {
+  background-color: #e6fbf5 !important;
+  color: #00a884 !important;
+  border-color: #a3f3db !important;
+}
+
+/* Glowing Mint Numbers & Active Highlights */
+.dark [class*="text-[#169b90]"],
+.dark [class*="text-[#7ee0d6]"],
+.dark [class*="text-[#2dd4bf]"],
+.dark [class*="text-[#38d9a9]"] {
+  color: #00f5b4 !important;
+}
+
+[class*="text-[#169b90]"] {
+  color: #00a884 !important;
+}
+
+/* Focus States & Inputs */
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #00c49f !important;
+  box-shadow: 0 0 0 3px rgba(0, 196, 159, 0.15) !important;
+}
+
+/* Rounded Cards & Modern Radius */
+.rounded-2xl {
+  border-radius: 14px !important;
+}
+
+.rounded-xl {
+  border-radius: 10px !important;
+}
+
+/* Ultra-Sleek Scrollbars (PharmaPulse Style) */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #1c2d3d;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #294057;
+}
+
+/* Scanner & Border Glow Animations */
+@keyframes scanLaser {
+  0% { top: 8%; opacity: 0.3; }
+  50% { top: 88%; opacity: 1; }
+  100% { top: 8%; opacity: 0.3; }
+}
+
+@keyframes pulse-border {
+  0% { border-color: #00c49f; box-shadow: 0 0 0 0 rgba(0, 196, 159, 0.45); }
+  70% { border-color: #00c49f; box-shadow: 0 0 0 6px rgba(0, 196, 159, 0); }
+  100% { border-color: #00c49f; box-shadow: 0 0 0 0 rgba(0, 196, 159, 0); }
+}
+
+.barcode-active {
+  animation: pulse-border 1.5s infinite;
+}
+
+/* =====================================================================
+   PRINT STYLES
+   ===================================================================== */
+@media print {
+  @page {
+    size: auto;
+    margin: 8mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  header, aside, nav, .no-print, [data-no-print], button:not(.allow-print), .toast-container, #floating-camera-scanner {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    background: #ffffff !important;
+  }
+
+  #printable-area, .printable-area, #printable-modal, .printable-document {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  th, td {
+    border-color: #cbd5e1 !important;
+  }
+}

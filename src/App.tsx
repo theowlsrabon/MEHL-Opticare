@@ -1,0 +1,1721 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  UserAccount,
+  ViewMode,
+  OpticalJob,
+  InventoryItem,
+  UserRole,
+  Salesman,
+  SaleRecord,
+  HospitalBranch,
+  InterBranchTransferOrder,
+  PharmacyDrug,
+  DispensationRecord,
+  Supplier,
+  PurchaseOrder,
+  GoodsReceivedNote,
+  ExpenseItem,
+  FinancialSummary,
+  SalesReturn,
+  PurchaseReturn,
+  SecurityAuditLog,
+  SystemConfig,
+  StageAuditEntry,
+  AuditActionType,
+} from './types';
+import { initialJobs, initialInventory, initialSalesmen, initialSalesRecords } from './data/initialData';
+import {
+  initialBranches,
+  initialIBTOrders as initialIbtOrders,
+  initialPharmacyDrugs as initialDrugs,
+  initialDispensations,
+  initialSuppliers,
+  initialPOs as initialPurchaseOrders,
+  initialGRNs as initialGrns,
+  initialExpenses,
+  initialFinancialSummary,
+  initialSalesReturns,
+  initialPurchaseReturns,
+  initialAuditLogs,
+  initialSystemConfig as defaultSystemConfig,
+} from './data/enterpriseData';
+import { MADINA_STAFF_PROFILES } from './data/rolesData';
+import { LoginPage } from './components/LoginPage';
+import { TopNavBar } from './components/TopNavBar';
+import { SideNavBar } from './components/SideNavBar';
+import { KpiSummaryCards } from './components/KpiSummaryCards';
+import { ExtejDashboardHero } from './components/ExtejDashboardHero';
+import { LabPipelineBoard } from './components/LabPipelineBoard';
+import { InventoryRegistryTable } from './components/InventoryRegistryTable';
+import { DueCollectionsView } from './components/DueCollectionsView';
+import { ReportsView } from './components/ReportsView';
+import { SalesmanManagementView } from './components/SalesmanManagementView';
+import { ExecutiveDashboardView } from './components/ExecutiveDashboardView';
+import { MultiBranchIbtView } from './components/MultiBranchIbtView';
+import { SupplierGrnView } from './components/SupplierGrnView';
+import { FinancialAccountingView } from './components/FinancialAccountingView';
+import { ReturnsRefundsView } from './components/ReturnsRefundsView';
+import { SettingsRolesView } from './components/SettingsRolesView';
+import { FefoAutoDispensingView } from './components/FefoAutoDispensingView';
+import { AIGlazingAssistantModal } from './components/AIGlazingAssistantModal';
+import { AIEyewearStudioModal } from './components/AIEyewearStudioModal';
+import { NewInvoiceModal } from './components/NewInvoiceModal';
+import { CreateLabTrayModal } from './components/CreateLabTrayModal';
+import { PrintTrayBarcodesModal } from './components/PrintTrayBarcodesModal';
+import { QuickScannerModal } from './components/QuickScannerModal';
+import { JobDetailModal } from './components/JobDetailModal';
+import { OpticalBarcodePrintModal } from './components/OpticalBarcodePrintModal';
+import { AddGlassesStockModal } from './components/AddGlassesStockModal';
+import { CameraBarcodeScanner } from './components/CameraBarcodeScanner';
+import { PosTerminalView } from './components/PosTerminalView';
+import { ModinaOpticsErpPos } from './components/ModinaOpticsErpPos';
+import { SmsNotificationModal } from './components/SmsNotificationModal';
+import { ActivityFeed, ActivityFeedItem } from './components/ActivityFeed';
+import { triggerAutomatedStage5Sms, buildReadyForPickupMessage } from './utils/smsNotificationService';
+import { createStageTransitionEntry, formatAuditTimestamp, STAGE_CONFIG } from './utils/auditTrailUtils';
+import {
+  fetchInitialDataFromDb,
+  bulkSyncJobsToDb,
+  bulkSyncInventoryToDb,
+  syncSaleToDb,
+} from './utils/apiSync';
+import { useLanguage } from './context/LanguageContext';
+
+export default function App() {
+  const { language, t } = useLanguage();
+
+  // Authentication State: First land on LoginPage if not authenticated
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserAccount | null>(() => {
+    try {
+      const session = sessionStorage.getItem('mehl_session_user') || localStorage.getItem('mehl_session_user');
+      return session ? JSON.parse(session) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [currentView, setCurrentView] = useState<ViewMode>('executive-dashboard');
+  const [labViewMode, setLabViewMode] = useState<'conveyor' | 'telemetry'>('conveyor');
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole>('admin');
+  const [jobs, setJobs] = useState<OpticalJob[]>(() => {
+    const saved = localStorage.getItem('madina_jobs');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return initialJobs;
+      }
+    }
+    return initialJobs;
+  });
+  const [inventory, setInventory] = useState<InventoryItem[]>(() => {
+    const saved = localStorage.getItem('madina_inventory');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return initialInventory;
+      }
+    }
+    return initialInventory;
+  });
+  const [salesmen, setSalesmen] = useState<Salesman[]>(() => {
+    const saved = localStorage.getItem('madina_salesmen');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return initialSalesmen;
+      }
+    }
+    return initialSalesmen;
+  });
+  const [salesRecords, setSalesRecords] = useState<SaleRecord[]>(() => {
+    const saved = localStorage.getItem('madina_sales_records');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return initialSalesRecords;
+      }
+    }
+    return initialSalesRecords;
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Enterprise ERP State
+  const [branches, setBranches] = useState<HospitalBranch[]>(initialBranches);
+  const [ibtOrders, setIbtOrders] = useState<InterBranchTransferOrder[]>(initialIbtOrders);
+  const [drugs, setDrugs] = useState<PharmacyDrug[]>(initialDrugs);
+  const [dispensations, setDispensations] = useState<DispensationRecord[]>(initialDispensations);
+  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => {
+    const saved = localStorage.getItem('madina_purchase_orders');
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return initialPurchaseOrders; }
+    }
+    return initialPurchaseOrders;
+  });
+  const [grns, setGrns] = useState<GoodsReceivedNote[]>(() => {
+    const saved = localStorage.getItem('madina_grns');
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return initialGrns; }
+    }
+    return initialGrns;
+  });
+  const [expenses, setExpenses] = useState<ExpenseItem[]>(() => {
+    const saved = localStorage.getItem('madina_expenses');
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return initialExpenses; }
+    }
+    return initialExpenses;
+  });
+  const [financialSummary, setFinancialSummary] = useState<FinancialSummary>(initialFinancialSummary);
+  const [salesReturns, setSalesReturns] = useState<SalesReturn[]>(() => {
+    const saved = localStorage.getItem('madina_sales_returns');
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return initialSalesReturns; }
+    }
+    return initialSalesReturns;
+  });
+  const [purchaseReturns, setPurchaseReturns] = useState<PurchaseReturn[]>(() => {
+    const saved = localStorage.getItem('madina_purchase_returns');
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return initialPurchaseReturns; }
+    }
+    return initialPurchaseReturns;
+  });
+  const [auditLogs, setAuditLogs] = useState<SecurityAuditLog[]>(initialAuditLogs);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig>(defaultSystemConfig);
+
+  // Handlers for Enterprise Actions
+  const handleAddIbtOrder = (order: InterBranchTransferOrder) => {
+    setIbtOrders((prev) => [order, ...prev]);
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUserRole,
+        actionType: 'IBT_DISPATCH',
+        details: `IBT Requisition ${order.transferNumber} raised (${order.sourceBranchName} -> ${order.destinationBranchName})`,
+        ipAddress: '192.168.10.42',
+        status: 'success',
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleUpdateIbtStatus = (orderId: string, status: any) => {
+    setIbtOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status } : o))
+    );
+  };
+
+  const handleDispenseDrug = (dispensation: DispensationRecord) => {
+    setDispensations((prev) => [dispensation, ...prev]);
+    // Deduct batches from FEFO
+    setDrugs((prevDrugs) =>
+      prevDrugs.map((d) => {
+        if (d.id !== dispensation.drugId) return d;
+        const remainingBatches = d.batches.map((b) => {
+          const allocation = dispensation.fefoAllocations.find((a) => a.batchNumber === b.batchNumber);
+          if (allocation) {
+            return {
+              ...b,
+              stockQty: Math.max(0, b.stockQty - allocation.quantity),
+            };
+          }
+          return b;
+        });
+        const newTotalStock = remainingBatches.reduce((acc, b) => acc + b.stockQty, 0);
+        return {
+          ...d,
+          totalStock: newTotalStock,
+          batches: remainingBatches,
+        };
+      })
+    );
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUserRole,
+        actionType: 'FEFO_OVERRIDE',
+        details: `Dispensed ${dispensation.brandName} (${dispensation.dispensationNo}) to ${dispensation.patientName}`,
+        ipAddress: '192.168.10.15',
+        status: 'success',
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleCreatePurchaseOrder = (po: PurchaseOrder) => {
+    setPurchaseOrders((prev) => [po, ...prev]);
+  };
+
+  const handleReceiveGrn = (grn: GoodsReceivedNote) => {
+    setGrns((prev) => [grn, ...prev]);
+    setPurchaseOrders((prev) =>
+      prev.map((po) =>
+        po.poNumber === grn.poNumber ? { ...po, status: 'completed' as const } : po
+      )
+    );
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUserRole,
+        actionType: 'PRICE_MODIFIED',
+        details: `GRN received: ${grn.grnNumber} for PO: ${grn.poNumber}`,
+        ipAddress: '192.168.10.99',
+        status: 'success',
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleAddExpense = (expense: ExpenseItem) => {
+    setExpenses((prev) => [expense, ...prev]);
+    setFinancialSummary((prev) => ({
+      ...prev,
+      totalExpenses: prev.totalExpenses + expense.amountBDT,
+      netOperatingProfit: prev.netOperatingProfit - expense.amountBDT,
+    }));
+  };
+
+  const handleAddSalesReturn = (ret: SalesReturn) => {
+    setSalesReturns((prev) => [ret, ...prev]);
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUserRole,
+        actionType: 'CREDIT_NOTE_ISSUED',
+        details: `Issued ${ret.creditNoteNumber || ret.returnNumber} (৳${ret.totalRefundBDT}) to ${ret.patientName}`,
+        ipAddress: '192.168.10.21',
+        status: 'success',
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleAddPurchaseReturn = (ret: PurchaseReturn) => {
+    setPurchaseReturns((prev) => [ret, ...prev]);
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUserRole,
+        actionType: 'PRICE_MODIFIED',
+        details: `Debit Note issued ${ret.debitNoteNumber} to supplier ${ret.supplierName} (৳${ret.totalClaimAmountBDT})`,
+        ipAddress: '192.168.10.21',
+        status: 'success',
+      },
+      ...prev,
+    ]);
+  };
+
+  // Initial hydration from XAMPP MySQL database 'mehl'
+  useEffect(() => {
+    fetchInitialDataFromDb().then((dbData) => {
+      if (dbData.jobs && dbData.jobs.length > 0) {
+        setJobs(dbData.jobs);
+      } else if (jobs.length > 0) {
+        // Seed MySQL with initial jobs
+        bulkSyncJobsToDb(jobs);
+      }
+
+      if (dbData.inventory && dbData.inventory.length > 0) {
+        setInventory(dbData.inventory);
+      } else if (inventory.length > 0) {
+        // Seed MySQL with initial inventory
+        bulkSyncInventoryToDb(inventory);
+      }
+
+      if (dbData.sales && dbData.sales.length > 0) {
+        setSalesRecords(dbData.sales);
+      }
+    });
+  }, []);
+
+  // Persist state to localStorage and XAMPP MySQL database
+  useEffect(() => {
+    localStorage.setItem('madina_jobs', JSON.stringify(jobs));
+    const timer = setTimeout(() => {
+      bulkSyncJobsToDb(jobs);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [jobs]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_inventory', JSON.stringify(inventory));
+    const timer = setTimeout(() => {
+      bulkSyncInventoryToDb(inventory);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [inventory]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_salesmen', JSON.stringify(salesmen));
+  }, [salesmen]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_sales_records', JSON.stringify(salesRecords));
+  }, [salesRecords]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_purchase_orders', JSON.stringify(purchaseOrders));
+  }, [purchaseOrders]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_grns', JSON.stringify(grns));
+  }, [grns]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_expenses', JSON.stringify(expenses));
+  }, [expenses]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_sales_returns', JSON.stringify(salesReturns));
+  }, [salesReturns]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_purchase_returns', JSON.stringify(purchaseReturns));
+  }, [purchaseReturns]);
+
+  const handleLoginSuccess = (user: UserAccount) => {
+    setAuthenticatedUser(user);
+    if (user.role && (user.role as string) in MADINA_STAFF_PROFILES) {
+      setCurrentUserRole(user.role as UserRole);
+    } else {
+      setCurrentUserRole('admin');
+    }
+    if (user.allowedViews && user.allowedViews.length > 0) {
+      if (!user.allowedViews.includes(currentView)) {
+        setCurrentView(user.allowedViews[0]);
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('mehl_session_user');
+    localStorage.removeItem('mehl_session_user');
+    setAuthenticatedUser(null);
+  };
+
+  const currentUser = {
+    ...(MADINA_STAFF_PROFILES[currentUserRole] || MADINA_STAFF_PROFILES.admin),
+    ...(authenticatedUser
+      ? {
+          name: authenticatedUser.name,
+          roleTitle: authenticatedUser.roleTitle || (MADINA_STAFF_PROFILES[currentUserRole]?.roleTitle ?? 'Hospital Staff'),
+        }
+      : {}),
+  };
+
+  const handleRoleChange = (newRole: UserRole) => {
+    setCurrentUserRole(newRole);
+    const targetProfile = MADINA_STAFF_PROFILES[newRole];
+    if (targetProfile && !targetProfile.allowedViews.includes(currentView)) {
+      setCurrentView(targetProfile.allowedViews[0]);
+    }
+  };
+
+  // Modals state
+  const [isNewInvoiceOpen, setIsNewInvoiceOpen] = useState(false);
+  const [isCreateTrayOpen, setIsCreateTrayOpen] = useState(false);
+  const [isPrintBarcodesOpen, setIsPrintBarcodesOpen] = useState(false);
+  const [isQuickScanOpen, setIsQuickScanOpen] = useState(false);
+  const [isGlazingAssistantOpen, setIsGlazingAssistantOpen] = useState(false);
+  const [isEyewearStudioOpen, setIsEyewearStudioOpen] = useState(false);
+  const [barcodeItemToPrint, setBarcodeItemToPrint] = useState<InventoryItem | null>(null);
+  const [isAddGlassesOpen, setIsAddGlassesOpen] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+
+  // Automated Patient SMS Notification & Modal state
+  const [isSmsModalOpen, setIsSmsModalOpen] = useState(false);
+  const [smsModalSelectedJob, setSmsModalSelectedJob] = useState<OpticalJob | null>(null);
+  const [smsToast, setSmsToast] = useState<{
+    job: OpticalJob;
+    message: string;
+    phone: string;
+  } | null>(null);
+
+  // Pipeline Filter (All / Rush / Ready)
+  const [pipelineFilter, setPipelineFilter] = useState<'all' | 'rush' | 'ready'>('all');
+
+  // Camera QR/Barcode Scanner state
+  const [cameraScannedCode, setCameraScannedCode] = useState<string>('');
+  const [isFloatingCameraActive, setIsFloatingCameraActive] = useState<boolean>(false);
+  const [cameraToast, setCameraToast] = useState<{ message: string; code: string } | null>(null);
+
+  const selectedJob = jobs.find((j) => j.id === selectedJobId) || null;
+
+  const displayedJobs = useMemo(() => {
+    if (pipelineFilter === 'rush') {
+      return jobs.filter((j) => j.priority === 'express' || j.priority === 'stat');
+    }
+    if (pipelineFilter === 'ready') {
+      return jobs.filter((j) => j.stage === 5);
+    }
+    return jobs;
+  }, [jobs, pipelineFilter]);
+
+  // Automated trigger when a barcode or QR code is detected by device camera
+  const handleCameraBarcodeDetected = (code: string, formatName?: string) => {
+    setCameraScannedCode(code);
+    setIsQuickScanOpen(true);
+    setCameraToast({
+      message: `Barcode detected via Camera (${formatName || 'Optical Cam'})`,
+      code,
+    });
+    setTimeout(() => setCameraToast(null), 4500);
+  };
+
+  // Global Keyboard listener for F4 or ⌘K / Ctrl+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F4' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
+        e.preventDefault();
+        setIsQuickScanOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Handlers for lab jobs
+  const handleAdvanceJob = (jobId: string, customNote?: string, operator?: string) => {
+    if (!currentUser.permissions.canAdvanceStages) {
+      alert(`Access Restricted (RBAC):\nRole "${currentUser.roleTitle}" is not authorized to advance conveyor trays. Please switch to Lab Technician or Admin role.`);
+      return;
+    }
+
+    const targetJob = jobs.find((j) => j.id === jobId);
+    if (!targetJob) return;
+
+    const nextStage = Math.min(5, targetJob.stage + 1) as 1 | 2 | 3 | 4 | 5;
+    if (nextStage === targetJob.stage) return;
+
+    // Automated SMS Notification Trigger when transitioning to Stage 5 (Ready for Handover)
+    let stage5SmsStatus: 'delivered' | undefined = undefined;
+    let stage5SmsSentAt: string | undefined = undefined;
+    let stage5SmsMessage: string | undefined = undefined;
+
+    if (nextStage === 5) {
+      stage5SmsSentAt = formatAuditTimestamp();
+      stage5SmsStatus = 'delivered';
+      stage5SmsMessage = buildReadyForPickupMessage(targetJob, 'en');
+
+      // Dispatch automated SMS trigger to patient's mobile number
+      triggerAutomatedStage5Sms(targetJob, {
+        operator: operator || currentUser.name,
+      }).then((result) => {
+        console.log(`[Automated SMS Gateway] Dispatched to ${targetJob.patientPhone}. Success:`, result.success);
+      }).catch((err) => {
+        console.warn('SMS dispatch error:', err);
+      });
+
+      // Show high-priority automated trigger alert toast
+      setSmsToast({
+        job: targetJob,
+        message: "Automated SMS Sent: 'Order Ready for Pickup'",
+        phone: targetJob.patientPhone,
+      });
+      setTimeout(() => setSmsToast(null), 7000);
+    }
+
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.id === jobId) {
+          const smsAuditNotice = nextStage === 5
+            ? ` • Automated SMS notification dispatched to ${job.patientPhone} ("Order Ready for Pickup" via live Telco gateway).`
+            : '';
+
+          const newAuditEntry = createStageTransitionEntry(job, nextStage, {
+            actor: operator || currentUser.name,
+            notes: (customNote ? `${customNote}. ` : '') + (nextStage === 5 ? `Stage 5 Staging Complete.${smsAuditNotice}` : ''),
+          });
+
+          return {
+            ...job,
+            stage: nextStage,
+            progressPercent: nextStage === 2 ? 65 : nextStage === 3 ? 100 : undefined,
+            smsNotificationStatus: nextStage === 5 ? stage5SmsStatus : job.smsNotificationStatus,
+            smsNotificationSentAt: nextStage === 5 ? stage5SmsSentAt : job.smsNotificationSentAt,
+            smsNotificationMessage: nextStage === 5 ? stage5SmsMessage : job.smsNotificationMessage,
+            smsNotificationRecipient: nextStage === 5 ? job.patientPhone : job.smsNotificationRecipient,
+            auditTrail: [...(job.auditTrail || []), newAuditEntry],
+          };
+        }
+        return job;
+      })
+    );
+  };
+
+  const handleAddAuditNote = (jobId: string, note: string, operator?: string, actionType?: AuditActionType) => {
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.id === jobId) {
+          const config = STAGE_CONFIG[job.stage];
+          const effectiveActionType: AuditActionType = actionType || 'negative_adjustment';
+          let actionTitle = `Manual Adjustment: Inspection Note Logged at Stage ${job.stage}`;
+          if (effectiveActionType === 'manual_override') {
+            actionTitle = `Manual Override: Critical Supervisor Override Authorized at Stage ${job.stage}`;
+          } else if (effectiveActionType === 'security') {
+            actionTitle = `Security Audit: Critical Security Verification & Authentication Check at Stage ${job.stage}`;
+          }
+
+          const newEntry: StageAuditEntry = {
+            id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            timestamp: formatAuditTimestamp(),
+            stageNumber: job.stage,
+            stageName: config.name,
+            previousStageNumber: job.stage,
+            previousStageName: config.name,
+            trayNumber: job.trayNumber,
+            actor: operator || config.defaultActor,
+            action: actionTitle,
+            actionType: effectiveActionType,
+            station: config.station,
+            notes: note,
+          };
+          return {
+            ...job,
+            auditTrail: [...(job.auditTrail || []), newEntry],
+          };
+        }
+        return job;
+      })
+    );
+  };
+
+  const handleQuickCheckIn = (jobId: string, qrCode: string, operator?: string) => {
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.id === jobId) {
+          const timestamp = formatAuditTimestamp();
+          const checkInEntry: StageAuditEntry = {
+            id: `audit-${Date.now()}-checkin`,
+            timestamp,
+            stageNumber: 1,
+            stageName: STAGE_CONFIG[1].name,
+            previousStageNumber: 1,
+            previousStageName: STAGE_CONFIG[1].name,
+            trayNumber: job.trayNumber,
+            actor: operator || 'Front Desk Intake Tech',
+            action: `Patient Quick Check-in via QR Scan [${qrCode}]`,
+            actionType: 'positive_advancement',
+            station: STAGE_CONFIG[1].station,
+            notes: `Patient verified via QR Code (${qrCode}). Physical arrival confirmed at optical reception. Tray ${job.trayNumber} matched and authorized for lens blank pulling & edging pipeline.`,
+          };
+
+          return {
+            ...job,
+            isCheckedIn: true,
+            checkInTimestamp: timestamp,
+            checkInQrCode: qrCode,
+            checkInOperator: operator || 'Front Desk Intake Tech',
+            auditTrail: [...(job.auditTrail || []), checkInEntry],
+          };
+        }
+        return job;
+      })
+    );
+  };
+
+  const handleHandoverClose = (jobId: string) => {
+    setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    if (selectedJobId === jobId) setSelectedJobId(null);
+    alert('Eyewear handed over to patient and order archived successfully!');
+  };
+
+  const handleSendWhatsApp = (job: OpticalJob) => {
+    alert(
+      `WhatsApp alert sent to ${job.patientPhone} for Tray ${job.trayNumber}:\n"Hello ${job.patientName}, your customized eyewear (${job.frameName}) is glazed, QC verified, and waiting at Modina Optics!"`
+    );
+  };
+
+  const handleCreateJob = (newJob: OpticalJob) => {
+    const jobWithAudit: OpticalJob = {
+      ...newJob,
+      auditTrail: newJob.auditTrail && newJob.auditTrail.length > 0
+        ? newJob.auditTrail
+        : [
+            {
+              id: `audit-${newJob.id}-init`,
+              timestamp: formatAuditTimestamp(),
+              stageNumber: 1,
+              stageName: STAGE_CONFIG[1].name,
+              trayNumber: newJob.trayNumber,
+              actor: newJob.assignedTech || 'Intake Tech',
+              action: `Tray ${newJob.trayNumber} incepted into laboratory intake`,
+              station: STAGE_CONFIG[1].station,
+              notes: `Order created for ${newJob.patientName}. Rx: ${newJob.rxSummary}. Frame: ${newJob.frameName}. Priority: ${newJob.urgency.toUpperCase()}.`,
+            },
+          ],
+    };
+    setJobs((prev) => [jobWithAudit, ...prev]);
+  };
+
+  const handleAddSalesman = (newSm: Salesman) => {
+    setSalesmen((prev) => [...prev, newSm]);
+  };
+
+  const handleUpdateSalesman = (updatedSm: Salesman) => {
+    setSalesmen((prev) => prev.map((s) => (s.id === updatedSm.id ? updatedSm : s)));
+  };
+
+  const handleToggleSalesmanStatus = (id: string) => {
+    setSalesmen((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, status: s.status === 'active' ? 'inactive' : 'active' } : s
+      )
+    );
+  };
+
+  const handleInvoiceCreated = (invoice: any) => {
+    const now = new Date();
+    const todayDateStr = now.toISOString().slice(0, 10);
+    const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Add a corresponding lab tray job
+    const newJob: OpticalJob = {
+      id: `job-${Date.now()}`,
+      jobCode: invoice.invoiceNumber,
+      trayNumber: `Tray #T-${Math.floor(10 + Math.random() * 89)}`,
+      patientName: invoice.patientName,
+      patientPhone: invoice.patientPhone,
+      refDoctor: invoice.refDoctor || 'Dr. R. Huq, OD',
+      rxSummary: invoice.rxSummary || 'OD: -1.50 / OS: -1.25 (Standard Refraction)',
+      odAxis: invoice.odAxis || '90°',
+      osAxis: invoice.osAxis || '85°',
+      pdValue: invoice.pdValue || '63.0mm',
+      stage: 1,
+      urgency: invoice.isRush ? 'rush' : 'standard',
+      deliveryTime: invoice.isRush ? '2-Hour Express' : 'Standard 48H',
+      frameName: invoice.frameName,
+      lensName: invoice.lensName,
+      assignedTech: 'Master Ripon',
+      paidAmount: invoice.paid,
+      dueAmount: invoice.due,
+      salesmanId: invoice.salesmanId,
+      salesmanName: invoice.salesmanName,
+      notes: `Invoice created with ৳${invoice.paid} advance. Salesman: ${invoice.salesmanName || 'Dispensary Staff'}.`,
+      auditTrail: [
+        {
+          id: `audit-${Date.now()}-pos`,
+          timestamp: formatAuditTimestamp(),
+          stageNumber: 1,
+          stageName: STAGE_CONFIG[1].name,
+          trayNumber: `Tray #T-${Math.floor(10 + Math.random() * 89)}`,
+          actor: 'POS Billing Cashier',
+          action: `Invoice ${invoice.invoiceNumber} billed & Tray assigned to Intake`,
+          station: STAGE_CONFIG[1].station,
+          notes: `Advance paid: ৳${invoice.paid}. Remaining due: ৳${invoice.due}. Frame: ${invoice.frameName}, Lens: ${invoice.lensName}. Salesman: ${invoice.salesmanName}.`,
+        },
+      ],
+    };
+
+    // Create SaleRecord for salesman performance and commission audit
+    const newSaleRecord: SaleRecord = {
+      id: `sale-${Date.now()}`,
+      invoiceNumber: invoice.invoiceNumber,
+      timestamp: `${todayDateStr} ${timeFormatted}`,
+      date: todayDateStr,
+      patientName: invoice.patientName,
+      patientPhone: invoice.patientPhone,
+      salesmanId: invoice.salesmanId || 'salesman-1',
+      salesmanName: invoice.salesmanName || 'Tariqul Islam',
+      employeeId: invoice.employeeId || 'EMP-0101',
+      commissionPct: invoice.commissionPct || 4.5,
+      subtotal: invoice.total,
+      discountAmount: invoice.discountAmount || 0,
+      totalAmount: invoice.total,
+      advancePaid: invoice.paid,
+      dueAmount: invoice.due,
+      framesCount: 1,
+      lensesCount: 2,
+      accessoriesCount: 1,
+      itemsSummary: `${invoice.frameName} + ${invoice.lensName}`,
+      paymentMethod: invoice.paymentMethod || 'Cash',
+      commissionEarned: invoice.commissionEarned || Math.round(invoice.total * 0.045),
+      status: 'completed',
+    };
+
+    setJobs((prev) => [newJob, ...prev]);
+    setSalesRecords((prev) => [newSaleRecord, ...prev]);
+
+    // Update salesman stats
+    setSalesmen((prev) =>
+      prev.map((s) =>
+        s.id === newSaleRecord.salesmanId
+          ? {
+              ...s,
+              totalSalesCount: (s.totalSalesCount || 0) + 1,
+              totalSalesVolumeBDT: (s.totalSalesVolumeBDT || 0) + invoice.total,
+            }
+          : s
+      )
+    );
+
+    setCurrentView('lab-pipeline');
+    alert(`Invoice ${invoice.invoiceNumber} created! Tray ${newJob.trayNumber} assigned to Intake queue. Salesman ${newSaleRecord.salesmanName} credited with ৳${newSaleRecord.commissionEarned} commission.`);
+  };
+
+  const handlePosInvoiceSaved = (newJob: OpticalJob) => {
+    setJobs((prev) => [newJob, ...prev]);
+    const todayDateStr = new Date().toISOString().split('T')[0];
+    const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const assignedSalesman = salesmen[0] || initialSalesmen[0];
+    const totalBDT = (newJob.paidAmount || 0) + (newJob.dueAmount || 0);
+
+    const newSaleRecord: SaleRecord = {
+      id: `sale-${Date.now()}`,
+      invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
+      timestamp: `${todayDateStr} ${timeFormatted}`,
+      date: todayDateStr,
+      patientName: newJob.patientName,
+      patientPhone: newJob.patientPhone,
+      salesmanId: assignedSalesman.id,
+      salesmanName: assignedSalesman.name,
+      employeeId: assignedSalesman.employeeId,
+      commissionPct: assignedSalesman.commissionPct,
+      subtotal: totalBDT,
+      discountAmount: 0,
+      totalAmount: totalBDT,
+      advancePaid: newJob.paidAmount || 0,
+      dueAmount: newJob.dueAmount || 0,
+      framesCount: 1,
+      lensesCount: 2,
+      accessoriesCount: 0,
+      itemsSummary: `${newJob.frameName} + ${newJob.lensName}`,
+      paymentMethod: 'Cash',
+      commissionEarned: Math.round(totalBDT * (assignedSalesman.commissionPct / 100)),
+      status: 'completed',
+    };
+
+    setSalesRecords((prev) => [newSaleRecord, ...prev]);
+    setSalesmen((prev) =>
+      prev.map((s) =>
+        s.id === assignedSalesman.id
+          ? {
+              ...s,
+              totalSalesCount: (s.totalSalesCount || 0) + 1,
+              totalSalesVolumeBDT: (s.totalSalesVolumeBDT || 0) + totalBDT,
+            }
+          : s
+      )
+    );
+  };
+
+  // Restock handler
+  const handleRestock = (item: InventoryItem, qtyToAdd: number = 10) => {
+    setInventory((prev) =>
+      prev.map((i) => {
+        if (i.id === item.id) {
+          const newQty = i.stockQty + qtyToAdd;
+          const status =
+            newQty <= Math.floor(i.minThreshold / 2)
+              ? 'critical'
+              : newQty < i.minThreshold
+              ? 'low'
+              : 'healthy';
+          return { ...i, stockQty: newQty, status };
+        }
+        return i;
+      })
+    );
+  };
+
+  const handlePrintBarcode = (item: InventoryItem) => {
+    setBarcodeItemToPrint(item);
+  };
+
+  const handlePoReorder = (item: InventoryItem, qty: number = 24) => {
+    console.log(`Purchase order created for ${item.name}, qty: ${qty}`);
+  };
+
+  // Dynamic Counts & Calculations
+  const totalFrames = inventory
+    .filter((i) => i.category.includes('Frame'))
+    .reduce((acc, i) => acc + (i.stockQty || 0), 0);
+  const totalLenses = inventory
+    .filter((i) => i.category.includes('Lens'))
+    .reduce((acc, i) => acc + (i.stockQty || 0), 0);
+  const totalInventoryUnits = inventory.reduce((acc, i) => acc + (i.stockQty || 0), 0);
+  const lowStockCount = inventory.filter((i) => i.stockQty <= i.minThreshold).length;
+  const activeLabJobsCount = jobs.filter((j) => j.stage < 5).length;
+  const totalDueAmount = useMemo(() => {
+    return jobs.reduce((acc, j) => acc + (j.dueAmount || 0), 0) +
+      salesRecords.reduce((acc, s) => acc + (s.dueAmount || 0), 0);
+  }, [jobs, salesRecords]);
+
+  // Real-time Activity Feed: Extract latest 3 audit trail logs of recent lab advancements
+  const recentActivityLogs: ActivityFeedItem[] = useMemo(() => {
+    const list: ActivityFeedItem[] = [];
+
+    // Collect all audit entries across all jobs
+    jobs.forEach((j) => {
+      if (j.auditTrail && Array.isArray(j.auditTrail)) {
+        j.auditTrail.forEach((entry) => {
+          list.push({
+            entry,
+            jobId: j.id,
+            jobCode: j.jobCode,
+            patientName: j.patientName,
+            patientPhone: j.patientPhone,
+            frameName: j.frameName,
+            lensName: j.lensName,
+            rxSummary: j.rxSummary,
+            refDoctor: j.refDoctor,
+            jobNotes: j.notes,
+            urgency: j.urgency,
+            axisStatus: j.axisStatus,
+            powerVerified: j.powerVerified,
+          });
+        });
+      }
+    });
+
+    const getTimestampScore = (item: ActivityFeedItem) => {
+      const ts = item.entry.timestamp;
+      // Dynamic advancement ID timestamp (epoch ms)
+      const idMatch = item.entry.id.match(/audit-(\d+)/);
+      if (idMatch && idMatch[1]) {
+        const parsed = parseInt(idMatch[1], 10);
+        if (parsed > 1000000000000) return parsed;
+      }
+      // Stage suffix e.g. -s4
+      const stageMatch = item.entry.id.match(/-s(\d+)/);
+      const stageNum = stageMatch ? parseInt(stageMatch[1], 10) : item.entry.stageNumber;
+
+      const parsedDate = new Date(ts.replace('•', '')).getTime();
+      if (!isNaN(parsedDate)) {
+        return parsedDate + stageNum * 10000;
+      }
+      return stageNum * 10000;
+    };
+
+    return list
+      .sort((a, b) => getTimestampScore(b) - getTimestampScore(a));
+  }, [jobs]);
+
+  // Gated Landing: Land on LoginPage first if not authenticated
+  if (!authenticatedUser) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-surface-container-lowest text-on-surface flex flex-col font-sans antialiased selection:bg-primary-fixed selection:text-on-primary-fixed">
+      {/* 1. Fixed Top Application Bar */}
+      <TopNavBar
+        currentView={currentView}
+        onSelectView={(v) => {
+          if (v === 'ai-glazing') setIsGlazingAssistantOpen(true);
+          else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
+          else setCurrentView(v);
+        }}
+        onOpenNewInvoice={() => {
+          if (!currentUser.permissions.canProcessPOS) {
+            alert(`Access Restricted (RBAC):\nRole "${currentUser.roleTitle}" cannot generate POS invoices.`);
+            return;
+          }
+          setIsNewInvoiceOpen(true);
+        }}
+        onOpenQuickScan={() => setIsQuickScanOpen(true)}
+        onToggleCameraScanner={() => setIsFloatingCameraActive((prev) => !prev)}
+        isCameraScannerActive={isFloatingCameraActive}
+        onOpenShiftSummary={() => setCurrentView('reports')}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        currentUserRole={currentUserRole}
+        onRoleChange={handleRoleChange}
+        onOpenSmsCenter={() => setIsSmsModalOpen(true)}
+        authenticatedUser={authenticatedUser}
+        onLogout={handleLogout}
+      />
+
+      {/* 2. Fixed Left Sidebar */}
+      <SideNavBar
+        currentView={currentView}
+        onSelectView={(v) => {
+          if (v === 'ai-glazing') setIsGlazingAssistantOpen(true);
+          else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
+          else setCurrentView(v);
+        }}
+        onOpenQuickScan={() => setIsQuickScanOpen(true)}
+        onOpenLiveCamera={() => setIsFloatingCameraActive(true)}
+        totalInventoryCount={totalInventoryUnits}
+        activeLabJobsCount={activeLabJobsCount}
+        totalDueAmount={totalDueAmount}
+        currentUserRole={currentUserRole}
+      />
+
+      {/* 3. Main Dashboard Workspace (Pushed comfortably below fixed 64px header and 256px from left on desktop) */}
+      <main className="pt-20 sm:pt-24 lg:pl-64 pl-0 flex-1 flex flex-col p-4 sm:p-6 gap-6 bg-surface dark:bg-[#111317] min-h-screen overflow-x-hidden transition-colors">
+        {/* Clean, Unified Workspace Header */}
+        <header className="flex flex-col gap-3.5 pb-3.5 border-b border-outline-variant/60 dark:border-[#262c3b]">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+            <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-lg sm:text-xl font-bold text-on-surface tracking-tight font-headline-md">
+                {language === 'bn' ? (
+                  <>
+                    {currentView === 'lab-pipeline' && 'ল্যাব গ্লেজিং ও কনভেয়ার কিউ'}
+                    {currentView === 'modina-erp' && 'পিওএস ও সেলস বিলিং (মদিনা ইআরপি)'}
+                    {currentView === 'stock-master' && 'স্টক ও ফ্রেম রেজিস্ট্রি'}
+                    {currentView === 'due-collections' && 'বকেয়া আদায় ও লেজার'}
+                    {currentView === 'reports' && 'ওয়ার্কশপ অ্যানালিটিক্স ও টেলেমেট্রি'}
+                    {currentView === 'salesmen' && 'সেলসম্যান ও স্টাফ কমিশন'}
+                    {currentView === 'executive-dashboard' && 'এক্সিকিউটিভ ড্যাশবোর্ড'}
+                    {currentView === 'pharmacy-command' && 'ফার্মেসি কমান্ড সেন্টার (FEFO)'}
+                    {currentView === 'multi-branch-ibt' && 'মাল্টি-ব্রাঞ্চ স্টক ট্রান্সফার (IBT)'}
+                    {currentView === 'supplier-grn' && 'সাপ্লায়ার ও গুডস রিসিভড নোট (GRN)'}
+                    {currentView === 'financial-accounting' && 'প্রফিট অ্যানালিটিক্স ও পিএন্ডএল'}
+                    {currentView === 'returns-refunds' && 'রিটার্ন, রিফান্ড ও ক্রেডিট নোট'}
+                    {currentView === 'settings-roles' && 'সেটিংস, রোল পারমিশন ও অডিট'}
+                  </>
+                ) : (
+                  <>
+                    {currentView === 'lab-pipeline' && 'Lab Glazing Conveyor Queue'}
+                    {currentView === 'modina-erp' && 'Unified POS & Sales ERP'}
+                    {currentView === 'stock-master' && 'Stock & Frames Master Registry'}
+                    {currentView === 'due-collections' && 'Due Collections & Customer Ledger'}
+                    {currentView === 'reports' && 'Workshop Analytics & Telemetry'}
+                    {currentView === 'salesmen' && 'Sales Staff & Commission Ledgers'}
+                    {currentView === 'executive-dashboard' && 'Executive C-Suite Dashboard'}
+                    {currentView === 'pharmacy-command' && 'Pharmacy Command Center (FEFO)'}
+                    {currentView === 'multi-branch-ibt' && 'Multi-Branch Inter-Transfer (IBT)'}
+                    {currentView === 'supplier-grn' && 'Suppliers & Goods Received Notes (GRN)'}
+                    {currentView === 'financial-accounting' && 'Optics Profit & Financial Accounting'}
+                    {currentView === 'returns-refunds' && 'Returns, Refunds & Credit Notes'}
+                    {currentView === 'settings-roles' && 'Settings, Role Permissions & Security Audit'}
+                  </>
+                )}
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                {language === 'bn' ? 'স্টেশন #০২ লাইভ' : 'Station #02 Live'}
+              </span>
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#f1f4f9] dark:bg-[#1a1d26] text-outline border border-outline-variant/60 dark:border-[#272d3b]">
+                <span className="material-symbols-outlined text-[13px] text-[#169b90]">shield_person</span>
+                <span className="font-bold text-on-surface">{currentUser.name}</span>
+                <span className="text-outline">({currentUser.roleTitle})</span>
+              </span>
+            </div>
+            <p className="text-[11px] text-outline font-medium mt-0.5">
+              {language === 'bn' ? (
+                <>
+                  {currentView === 'lab-pipeline' && 'এসিলর ডেল্টা ২০০ এজার • লেন্স প্রস্তুতকরণ থেকে আইএসও ২১৯৮৭ পরীক্ষণ পর্যন্ত ৫-ধাপের কনভেয়ার ট্রে সিস্টেম'}
+                  {currentView === 'modina-erp' && 'ইউনিফাইড অপটিক্যাল পিওএস: বারকোড স্ক্যানার, অটো ফ্রেম ডিটেইলস, পাইকারি কস্ট সিফার ও সেলস কমিশন'}
+                  {currentView === 'stock-master' && 'ডিজাইনার ফ্রেম, লেন্স ইনভেন্টরি, বিন রেজিস্ট্রি এবং বারকোড প্রিন্টার'}
+                  {currentView === 'due-collections' && 'গ্রাহক বকেয়া ব্যবস্থাপনা, এসএমএস নোটিফিকেশন এবং পেমেন্ট নিষ্পত্তিকরণ'}
+                  {currentView === 'reports' && 'ল্যাব মেশিনের কার্যক্ষমতা, হুইল স্থায়িত্ব, ক্ষতি হার এবং স্টাফ কমিশন লেজার'}
+                  {currentView === 'salesmen' && 'বিক্রয়কর্মী টিম, মাসিক লক্ষ্যমাত্রা, কমিশন টায়ার এবং পারফরম্যান্স ট্র্যাকিং'}
+                  {currentView === 'executive-dashboard' && 'হসপিটাল অপটিক্যাল কেপিআই, নেটওয়ার্ক স্ট্যাটাস এবং জরুরি অ্যাকশন ম্যাট্রিক্স'}
+                  {currentView === 'pharmacy-command' && 'স্বয়ংক্রিয় এফইএফও (FEFO) ব্যাচ অ্যালটমেন্ট ও আই-ড্রপ ডিসপেনসারি'}
+                  {currentView === 'multi-branch-ibt' && 'শাখা রিকুইজিশন, চালান গেটপাস ও লাইভ ট্রানজিট ট্র্যাকিং'}
+                  {currentView === 'supplier-grn' && 'অনুমোদিত ভেন্ডর ডিরেক্টরি, ফ্রেম পিও ও গুডস রিসিভড নোট (GRN)'}
+                  {currentView === 'financial-accounting' && 'মাসিক আয়-ব্যয় বিবরণী, পাইকারি কস্ট সিফার ও ব্র্যান্ড মার্জিন'}
+                  {currentView === 'returns-refunds' && 'কাস্টমার ওয়ারেন্টি ক্রেডিট নোট (CN) এবং সরবরাহকারী ডেবিট নোট (DN)'}
+                  {currentView === 'settings-roles' && 'ইউজার পারমিশন কন্ট্রোল (RBAC), সিস্টেম ব্যাকআপ ও অডিট ট্রেইল'}
+                </>
+              ) : (
+                <>
+                  {currentView === 'lab-pipeline' && 'Essilor Delta 200 Edger • Real-time 5-stage optical tray conveyor from lens pulling to ISO 21987 inspection'}
+                  {currentView === 'modina-erp' && 'Single-Page Optical ERP: Barcode Scanner, Auto-Populated Frame Details, Confidential Wholesale Cost & Rx Grid Matrix'}
+                  {currentView === 'stock-master' && 'Live inventory of designer frames, optical lenses, storage bin registry, and barcode generator'}
+                  {currentView === 'due-collections' && 'Outstanding customer receivables, SMS delivery alerts, and settlement register'}
+                  {currentView === 'reports' && 'Essilor Delta 200 hourly velocity, diamond wheel wear, lens spoilage rate, and commission ledgers'}
+                  {currentView === 'salesmen' && 'Active sales executives, performance targets, commission tiers (2.5% - 5.5%), and sales volume'}
+                  {currentView === 'executive-dashboard' && 'C-suite optical enterprise metrics, multi-branch network status, and urgent action matrix'}
+                  {currentView === 'pharmacy-command' && 'Automated First-Expiry First-Out (FEFO) batch picker, sterile ophthalmic drops & prescription dispensation'}
+                  {currentView === 'multi-branch-ibt' && 'Requisition orders, dispatch manifests, security gate passes & real-time transit telemetry'}
+                  {currentView === 'supplier-grn' && 'Approved vendor directories, optical frame POs, quality inspection & Goods Received Notes (GRN)'}
+                  {currentView === 'financial-accounting' && 'Monthly P&L income statements, confidential wholesale cipher *M-M-P*, and brand margins'}
+                  {currentView === 'returns-refunds' && 'Customer warranty credit notes (CN) and supplier rejection debit notes (DN) audit register'}
+                  {currentView === 'settings-roles' && 'Granular role-based access control (RBAC), multi-branch parameters & security audit logs'}
+                </>
+              )}
+            </p>
+          </div>
+
+          {/* Context-Specific Action Bar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {currentView === 'lab-pipeline' && (
+              <>
+                {/* Segmented Mode Switcher */}
+                <div className="flex items-center p-1 bg-[#f1f4f9] dark:bg-[#1e2330] rounded-xl border border-outline-variant/60 dark:border-[#2b3243]">
+                  <button
+                    onClick={() => setLabViewMode('conveyor')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      labViewMode === 'conveyor'
+                        ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
+                        : 'text-outline hover:text-on-surface'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">view_column</span>
+                    <span>{language === 'bn' ? 'কনভেয়ার বোর্ড' : 'Conveyor Board'}</span>
+                  </button>
+                  <button
+                    onClick={() => setLabViewMode('telemetry')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      labViewMode === 'telemetry'
+                        ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
+                        : 'text-outline hover:text-on-surface'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">monitoring</span>
+                    <span>{language === 'bn' ? 'এজার টেলিমেট্রি' : 'Edger Telemetry'}</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setIsFloatingCameraActive((prev) => !prev)}
+                  className={`px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                    isFloatingCameraActive
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-500/20'
+                      : 'bg-emerald-50/90 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
+                  }`}
+                  title="Camera Barcode & QR Scanner"
+                >
+                  <span className="material-symbols-outlined text-[16px]">photo_camera</span>
+                  <span>{isFloatingCameraActive ? (language === 'bn' ? 'ক্যামেরা লাইভ' : 'Camera Live') : (language === 'bn' ? 'ক্যামেরা স্ক্যান' : 'Camera Scan')}</span>
+                </button>
+
+                <button
+                  onClick={() => setIsSmsModalOpen(true)}
+                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                  title="SMS Notification Gateway & Patient Dispatch Hub"
+                >
+                  <span className="material-symbols-outlined text-[16px]">sms</span>
+                  <span>{language === 'bn' ? 'এসএমএস গেটওয়ে' : 'SMS Gateway'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (!currentUser.permissions.canAdvanceStages && !currentUser.permissions.canProcessPOS) {
+                      alert(`Access Restricted (RBAC):\nRole "${currentUser.roleTitle}" cannot create glazing orders.`);
+                      return;
+                    }
+                    setIsCreateTrayOpen(true);
+                  }}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  <span>{language === 'bn' ? '+ নতুন গ্লেজিং অর্ডার' : '+ New Glazing Order'}</span>
+                </button>
+              </>
+            )}
+
+            {currentView === 'modina-erp' && (
+              <>
+                <button
+                  onClick={() => setIsFloatingCameraActive((prev) => !prev)}
+                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">photo_camera</span>
+                  <span>{language === 'bn' ? 'ক্যামেরা স্ক্যান' : 'Camera Scan'}</span>
+                </button>
+                <button
+                  onClick={() => setIsQuickScanOpen(true)}
+                  className="px-3 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-[#169b90]">barcode_scanner</span>
+                  <span>{language === 'bn' ? 'কুইক বারকোড (F4)' : 'Quick Barcode (F4)'}</span>
+                </button>
+                <button
+                  onClick={() => setIsNewInvoiceOpen(true)}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  <span>{language === 'bn' ? '+ দ্রুত ইনভয়েস' : '+ Quick Invoice'}</span>
+                </button>
+              </>
+            )}
+
+            {currentView === 'stock-master' && (
+              <>
+                <button
+                  onClick={() => setIsPrintBarcodesOpen(true)}
+                  className="px-3 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-outline">qr_code</span>
+                  <span>{language === 'bn' ? 'বারকোড প্রিন্ট' : 'Print Barcodes'}</span>
+                </button>
+                <button
+                  onClick={() => setIsAddGlassesOpen(true)}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-[#169b90] to-[#295559] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  <span>{language === 'bn' ? '+ ফ্রেম এন্ট্রি ও বারকোড' : '+ Glasses Intake & Barcode'}</span>
+                </button>
+              </>
+            )}
+
+
+            {currentView === 'salesmen' && (
+              <>
+                <button
+                  onClick={() => setCurrentView('reports')}
+                  className="px-3.5 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-teal-600">analytics</span>
+                  <span>Commission Analytics</span>
+                </button>
+              </>
+            )}
+
+            {currentView === 'reports' && (
+              <>
+                <button
+                  onClick={() => setCurrentView('salesmen')}
+                  className="px-3.5 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-teal-600">badge</span>
+                  <span>Salesmen Profiles</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Real-time Activity Feed Component (Latest 3 Audit Trail Logs for Recent Lab Advancements) */}
+        <ActivityFeed
+          logs={recentActivityLogs}
+          onViewJob={(jobId) => setSelectedJobId(jobId)}
+        />
+      </header>
+
+        {/* View Switcher Content */}
+        {currentView === 'lab-pipeline' && (
+          <div className="flex flex-col gap-4">
+            {labViewMode === 'conveyor' ? (
+              <div className="flex flex-col gap-4">
+                {/* Clean Conveyor Pipeline Overview & Quick Filter Bar */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 bg-surface-container-lowest dark:bg-[#181c25] rounded-2xl border border-outline-variant/70 dark:border-[#262c3b] shadow-2xs">
+                  {/* Left Metrics Capsules */}
+                  <div className="flex items-center gap-2 sm:gap-3 flex-wrap text-xs">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] rounded-xl border border-outline-variant/60 dark:border-[#2b3346]">
+                      <span className="material-symbols-outlined text-[16px] text-[#169b90]">inventory_2</span>
+                      <span className="text-outline">মোট সক্রিয় ট্রে:</span>
+                      <span className="font-bold text-on-surface font-data-rx">{jobs.length}টি</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-xl border border-amber-500/20">
+                      <span className="material-symbols-outlined text-[16px]">bolt</span>
+                      <span>জরুরি রাশ (2H):</span>
+                      <span className="font-bold font-data-rx">
+                        {jobs.filter((j) => j.priority === 'express' || j.priority === 'stat').length}টি
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-500/20">
+                      <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                      <span>ডেলিভারি প্রস্তুত:</span>
+                      <span className="font-bold font-data-rx">
+                        {jobs.filter((j) => j.stage === 5).length}টি
+                      </span>
+                    </div>
+
+                    <div className="hidden xl:flex items-center gap-1.5 text-[11px] text-outline px-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      <span>Essilor Delta 200 • ৯৮.৪% অন-টাইম</span>
+                    </div>
+                  </div>
+
+                  {/* Right Quick Filter Pills */}
+                  <div className="flex items-center p-1 bg-[#f1f4f9] dark:bg-[#202533] rounded-xl border border-outline-variant/60 dark:border-[#2b3346] self-start md:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setPipelineFilter('all')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        pipelineFilter === 'all'
+                          ? 'bg-white dark:bg-[#2a3142] text-on-surface shadow-2xs'
+                          : 'text-outline hover:text-on-surface'
+                      }`}
+                    >
+                      সকল ট্রে ({jobs.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPipelineFilter('rush')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                        pipelineFilter === 'rush'
+                          ? 'bg-amber-500 text-white shadow-2xs'
+                          : 'text-outline hover:text-amber-600'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">bolt</span>
+                      <span>রাশ ({jobs.filter((j) => j.priority === 'express' || j.priority === 'stat').length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPipelineFilter('ready')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                        pipelineFilter === 'ready'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-outline hover:text-emerald-600'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">check</span>
+                      <span>প্রস্তুত ({jobs.filter((j) => j.stage === 5).length})</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 5-Stage Kanban Board */}
+                <LabPipelineBoard
+                  jobs={displayedJobs}
+                  inventory={inventory}
+                  onAdvanceJob={handleAdvanceJob}
+                  onOpenCreateTray={() => setIsCreateTrayOpen(true)}
+                  onViewJobRx={(job) => setSelectedJobId(job.id)}
+                  onSendWhatsApp={handleSendWhatsApp}
+                  onHandoverClose={handleHandoverClose}
+                  canAdvanceStages={currentUser.permissions.canAdvanceStages}
+                  onOpenSmsModal={(job) => {
+                    setSmsModalSelectedJob(job || null);
+                    setIsSmsModalOpen(true);
+                  }}
+                  onRestock={handleRestock}
+                  onPoReorder={handlePoReorder}
+                  onNavigateToStockMaster={() => setCurrentView('stock-master')}
+                />
+              </div>
+            ) : (
+              /* Workshop Velocity & Machine Telemetry View */
+              <ExtejDashboardHero
+                jobs={jobs}
+                onSelectView={(v) => {
+                  if (v === 'ai-glazing') setIsGlazingAssistantOpen(true);
+                  else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
+                  else setCurrentView(v);
+                }}
+                onOpenCreateTray={() => setIsCreateTrayOpen(true)}
+                onOpenQuickScan={() => setIsQuickScanOpen(true)}
+                onViewJobRx={(job) => setSelectedJobId(job.id)}
+              />
+            )}
+          </div>
+        )}
+
+        {currentView === 'modina-erp' && (
+          <ModinaOpticsErpPos
+            salesmenList={salesmen}
+            onAddSalesman={handleAddSalesman}
+            onRecordSale={(sale) => {
+              setSalesRecords((prev) => [sale, ...prev]);
+              setSalesmen((prev) =>
+                prev.map((s) =>
+                  s.id === sale.salesmanId
+                    ? {
+                        ...s,
+                        totalSalesCount: (s.totalSalesCount || 0) + 1,
+                        totalSalesVolumeBDT: (s.totalSalesVolumeBDT || 0) + sale.totalAmount,
+                      }
+                    : s
+                )
+              );
+            }}
+          />
+        )}
+
+        {currentView === 'stock-master' && (
+          <InventoryRegistryTable
+            items={inventory}
+            currentUser={currentUser}
+            suppliers={suppliers}
+            onRestock={handleRestock}
+            onPrintBarcode={(item) => setBarcodeItemToPrint(item)}
+            onPoReorder={handlePoReorder}
+            onCreatePo={handleCreatePurchaseOrder}
+            onAddNewGlasses={() => setIsAddGlassesOpen(true)}
+            onViewItemWiseSales={() => setCurrentView('reports')}
+          />
+        )}
+
+        {currentView === 'due-collections' && <DueCollectionsView />}
+
+        {currentView === 'reports' && (
+          <ReportsView
+            salesmen={salesmen}
+            salesRecords={salesRecords}
+            inventory={inventory}
+            jobs={jobs}
+            onNavigateToSalesmen={() => setCurrentView('salesmen')}
+            onNavigateToStock={() => setCurrentView('stock-master')}
+            currentUserRole={currentUser.role}
+            onViewJob={(jobId) => {
+              setSelectedJobId(jobId);
+              setCurrentView('lab-pipeline');
+            }}
+          />
+        )}
+
+        {currentView === 'salesmen' && (
+          <SalesmanManagementView
+            salesmen={salesmen}
+            salesRecords={salesRecords}
+            onAddSalesman={handleAddSalesman}
+            onUpdateSalesman={handleUpdateSalesman}
+            onToggleSalesmanStatus={handleToggleSalesmanStatus}
+            onToggleStatus={handleToggleSalesmanStatus}
+            onViewPerformanceReport={() => setCurrentView('reports')}
+          />
+        )}
+
+        {currentView === 'executive-dashboard' && (
+          <ExecutiveDashboardView
+            jobs={jobs}
+            branches={branches}
+            ibtOrders={ibtOrders}
+            financialSummary={financialSummary}
+            drugs={drugs}
+            onNavigate={(view) => setCurrentView(view)}
+          />
+        )}
+
+        {currentView === 'multi-branch-ibt' && (
+          <MultiBranchIbtView
+            branches={branches}
+            ibtOrders={ibtOrders}
+            inventory={inventory}
+            onUpdateIbtOrders={setIbtOrders}
+            onAddIbtOrder={handleAddIbtOrder}
+            onUpdateIbtStatus={handleUpdateIbtStatus}
+            onAddBranch={(newBranch) => setBranches([...branches, newBranch])}
+            onUpdateBranch={(updatedBranch) =>
+              setBranches((prev) => prev.map((b) => (b.id === updatedBranch.id ? updatedBranch : b)))
+            }
+          />
+        )}
+
+        {currentView === 'supplier-grn' && (
+          <SupplierGrnView
+            suppliers={suppliers}
+            purchaseOrders={purchaseOrders}
+            grns={grns}
+            onUpdatePurchaseOrders={setPurchaseOrders}
+            onUpdateGrns={setGrns}
+            onCreatePo={handleCreatePurchaseOrder}
+            onReceiveGrn={handleReceiveGrn}
+          />
+        )}
+
+        {currentView === 'financial-accounting' && (
+          <FinancialAccountingView
+            financialSummary={financialSummary}
+            expenses={expenses}
+            onAddExpense={handleAddExpense}
+          />
+        )}
+
+        {currentView === 'returns-refunds' && (
+          <ReturnsRefundsView
+            salesReturns={salesReturns}
+            purchaseReturns={purchaseReturns}
+            onAddSalesReturn={handleAddSalesReturn}
+            onAddPurchaseReturn={handleAddPurchaseReturn}
+          />
+        )}
+
+        {currentView === 'pharmacy-command' && (
+          <FefoAutoDispensingView
+            drugs={drugs}
+            dispensations={dispensations}
+            onDispenseBatch={(drugId, quantity, patientName) => {
+              setDrugs((prevDrugs) =>
+                prevDrugs.map((d) => {
+                  if (d.id !== drugId) return d;
+                  const updatedBatches = [...d.batches].sort(
+                    (a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()
+                  );
+                  let remaining = quantity;
+                  for (let i = 0; i < updatedBatches.length; i++) {
+                    if (remaining <= 0) break;
+                    const deduct = Math.min(updatedBatches[i].stockQty, remaining);
+                    updatedBatches[i] = {
+                      ...updatedBatches[i],
+                      stockQty: updatedBatches[i].stockQty - deduct,
+                    };
+                    remaining -= deduct;
+                  }
+                  return {
+                    ...d,
+                    totalStock: Math.max(0, d.totalStock - quantity),
+                    batches: updatedBatches,
+                  };
+                })
+              );
+
+              const targetDrug = drugs.find((d) => d.id === drugId);
+              if (targetDrug) {
+                const earliestBatch = [...targetDrug.batches].sort(
+                  (a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()
+                )[0];
+                const newRecord: DispensationRecord = {
+                  id: `dsp-${Date.now()}`,
+                  dispensationNo: `DSP-${Math.floor(10000 + Math.random() * 90000)}`,
+                  timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+                  patientName,
+                  patientPhone: '01711-000000',
+                  prescribingDoctor: 'Prof. Dr. Farhana Aziz',
+                  dispensedTo: 'Outpatient POS',
+                  drugId,
+                  brandName: targetDrug.brandName,
+                  genericName: targetDrug.genericName,
+                  quantityDispensed: quantity,
+                  fefoAllocations: [
+                    {
+                      batchNumber: earliestBatch ? earliestBatch.batchNumber : 'LOT-AUTO',
+                      expiryDate: earliestBatch ? earliestBatch.expiryDate : '2026-10-15',
+                      quantity,
+                      fefoPriority: 1,
+                    },
+                  ],
+                  totalPriceBDT: targetDrug.unitRetailPrice * quantity,
+                  dispensedBy: currentUser.name,
+                  status: 'dispensed',
+                };
+                setDispensations((prev) => [newRecord, ...prev]);
+              }
+            }}
+          />
+        )}
+
+        {currentView === 'settings-roles' && (
+          <SettingsRolesView
+            currentRole={currentUserRole}
+            currentUsername={authenticatedUser?.username || 'admin'}
+            onRoleChange={handleRoleChange}
+            auditLogs={auditLogs}
+            systemConfig={systemConfig}
+            onUpdateSystemConfig={setSystemConfig}
+          />
+        )}
+      </main>
+
+      {/* ================= MODALS & POPUPS ================= */}
+
+      {/* 1. New Invoice POS Modal */}
+      <NewInvoiceModal
+        isOpen={isNewInvoiceOpen}
+        onClose={() => setIsNewInvoiceOpen(false)}
+        inventory={inventory}
+        salesmen={salesmen}
+        currentUser={currentUser}
+        onInvoiceCreated={handleInvoiceCreated}
+      />
+
+      {/* 2. Create Lab Tray Modal */}
+      <CreateLabTrayModal
+        isOpen={isCreateTrayOpen}
+        onClose={() => setIsCreateTrayOpen(false)}
+        inventory={inventory}
+        onCreateJob={handleCreateJob}
+      />
+
+      {/* 3. Print Tray Barcodes Modal */}
+      <PrintTrayBarcodesModal
+        isOpen={isPrintBarcodesOpen}
+        onClose={() => setIsPrintBarcodesOpen(false)}
+        jobs={jobs}
+      />
+
+      {/* 4. Quick Scanner Modal */}
+      <QuickScannerModal
+        isOpen={isQuickScanOpen}
+        onClose={() => {
+          setIsQuickScanOpen(false);
+          setCameraScannedCode('');
+        }}
+        inventory={inventory}
+        jobs={jobs}
+        currentUser={currentUser}
+        initialScanCode={cameraScannedCode}
+        autoStartCamera={true}
+        onSelectJob={(job) => {
+          setSelectedJobId(job.id);
+          setCurrentView('lab-pipeline');
+        }}
+        onSelectInventory={() => {
+          setCurrentView('stock-master');
+        }}
+        onPrintBarcode={(item) => {
+          setBarcodeItemToPrint(item);
+        }}
+      />
+
+      {/* 5. AI High-Thinking Glazing Assistant Modal (gemini-3.1-pro-preview with ThinkingLevel.HIGH) */}
+      <AIGlazingAssistantModal
+        isOpen={isGlazingAssistantOpen}
+        onClose={() => setIsGlazingAssistantOpen(false)}
+      />
+
+      {/* 6. AI Virtual Eyewear Studio Modal (gemini-3.1-flash-image-preview for text-to-image and image-to-image edit) */}
+      <AIEyewearStudioModal
+        isOpen={isEyewearStudioOpen}
+        onClose={() => setIsEyewearStudioOpen(false)}
+      />
+
+      {/* 7. Comprehensive Job Rx & Stage Audit Trail Modal */}
+      <JobDetailModal
+        isOpen={!!selectedJob}
+        job={selectedJob}
+        onClose={() => setSelectedJobId(null)}
+        onAdvanceJob={(jobId, customNote, operator) => handleAdvanceJob(jobId, customNote, operator)}
+        onSendToAIGlazing={() => {
+          setSelectedJobId(null);
+          setIsGlazingAssistantOpen(true);
+        }}
+        onAddAuditNote={(jobId, note, operator) => handleAddAuditNote(jobId, note, operator)}
+        onCheckIn={handleQuickCheckIn}
+        onOpenSmsModal={(job) => {
+          setSmsModalSelectedJob(job);
+          setIsSmsModalOpen(true);
+        }}
+      />
+
+      {/* 8. Optical Barcode Print Modal (Butterfly / Dumbbell Tag Format) */}
+      <OpticalBarcodePrintModal
+        isOpen={!!barcodeItemToPrint}
+        selectedItem={barcodeItemToPrint}
+        item={barcodeItemToPrint}
+        allItems={inventory}
+        onClose={() => setBarcodeItemToPrint(null)}
+        currentUser={currentUser}
+      />
+
+      {/* 9. Add Glasses Stock Intake & Barcode Generation Modal */}
+      <AddGlassesStockModal
+        isOpen={isAddGlassesOpen}
+        onClose={() => setIsAddGlassesOpen(false)}
+        currentUser={currentUser}
+        onAddStock={(newItem, printImmediately) => {
+          setInventory((prev) => [newItem, ...prev]);
+          if (printImmediately) {
+            setBarcodeItemToPrint(newItem);
+          }
+        }}
+      />
+
+      {/* 10. Automated SMS Notification Gateway Hub & Live Patient Phone Simulator */}
+      <SmsNotificationModal
+        isOpen={isSmsModalOpen}
+        onClose={() => {
+          setIsSmsModalOpen(false);
+          setSmsModalSelectedJob(null);
+        }}
+        jobs={jobs}
+        selectedJob={smsModalSelectedJob}
+        onSelectJob={(job) => setSmsModalSelectedJob(job)}
+        currentUserRole={currentUser.role}
+      />
+
+      {/* Automated Stage 5 SMS Notification Dispatch Banner */}
+      {smsToast && (
+        <div className="fixed top-20 right-6 z-50 bg-gradient-to-r from-emerald-700 to-teal-800 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-emerald-400/60 animate-in fade-in slide-in-from-top-4 duration-200 max-w-md">
+          <span className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
+            <span className="material-symbols-outlined text-[20px]">sms</span>
+          </span>
+          <div className="flex flex-col flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-200">
+                Automated SMS Dispatched
+              </span>
+              <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
+            </div>
+            <span className="text-xs font-bold text-white truncate">
+              Order Ready for Pickup
+            </span>
+            <span className="text-[11px] text-emerald-100 font-mono truncate">
+              To: {smsToast.phone} ({smsToast.job.patientName})
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setSmsModalSelectedJob(smsToast.job);
+                setIsSmsModalOpen(true);
+                setSmsToast(null);
+              }}
+              className="px-2.5 py-1 bg-white/25 hover:bg-white/35 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+            >
+              View SMS
+            </button>
+            <button
+              type="button"
+              onClick={() => setSmsToast(null)}
+              className="p-1 rounded-lg hover:bg-white/20 text-emerald-200 hover:text-white cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Real-time Camera Barcode Detection Toast Notification */}
+      {cameraToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-400/50 animate-in fade-in slide-in-from-top-4 duration-200">
+          <span className="material-symbols-outlined text-[22px] text-emerald-200 animate-pulse">
+            qr_code_scanner
+          </span>
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold text-emerald-100">{cameraToast.message}</span>
+            <span className="text-sm font-bold font-mono tracking-wider">{cameraToast.code}</span>
+          </div>
+          <button
+            onClick={() => setCameraToast(null)}
+            className="ml-2 p-1 rounded-lg hover:bg-emerald-500/50 cursor-pointer text-emerald-200 hover:text-white"
+          >
+            <span className="material-symbols-outlined text-[16px]">close</span>
+          </button>
+        </div>
+      )}
+
+      {/* Persistent Floating Camera Barcode Detector Widget */}
+      {isFloatingCameraActive && !isQuickScanOpen && (
+        <div className="fixed bottom-6 right-6 z-40 w-80 sm:w-96 shadow-2xl rounded-2xl overflow-hidden border-2 border-emerald-500 bg-surface-container-lowest dark:bg-[#191d26] animate-in slide-in-from-bottom-5 duration-200">
+          <div className="px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 animate-ping" />
+              <div>
+                <div className="text-xs font-bold leading-tight">Live Camera QR / Barcode Listener</div>
+                <div className="text-[10px] text-emerald-100 font-normal">Auto-triggers Quick Scanner modal</div>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsFloatingCameraActive(false)}
+              className="p-1 rounded-lg hover:bg-white/20 cursor-pointer text-white transition-colors"
+              title="Close camera listener"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
+          <div className="p-3">
+            <CameraBarcodeScanner
+              isCompact={true}
+              autoStart={true}
+              onScanSuccess={(code, format) => {
+                handleCameraBarcodeDetected(code, format);
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

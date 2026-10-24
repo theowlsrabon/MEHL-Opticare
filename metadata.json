@@ -1,0 +1,6 @@
+{
+  "name": "Madina Eye Hospital - Optical Lab & Dispensary",
+  "description": "Madina Eye Hospital Ltd. comprehensive optical lab management, automated lens glazing conveyor, diagnostic refractions, inventory master, and POS dispensing system.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

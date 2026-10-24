@@ -1,0 +1,405 @@
+import React from 'react';
+import {
+  Activity,
+  BarChart3,
+  Boxes,
+  Camera,
+  ChevronRight,
+  Clock,
+  Factory,
+  Lock,
+  PieChart,
+  Pill,
+  Receipt,
+  RefreshCcw,
+  ScanBarcode,
+  ShieldCheck,
+  Truck,
+  Users,
+  Waypoints,
+  LogOut,
+} from 'lucide-react';
+
+import { ViewMode, UserRole, UserAccount } from '../types';
+import { MADINA_STAFF_PROFILES } from '../data/rolesData';
+import { useLanguage } from '../context/LanguageContext';
+
+interface SideNavBarProps {
+  currentView: ViewMode;
+  onSelectView: (view: ViewMode) => void;
+  onOpenQuickScan: () => void;
+  onOpenLiveCamera?: () => void;
+  totalInventoryCount: number;
+  activeLabJobsCount: number;
+  totalDueAmount: number;
+  isOpenMobile?: boolean;
+  onCloseMobile?: () => void;
+  currentUserRole?: UserRole;
+  authenticatedUser?: UserAccount | null;
+  onLogout?: () => void;
+}
+
+export const SideNavBar: React.FC<SideNavBarProps> = ({
+  currentView,
+  onSelectView,
+  onOpenQuickScan,
+  onOpenLiveCamera,
+  totalInventoryCount,
+  activeLabJobsCount,
+  totalDueAmount,
+  isOpenMobile = false,
+  onCloseMobile,
+  currentUserRole = 'admin',
+  authenticatedUser,
+  onLogout,
+}) => {
+  const { language } = useLanguage();
+  const profile = MADINA_STAFF_PROFILES[currentUserRole] || MADINA_STAFF_PROFILES.admin;
+  const allowedViews = authenticatedUser?.allowedViews || profile.allowedViews;
+  const displayName = authenticatedUser?.name || profile.name;
+  const displayRoleTitle = authenticatedUser?.roleTitle || profile.roleTitle;
+
+  const handleNavClick = (view: ViewMode) => {
+    if (!allowedViews.includes(view)) {
+      alert(`Access Restricted (RBAC):\nYour active account does not have permission to access "${view}".\nPlease contact the administrator to grant access to this module.`);
+      return;
+    }
+    onSelectView(view);
+    onCloseMobile?.();
+  };
+
+  const isViewLocked = (view: ViewMode) => !allowedViews.includes(view);
+
+  // Render a clean, high-precision menu button matching the sample screenshot
+  const renderNavItem = (
+    view: ViewMode,
+    icon: React.ReactNode,
+    labelEn: string,
+    labelBn: string,
+    badge?: {
+      text: string;
+      variant?:
+        | 'alert'
+        | 'live'
+        | 'count'
+        | 'neutral'
+        | 'amber'
+        | 'green'
+        | 'blue'
+        | 'purple'
+        | 'cyan'
+        | 'teal'
+        | 'indigo';
+    }
+  ) => {
+    const isActive = currentView === view;
+    const locked = isViewLocked(view);
+
+    const getBadgeClass = (variant?: string) => {
+      switch (variant) {
+        case 'count':
+          return 'bg-[#e2e8f0] dark:bg-[#1e293b] text-[#475569] dark:text-[#94a3b8] px-2 py-0.5 rounded-full font-bold';
+        case 'amber':
+        case 'alert':
+          return 'bg-[#fff8ed] dark:bg-[#78350f]/40 text-[#d97706] dark:text-[#f59e0b] border border-[#fde68a] dark:border-[#d97706]/40';
+        case 'blue':
+          return 'bg-blue-50 dark:bg-[#1e3a8a]/40 text-blue-700 dark:text-[#60a5fa] border border-blue-200 dark:border-[#2563eb]/30';
+        case 'purple':
+          return 'bg-indigo-50 dark:bg-[#312e81]/40 text-indigo-700 dark:text-[#a78bfa] border border-indigo-200 dark:border-[#6366f1]/30';
+        case 'cyan':
+          return 'bg-cyan-50 dark:bg-[#0e7490]/30 text-cyan-700 dark:text-[#22d3ee] border border-cyan-200 dark:border-[#0891b2]/30';
+        case 'teal':
+          return 'bg-teal-50 dark:bg-[#134e4a]/60 text-teal-700 dark:text-[#2dd4bf] border border-teal-200 dark:border-[#0d9488]/40';
+        case 'indigo':
+          return 'bg-slate-100 dark:bg-[#1e1b4b]/60 text-slate-700 dark:text-[#818cf8] border border-slate-200 dark:border-[#4338ca]/30';
+        case 'green':
+        case 'live':
+        default:
+          return 'bg-emerald-50 dark:bg-[#064e3b]/50 text-emerald-700 dark:text-[#00f5b4] border border-emerald-200 dark:border-[#10b981]/30';
+      }
+    };
+
+    return (
+      <button
+        key={view}
+        type="button"
+        onClick={() => handleNavClick(view)}
+        className={`w-full rounded-xl px-3 py-2.5 flex items-center justify-between gap-2.5 cursor-pointer transition-all text-left group ${
+          isActive
+            ? 'bg-[#00c49f] text-white font-bold shadow-md shadow-[#00c49f]/25'
+            : locked
+            ? 'text-outline/40 hover:bg-[#f1f5f9]/50 dark:hover:bg-[#121c26]/50 opacity-50'
+            : 'text-[#475569] dark:text-[#7d91a3] hover:bg-[#f1f5f9] dark:hover:bg-[#121c26] hover:text-[#0f172a] dark:hover:text-[#f0f6fc]'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className={`shrink-0 ${
+              isActive
+                ? 'text-white'
+                : 'text-[#64748b] dark:text-[#7d91a3] group-hover:text-[#00c49f] dark:group-hover:text-[#00c49f]'
+            } transition-colors`}
+          >
+            {icon}
+          </span>
+          <span className="text-xs font-semibold truncate">
+            {language === 'bn' ? labelBn : labelEn}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {badge && !isActive && (
+            <span
+              className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${getBadgeClass(
+                badge.variant
+              )}`}
+            >
+              {badge.text}
+            </span>
+          )}
+
+          {isActive ? (
+            <ChevronRight size={15} className="text-white" />
+          ) : locked ? (
+            <Lock size={12} className="text-outline/50" />
+          ) : null}
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {isOpenMobile && (
+        <div
+          onClick={onCloseMobile}
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden backdrop-blur-xs transition-opacity"
+        />
+      )}
+
+      <aside
+        className={`fixed left-0 top-16 bottom-0 w-64 z-35 flex flex-col justify-between p-3.5 bg-white dark:bg-[#0d141b] border-r border-[#e2e8f0] dark:border-[#182531] shadow-lg lg:shadow-none transition-transform duration-200 ease-in-out ${
+          isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="flex flex-col gap-2.5 overflow-y-auto pr-1">
+          {/* Branch Pill Box (Matching PharmaPulse Sample) */}
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#f8fafc] dark:bg-[#090d12] border border-[#e2e8f0] dark:border-[#182531]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#00c49f] animate-pulse"></span>
+              <span className="text-xs font-bold text-[#0f172a] dark:text-[#f0f6fc] tracking-tight font-mono">
+                mehl-main
+              </span>
+            </div>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-[#e6fbf5] dark:bg-[#00c49f]/15 text-[#00a884] dark:text-[#00f5b4] border border-[#a3f3db] dark:border-[#00c49f]/30">
+              BR-DHAKA
+            </span>
+          </div>
+
+          {/* SECTION 1: CLINICAL & LAB OPERATIONS */}
+          <div className="flex flex-col gap-1 mt-1">
+            <div className="flex items-center justify-between px-2.5 py-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3]">
+                CLINICAL &amp; LAB OPERATIONS
+              </span>
+              <span className="text-[10px] text-[#94a3b8] dark:text-[#52667a] font-bangla font-semibold">
+                ক্লিনিক্যাল ও ল্যাব অপারেশন
+              </span>
+            </div>
+
+            {renderNavItem(
+              'executive-dashboard',
+              <Activity size={17} />,
+              'Executive Dashboard',
+              'এক্সিকিউটিভ ড্যাশবোর্ড',
+              { text: 'C-SUITE', variant: 'amber' }
+            )}
+
+            {renderNavItem(
+              'lab-pipeline',
+              <Factory size={17} />,
+              'Lab Glazing Conveyor',
+              'ল্যাব গ্লেজিং কনভেয়ার',
+              { text: `${activeLabJobsCount}`, variant: 'count' }
+            )}
+
+            {renderNavItem(
+              'modina-erp',
+              <Receipt size={17} />,
+              'POS & ERP Suite',
+              'পিওএস ও ইআরপি স্যুট',
+              { text: 'Unified', variant: 'green' }
+            )}
+
+            {renderNavItem(
+              'stock-master',
+              <Boxes size={17} />,
+              'Stock & Frame Registry',
+              'স্টক ও ফ্রেম রেজিস্ট্রি'
+            )}
+          </div>
+
+          {/* SECTION 2: SUPPLY CHAIN & FINANCE */}
+          <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-[#e2e8f0] dark:border-[#182531]">
+            <div className="flex items-center justify-between px-2.5 py-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3]">
+                SUPPLY CHAIN &amp; FINANCE
+              </span>
+              <span className="text-[10px] text-[#94a3b8] dark:text-[#52667a] font-bangla font-semibold">
+                সাপ্লাই চেইন ও ফিন্যান্স
+              </span>
+            </div>
+
+            {renderNavItem(
+              'multi-branch-ibt',
+              <Waypoints size={17} />,
+              'Multi-Branch & IBT',
+              'মাল্টি-ব্রাঞ্চ ও আইবিটি',
+              { text: '4 Branches', variant: 'blue' }
+            )}
+
+            {renderNavItem(
+              'supplier-grn',
+              <Truck size={17} />,
+              'Suppliers & GRN',
+              'সাপ্লায়ার ও জিআরএন',
+              { text: 'PO+GRN', variant: 'purple' }
+            )}
+
+            {renderNavItem(
+              'financial-accounting',
+              <PieChart size={17} />,
+              'Profit Analytics & Accounts',
+              'প্রফিট অ্যানালিটিক্স ও হিসাব',
+              { text: 'P&L', variant: 'green' }
+            )}
+
+            {renderNavItem(
+              'returns-refunds',
+              <RefreshCcw size={17} />,
+              'Returns, Refunds & Credit',
+              'রিটার্ন, রিফান্ড ও ক্রেডিট',
+              { text: 'CN/DN', variant: 'amber' }
+            )}
+
+            {renderNavItem(
+              'pharmacy-command',
+              <Pill size={17} />,
+              'FEFO Auto-Dispensing',
+              'এফইএফও অটো-ডিসপেনসিং',
+              { text: 'FEFO', variant: 'cyan' }
+            )}
+          </div>
+
+          {/* SECTION 3: REPORTS, SETTINGS & SECURITY */}
+          <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-[#e2e8f0] dark:border-[#182531]">
+            <div className="flex items-center justify-between px-2.5 py-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3]">
+                REPORTS, SETTINGS &amp; SECURITY
+              </span>
+              <span className="text-[10px] text-[#94a3b8] dark:text-[#52667a] font-bangla font-semibold">
+                রিপোর্টস, সেটিংস ও নিরাপত্তা
+              </span>
+            </div>
+
+            {renderNavItem(
+              'reports',
+              <BarChart3 size={17} />,
+              'Reports & Analytics',
+              'রিপোর্টস ও অ্যানালিটিক্স',
+              { text: 'ITEM SALES', variant: 'teal' }
+            )}
+
+            {renderNavItem(
+              'salesmen',
+              <Users size={17} />,
+              'Sales Staff & Commission',
+              'সেলস স্টাফ ও কমিশন',
+              { text: 'Tiered', variant: 'green' }
+            )}
+
+            {renderNavItem(
+              'settings-roles',
+              <ShieldCheck size={17} />,
+              'Settings & Role Permissions',
+              'সেটিংস ও রোল পারমিশন',
+              { text: 'RBAC', variant: 'indigo' }
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar Bottom: Expiring / Low Stock Box & Terminal Footer */}
+        <div className="flex flex-col gap-2 pt-2 border-t border-[#e2e8f0] dark:border-[#182531]">
+          {/* Expiring / Low Stock Pill Card (Exact Match to Sample) */}
+          <div
+            onClick={() => handleNavClick('stock-master')}
+            className="p-2.5 rounded-xl bg-[#f8fafc] dark:bg-[#090d12] border border-[#e2e8f0] dark:border-[#182531] flex items-center justify-between cursor-pointer hover:border-[#ff9f43]/60 transition-colors group"
+            title="Click to view Low Stock Items"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-[#fff8ed] dark:bg-[#ff9f43]/15 text-[#d97706] dark:text-[#ff9f43] flex items-center justify-center shrink-0">
+                <Clock size={15} />
+              </div>
+              <div className="leading-tight">
+                <span className="text-[9px] text-[#64748b] dark:text-[#7d91a3] uppercase font-bold block">
+                  Expiring / Low Stock
+                </span>
+                <span className="text-xs font-bold text-[#0f172a] dark:text-[#f0f6fc] font-mono">
+                  {activeLabJobsCount} In Pipeline
+                </span>
+              </div>
+            </div>
+            <ChevronRight size={14} className="text-[#64748b] dark:text-[#7d91a3] group-hover:translate-x-0.5 transition-transform" />
+          </div>
+
+          {/* Terminal Version & Active Staff Status */}
+          <div className="flex items-center justify-between px-1 text-[10px] text-[#64748b] dark:text-[#7d91a3]">
+            <span className="font-mono">Terminal v4.12</span>
+            <span className="flex items-center gap-1.5 text-[#00c49f] font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00c49f] animate-pulse"></span>
+              Online
+            </span>
+          </div>
+
+          {/* Staff Profile Bar */}
+          <div className="flex items-center justify-between p-2 rounded-xl bg-[#f8fafc] dark:bg-[#090d12] border border-[#e2e8f0] dark:border-[#182531]">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-[#00c49f] text-white flex items-center justify-center font-bold text-xs uppercase shrink-0 shadow-xs">
+                {displayName ? displayName.charAt(0).toUpperCase() : 'ME'}
+              </div>
+              <div className="leading-tight truncate">
+                <span className="text-xs font-bold text-[#0f172a] dark:text-[#f0f6fc] block truncate">
+                  {displayName}
+                </span>
+                <span className="text-[10px] text-[#64748b] dark:text-[#7d91a3] block font-medium uppercase tracking-tight truncate">
+                  {displayRoleTitle}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={onOpenQuickScan}
+                className="p-1 rounded-lg text-[#64748b] dark:text-[#7d91a3] hover:text-[#00c49f] hover:bg-[#e2e8f0]/50 dark:hover:bg-[#162330] transition-colors cursor-pointer"
+                title="Quick Scan (⌘K)"
+              >
+                <ScanBarcode size={15} />
+              </button>
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="p-1 rounded-lg text-[#64748b] dark:text-[#7d91a3] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                  title="Sign Out / Log Out"
+                >
+                  <LogOut size={15} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+};

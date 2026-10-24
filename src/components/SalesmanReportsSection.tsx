@@ -1,0 +1,652 @@
+import React, { useState, useMemo } from 'react';
+import { Salesman, SaleRecord } from '../types';
+import {
+  exportSalesmanReportToCSV,
+  SalesmanPerformanceRow,
+} from '../utils/salesmanExportUtils';
+import { SalesmanPdfReportModal } from './SalesmanPdfReportModal';
+
+interface SalesmanReportsSectionProps {
+  salesmen: Salesman[];
+  salesRecords: SaleRecord[];
+  onNavigateToSalesmen?: () => void;
+  currentUserRole?: string;
+}
+
+export type DateFilterType = 'day' | 'week' | 'month' | 'custom';
+
+export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
+  salesmen,
+  salesRecords,
+  onNavigateToSalesmen,
+  currentUserRole = 'Admin',
+}) => {
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('month');
+  const [customStartDate, setCustomStartDate] = useState('2026-09-01');
+  const [customEndDate, setCustomEndDate] = useState('2026-09-11');
+  const [selectedSalesmanId, setSelectedSalesmanId] = useState<string>('all');
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Fixed anchor date for simulation: 2026-09-11
+  const todayStr = '2026-09-11';
+
+  // Calculate filtered sales
+  const { filteredSales, periodLabel } = useMemo(() => {
+    let list = [...salesRecords];
+    let label = 'This Month (September 2026)';
+
+    if (dateFilter === 'day') {
+      list = list.filter((s) => s.date === todayStr);
+      label = `Today (${todayStr})`;
+    } else if (dateFilter === 'week') {
+      // 7 days up to 2026-09-11: 2026-09-05 to 2026-09-11
+      list = list.filter((s) => s.date >= '2026-09-05' && s.date <= todayStr);
+      label = 'This Week (Sep 05 - Sep 11, 2026)';
+    } else if (dateFilter === 'month') {
+      list = list.filter((s) => s.date.startsWith('2026-09'));
+      label = 'This Month (September 2026)';
+    } else if (dateFilter === 'custom') {
+      list = list.filter((s) => {
+        if (customStartDate && s.date < customStartDate) return false;
+        if (customEndDate && s.date > customEndDate) return false;
+        return true;
+      });
+      label = `Custom (${customStartDate || 'Start'} to ${customEndDate || 'End'})`;
+    }
+
+    // Filter by salesman if not all
+    if (selectedSalesmanId !== 'all') {
+      list = list.filter((s) => s.salesmanId === selectedSalesmanId);
+      const sm = salesmen.find((x) => x.id === selectedSalesmanId);
+      if (sm) label += ` • ${sm.name}`;
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.invoiceNumber.toLowerCase().includes(q) ||
+          s.patientName.toLowerCase().includes(q) ||
+          s.salesmanName.toLowerCase().includes(q) ||
+          s.itemsSummary.toLowerCase().includes(q)
+      );
+    }
+
+    return { filteredSales: list, periodLabel: label };
+  }, [salesRecords, dateFilter, customStartDate, customEndDate, selectedSalesmanId, searchQuery, salesmen]);
+
+  // Aggregate performance rows per salesman
+  const performanceRows: SalesmanPerformanceRow[] = useMemo(() => {
+    const targetSalesmen =
+      selectedSalesmanId === 'all'
+        ? salesmen
+        : salesmen.filter((s) => s.id === selectedSalesmanId);
+
+    return targetSalesmen.map((salesman) => {
+      const smSales = filteredSales.filter((s) => s.salesmanId === salesman.id);
+      const salesCount = smSales.length;
+      const framesSold = smSales.reduce((acc, s) => acc + (s.framesCount || 0), 0);
+      const lensesSold = smSales.reduce((acc, s) => acc + (s.lensesCount || 0), 0);
+      const accessoriesSold = smSales.reduce((acc, s) => acc + (s.accessoriesCount || 0), 0);
+      const grossSales = smSales.reduce((acc, s) => acc + (s.subtotal || 0), 0);
+      const discountTotal = smSales.reduce((acc, s) => acc + (s.discountAmount || 0), 0);
+      const netSales = smSales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
+      // Commission calculation: netSales * commissionPct / 100
+      const commissionEarned = smSales.reduce((acc, s) => acc + (s.commissionEarned || 0), 0);
+
+      return {
+        salesman,
+        salesCount,
+        framesSold,
+        lensesSold,
+        accessoriesSold,
+        grossSales,
+        discountTotal,
+        netSales,
+        commissionEarned,
+      };
+    });
+  }, [salesmen, filteredSales, selectedSalesmanId]);
+
+  // Totals for the KPIs
+  const totals = useMemo(() => {
+    const gross = performanceRows.reduce((acc, r) => acc + r.grossSales, 0);
+    const net = performanceRows.reduce((acc, r) => acc + r.netSales, 0);
+    const commission = performanceRows.reduce((acc, r) => acc + r.commissionEarned, 0);
+    const frames = performanceRows.reduce((acc, r) => acc + r.framesSold, 0);
+    const lenses = performanceRows.reduce((acc, r) => acc + r.lensesSold, 0);
+    const invoicesCount = filteredSales.length;
+    const avgTicket = invoicesCount > 0 ? Math.round(net / invoicesCount) : 0;
+
+    return { gross, net, commission, frames, lenses, invoicesCount, avgTicket };
+  }, [performanceRows, filteredSales]);
+
+  // Max net sales for relative comparison bar
+  const maxNetSales = useMemo(() => {
+    const max = Math.max(...performanceRows.map((r) => r.netSales), 1);
+    return max;
+  }, [performanceRows]);
+
+  const handleExportCSV = () => {
+    exportSalesmanReportToCSV(performanceRows, filteredSales, periodLabel);
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Top Section Header & Export Toolbar */}
+      <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#169b90] animate-pulse"></span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#169b90]">
+              Performance &amp; Commission Tracking
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
+              Real-Time Ledger
+            </span>
+          </div>
+          <h2 className="text-xl font-bold text-on-surface font-headline-md">
+            Salesman Performance &amp; Commission Analytics
+          </h2>
+          <p className="text-xs text-outline">
+            Audit optical orders, frames/lenses dispensed, and exact commission earned across sales staff
+          </p>
+        </div>
+
+        {/* Export Controls */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleExportCSV}
+            className="px-3.5 py-2 bg-surface-container-low hover:bg-surface-container dark:bg-[#1e2330] dark:hover:bg-[#282f40] border border-outline-variant/80 dark:border-[#2d3546] text-on-surface rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
+            title="Export full summary and invoice rows to Microsoft Excel / CSV"
+          >
+            <span className="material-symbols-outlined text-[18px] text-emerald-600 dark:text-emerald-400">table_view</span>
+            <span>Export Excel (.csv)</span>
+          </button>
+
+          <button
+            onClick={() => setIsPdfModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm shadow-[#169b90]/20"
+            title="Generate print-ready official hospital audit PDF statement"
+          >
+            <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+            <span>Export PDF Report</span>
+          </button>
+
+          {onNavigateToSalesmen && (
+            <button
+              onClick={onNavigateToSalesmen}
+              className="px-3 py-2 bg-surface-container-low dark:bg-[#1e2330] border border-outline-variant/80 dark:border-[#2d3546] text-on-surface rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:text-[#169b90] transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[17px]">manage_accounts</span>
+              <span>Manage Staff</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Filter Controls Bar */}
+      <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl p-4 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* Date Filter Tabs */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-bold text-outline mr-1 flex items-center gap-1">
+            <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+            <span>Range:</span>
+          </span>
+
+          <button
+            onClick={() => setDateFilter('day')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              dateFilter === 'day'
+                ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
+                : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            Today (Day)
+          </button>
+
+          <button
+            onClick={() => setDateFilter('week')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              dateFilter === 'week'
+                ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
+                : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            This Week
+          </button>
+
+          <button
+            onClick={() => setDateFilter('month')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              dateFilter === 'month'
+                ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
+                : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            This Month
+          </button>
+
+          <button
+            onClick={() => setDateFilter('custom')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              dateFilter === 'custom'
+                ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
+                : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            Custom Date
+          </button>
+
+          {/* Custom Date Pickers */}
+          {dateFilter === 'custom' && (
+            <div className="flex items-center gap-2 ml-2 pl-2 border-l border-outline-variant/60 dark:border-[#2b3142]">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="px-2.5 py-1 bg-surface-container-low dark:bg-[#1c202a] border border-outline-variant rounded-lg text-xs text-on-surface font-mono"
+              />
+              <span className="text-xs text-outline">to</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="px-2.5 py-1 bg-surface-container-low dark:bg-[#1c202a] border border-outline-variant rounded-lg text-xs text-on-surface font-mono"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Secondary Dropdown & Search Filters */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Salesman Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-bold text-outline">Salesman:</span>
+            <select
+              value={selectedSalesmanId}
+              onChange={(e) => setSelectedSalesmanId(e.target.value)}
+              className="px-3 py-1.5 bg-surface-container-low dark:bg-[#1c202a] border border-outline-variant rounded-xl text-xs text-on-surface font-semibold focus:outline-none focus:border-[#169b90] cursor-pointer"
+            >
+              <option value="all">All Salesmen ({salesmen.length})</option>
+              {salesmen.map((sm) => (
+                <option key={sm.id} value={sm.id}>
+                  {sm.name} ({sm.employeeId}) - {sm.commissionPct}%
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Quick Search */}
+          <div className="relative">
+            <span className="material-symbols-outlined text-[16px] text-outline absolute left-2.5 top-2">
+              search
+            </span>
+            <input
+              type="text"
+              placeholder="Search invoice or patient..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 pr-3 py-1.5 bg-surface-container-low dark:bg-[#1c202a] border border-outline-variant rounded-xl text-xs text-on-surface placeholder:text-outline/60 focus:outline-none focus:border-[#169b90] w-48"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 4 Summary KPI Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Sales Generated */}
+        <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl p-5 shadow-xs relative overflow-hidden">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-outline">
+                Total Net Sales
+              </span>
+              <div className="text-2xl font-black text-on-surface mt-1 font-data-rx">
+                ৳{totals.net?.toLocaleString()}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1.5 text-xs text-outline">
+                <span>Gross: ৳{totals.gross?.toLocaleString()}</span>
+                <span>•</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                  {totals.invoicesCount} Invoices
+                </span>
+              </div>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">payments</span>
+            </div>
+          </div>
+          <div className="w-full bg-surface-container dark:bg-[#202534] h-1 rounded-full mt-4 overflow-hidden">
+            <div className="bg-[#169b90] h-full rounded-full w-full"></div>
+          </div>
+        </div>
+
+        {/* Frames Sold */}
+        <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl p-5 shadow-xs relative overflow-hidden">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-outline">
+                Frames Sold
+              </span>
+              <div className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1 font-data-rx">
+                {totals.frames} <span className="text-sm font-semibold text-outline">Pcs</span>
+              </div>
+              <p className="text-xs text-outline mt-1.5">
+                Designer frames, rimless &amp; aviators
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">eyeglasses</span>
+            </div>
+          </div>
+          <div className="w-full bg-surface-container dark:bg-[#202534] h-1 rounded-full mt-4 overflow-hidden">
+            <div className="bg-blue-500 h-full rounded-full" style={{ width: `${Math.min(totals.frames * 8, 100)}%` }}></div>
+          </div>
+        </div>
+
+        {/* Lenses Sold */}
+        <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl p-5 shadow-xs relative overflow-hidden">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-outline">
+                Lenses Dispensed
+              </span>
+              <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1 font-data-rx">
+                {totals.lenses} <span className="text-sm font-semibold text-outline">Pairs</span>
+              </div>
+              <p className="text-xs text-outline mt-1.5">
+                BlueCut, progressive &amp; high-index
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">lens</span>
+            </div>
+          </div>
+          <div className="w-full bg-surface-container dark:bg-[#202534] h-1 rounded-full mt-4 overflow-hidden">
+            <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${Math.min(totals.lenses * 6, 100)}%` }}></div>
+          </div>
+        </div>
+
+        {/* Commission Earned Total */}
+        <div className="bg-surface-container-lowest dark:bg-[#151923] border border-emerald-500/30 dark:border-emerald-500/20 bg-emerald-500/[0.02] rounded-2xl p-5 shadow-xs relative overflow-hidden">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                Total Commission Earned
+              </span>
+              <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 font-data-rx">
+                ৳{totals.commission?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-outline mt-1.5">
+                Staff incentive calculated on net sales
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">savings</span>
+            </div>
+          </div>
+          <div className="w-full bg-surface-container dark:bg-[#202534] h-1 rounded-full mt-4 overflow-hidden">
+            <div className="bg-emerald-500 h-full rounded-full w-full"></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Table: Salesman Performance Breakdown */}
+      <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl overflow-hidden shadow-xs">
+        <div className="px-5 py-4 border-b border-outline-variant/60 dark:border-[#242936] flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#169b90]/15 text-[#169b90] flex items-center justify-center">
+              <span className="material-symbols-outlined text-[19px]">leaderboard</span>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-on-surface">
+                Salesman Sales &amp; Commission Calculation Matrix
+              </h3>
+              <p className="text-[11px] text-outline">
+                Individual employee sales revenue, product breakdown, and commission payout for {periodLabel}
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-semibold text-outline">
+            {performanceRows.length} Salesmen tracked
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-surface-container-low dark:bg-[#191e2b] text-outline font-bold border-b border-outline-variant/60 dark:border-[#242936]">
+                <th className="py-3 px-4">Salesman</th>
+                <th className="py-3 px-3">Employee ID</th>
+                <th className="py-3 px-3 text-center">Status</th>
+                <th className="py-3 px-3 text-center">Commission %</th>
+                <th className="py-3 px-3 text-center">Invoices</th>
+                <th className="py-3 px-3 text-center">Frames Sold</th>
+                <th className="py-3 px-3 text-center">Lenses Sold</th>
+                <th className="py-3 px-4 text-right">Net Sales (BDT)</th>
+                <th className="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400 font-bold">
+                  Commission Earned
+                </th>
+                <th className="py-3 px-4 text-center">Relative Share</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/40 dark:divide-[#202534]">
+              {performanceRows.map((row) => {
+                const percentOfMax = maxNetSales > 0 ? (row.netSales / maxNetSales) * 100 : 0;
+
+                return (
+                  <tr
+                    key={row.salesman.id}
+                    className="hover:bg-surface-container/40 dark:hover:bg-[#1c212f] transition-colors"
+                  >
+                    {/* Salesman Name & Avatar */}
+                    <td className="py-3.5 px-4 font-semibold text-on-surface">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#169b90] to-[#295559] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                          {row.salesman.name
+                            .split(' ')
+                            .map((n) => n[0])
+                            .slice(0, 2)
+                            .join('')}
+                        </div>
+                        <div>
+                          <div className="font-bold text-on-surface">{row.salesman.name}</div>
+                          <div className="text-[11px] text-outline">{row.salesman.phone}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Employee ID */}
+                    <td className="py-3.5 px-3 font-mono font-semibold text-outline">
+                      {row.salesman.employeeId}
+                    </td>
+
+                    {/* Status Badge */}
+                    <td className="py-3.5 px-3 text-center">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          row.salesman.status === 'active'
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'bg-surface-container text-outline border border-outline-variant'
+                        }`}
+                      >
+                        {row.salesman.status}
+                      </span>
+                    </td>
+
+                    {/* Commission Rate */}
+                    <td className="py-3.5 px-3 text-center">
+                      <span className="px-2 py-0.5 rounded-lg bg-teal-500/10 text-[#169b90] font-bold font-mono text-xs">
+                        {row.salesman.commissionPct}%
+                      </span>
+                    </td>
+
+                    {/* Invoices Count */}
+                    <td className="py-3.5 px-3 text-center font-mono font-semibold text-on-surface">
+                      {row.salesCount}
+                    </td>
+
+                    {/* Frames Sold */}
+                    <td className="py-3.5 px-3 text-center">
+                      <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {row.framesSold}
+                      </span>
+                    </td>
+
+                    {/* Lenses Sold */}
+                    <td className="py-3.5 px-3 text-center">
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        {row.lensesSold}
+                      </span>
+                    </td>
+
+                    {/* Net Sales */}
+                    <td className="py-3.5 px-4 text-right font-mono font-bold text-on-surface text-sm">
+                      ৳{row.netSales?.toLocaleString()}
+                    </td>
+
+                    {/* Commission Earned */}
+                    <td className="py-3.5 px-4 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                      ৳{row.commissionEarned?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+
+                    {/* Relative Progress Bar */}
+                    <td className="py-3.5 px-4 text-center min-w-[120px]">
+                      <div className="w-full bg-surface-container-high dark:bg-[#252b3b] h-2 rounded-full overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-[#169b90] to-emerald-500 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${percentOfMax}%` }}
+                        ></div>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-surface-container-low dark:bg-[#191e2b] font-bold text-on-surface border-t-2 border-outline-variant">
+                <td colSpan={4} className="py-3.5 px-4 text-xs uppercase tracking-wider text-outline">
+                  Total for Selected Period ({periodLabel})
+                </td>
+                <td className="py-3.5 px-3 text-center font-mono">{totals.invoicesCount}</td>
+                <td className="py-3.5 px-3 text-center font-mono text-blue-600 dark:text-blue-400">
+                  {totals.frames}
+                </td>
+                <td className="py-3.5 px-3 text-center font-mono text-indigo-600 dark:text-indigo-400">
+                  {totals.lenses}
+                </td>
+                <td className="py-3.5 px-4 text-right font-mono font-extrabold text-sm text-[#169b90]">
+                  ৳{totals.net?.toLocaleString()}
+                </td>
+                <td className="py-3.5 px-4 text-right font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                  ৳{totals.commission?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+                <td className="py-3.5 px-4 text-center text-xs text-outline">100%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* Transaction Details Table */}
+      <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl overflow-hidden shadow-xs">
+        <div className="px-5 py-4 border-b border-outline-variant/60 dark:border-[#242936] flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-600 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[19px]">receipt_long</span>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-on-surface">
+                Detailed Invoices Ledger ({filteredSales.length} Transactions)
+              </h3>
+              <p className="text-[11px] text-outline">
+                Click any invoice row to view exact products, frames, lenses, and commission cut
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto max-h-[380px]">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="sticky top-0 bg-surface-container-low dark:bg-[#191e2b] text-outline font-bold border-b border-outline-variant/60">
+              <tr>
+                <th className="py-2.5 px-4">Invoice #</th>
+                <th className="py-2.5 px-3">Date &amp; Time</th>
+                <th className="py-2.5 px-3">Salesman</th>
+                <th className="py-2.5 px-3">Patient</th>
+                <th className="py-2.5 px-2 text-center">Frames</th>
+                <th className="py-2.5 px-2 text-center">Lenses</th>
+                <th className="py-2.5 px-3">Items Dispensed</th>
+                <th className="py-2.5 px-3 text-center">Method</th>
+                <th className="py-2.5 px-4 text-right">Net Amount</th>
+                <th className="py-2.5 px-4 text-right text-emerald-600 dark:text-emerald-400 font-bold">
+                  Commission
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/30 dark:divide-[#202534]">
+              {filteredSales.map((sale) => (
+                <tr
+                  key={sale.id}
+                  className="hover:bg-surface-container/30 dark:hover:bg-[#1b202c] transition-colors"
+                >
+                  <td className="py-2.5 px-4 font-mono font-bold text-[#169b90]">
+                    {sale.invoiceNumber}
+                  </td>
+                  <td className="py-2.5 px-3 text-outline whitespace-nowrap">
+                    {sale.timestamp}
+                  </td>
+                  <td className="py-2.5 px-3 font-semibold text-on-surface">
+                    {sale.salesmanName}
+                  </td>
+                  <td className="py-2.5 px-3 text-on-surface-variant">
+                    {sale.patientName}
+                  </td>
+                  <td className="py-2.5 px-2 text-center font-mono font-semibold text-blue-600 dark:text-blue-400">
+                    {sale.framesCount}
+                  </td>
+                  <td className="py-2.5 px-2 text-center font-mono font-semibold text-indigo-600 dark:text-indigo-400">
+                    {sale.lensesCount}
+                  </td>
+                  <td className="py-2.5 px-3 text-outline truncate max-w-xs" title={sale.itemsSummary}>
+                    {sale.itemsSummary}
+                  </td>
+                  <td className="py-2.5 px-3 text-center">
+                    <span className="px-2 py-0.5 rounded bg-surface-container text-outline text-[10px] font-bold">
+                      {sale.paymentMethod}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-4 text-right font-mono font-bold text-on-surface">
+                    ৳{sale.totalAmount?.toLocaleString()}
+                  </td>
+                  <td className="py-2.5 px-4 text-right font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
+                    ৳{sale.commissionEarned.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+              {filteredSales.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="py-8 text-center text-outline">
+                    No transactions found for the selected filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* PDF Export Modal */}
+      <SalesmanPdfReportModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        periodLabel={periodLabel}
+        summaryRows={performanceRows}
+        salesRecords={filteredSales}
+        generatedBy={currentUserRole}
+      />
+    </div>
+  );
+};
