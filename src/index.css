@@ -285,12 +285,19 @@ body {
   font-family: 'Inter', 'Plus Jakarta Sans', 'Hind Siliguri', 'Noto Sans Bengali', -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: var(--app-bg);
   color: var(--text-primary);
-  line-height: 1.55;
   transition: background-color 0.2s ease, color 0.2s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   letter-spacing: -0.011em;
+}
+
+/* Suppress all transitions on page load to prevent theme flash.
+   The .no-transition class is applied by the theme script before first paint
+   and removed after React mounts. */
+.no-transition,
+.no-transition * {
+  transition: none !important;
 }
 
 /* Bilingual & Bengali Typography Fixes: generous line-height prevents character clipping */
