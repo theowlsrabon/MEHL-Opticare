@@ -626,7 +626,7 @@ export const DueCollectionsView: React.FC = () => {
 
       {/* 1. Header Bar / Breadcrumb & High-Level KPIs */}
       <section className="mb-4">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-5 bg-gradient-to-r from-teal-900/10 via-surface-container-lowest to-surface-container-lowest border border-outline-variant/80 rounded-2xl shadow-xs">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white border border-slate-700/80 rounded-xl shadow-xs">
           <div>
             <div className="flex items-center gap-2 text-[11px] text-outline mb-1.5 font-medium">
               <span className="flex items-center gap-1">
@@ -638,21 +638,21 @@ export const DueCollectionsView: React.FC = () => {
               <span>/</span>
               <span className="text-teal-700 dark:text-teal-400 font-semibold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
-                FEFO Batch &amp; Due Recovery
+                Optical Handover &amp; Due Recovery
               </span>
             </div>
-            <h1 className="text-2xl font-extrabold text-on-surface tracking-tight flex items-center gap-3 flex-wrap">
-              <span>স্বয়ংক্রিয় এফইএফও (FEFO) বিতরণ ও বকেয়া আদায়</span>
+            <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md flex items-center gap-3 flex-wrap">
+              <span>কাউন্টার বকেয়া আদায় ও চশমা ডেলিভারি</span>
               <span className="px-3 py-1 text-xs font-bold rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30 flex items-center gap-1.5 shadow-2xs">
                 <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
-                Live Dispensary &amp; FEFO Engine
+                Optical Counter &amp; Due Settlement
               </span>
               <span className="px-2.5 py-0.5 text-[11px] font-semibold rounded-md bg-surface-container text-on-surface-variant border border-outline-variant">
                 Mirpur Optical Lab
               </span>
             </h1>
-            <p className="text-xs text-on-surface-variant mt-1.5 max-w-3xl leading-relaxed">
-              First-Expired First-Out (FEFO) নীতিতে স্বয়ংক্রিয় স্টক রিলিজ, অপটিক্যাল লেন্স ও ফ্রেম ডেলিভারি, এবং কাউন্টার বকেয়া আদায় সমন্বয়।
+            <p className="text-xs text-slate-400 mt-1.5 max-w-3xl leading-relaxed">
+              চশমা ও অপটিক্যাল লেন্স হ্যান্ডওভার, কাউন্টার বকেয়া আদায় সমন্বয় ও গ্রাহক রিসিট জেনারেশন।
             </p>
           </div>
 
@@ -775,21 +775,21 @@ export const DueCollectionsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Metric 4: FEFO Batches Active */}
+          {/* Metric 4: Ready for Handover Trays (Replaced FEFO) */}
           <div className="bg-gradient-to-br from-teal-500/10 via-teal-500/5 to-white dark:to-[#1a1d26] border border-teal-500/25 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all">
             <div className="flex items-center justify-between text-teal-800 dark:text-teal-300 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <span className="material-symbols-outlined text-[16px] text-teal-600">auto_mode</span>
-                FEFO সক্রিয় ব্যাচ ট্র্যাকিং
+                <span className="material-symbols-outlined text-[16px] text-teal-600">inventory_2</span>
+                ডেলিভারি উপযোগী ট্রে (Ready Trays)
               </span>
               <div className="w-8 h-8 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center">
-                <span className="material-symbols-outlined text-[18px]">vaccines</span>
+                <span className="material-symbols-outlined text-[18px]">check_circle</span>
               </div>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-data-pos text-teal-700 dark:text-teal-300 font-bold">৪ টি ব্যাচ</span>
+              <span className="text-2xl font-data-pos text-teal-700 dark:text-teal-300 font-bold">১২ টি ট্রে</span>
               <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-500/15 px-2 py-0.5 rounded-full">
-                Auto-Dispensed
+                Ready for Handover
               </span>
             </div>
             <div className="mt-2 pt-2 border-t border-teal-500/20 text-xs text-teal-800/80 dark:text-teal-300/80 flex items-center justify-between">
@@ -1063,7 +1063,7 @@ export const DueCollectionsView: React.FC = () => {
                       <td className="py-3 px-4">
                         <p className="font-bold text-on-surface text-xs flex items-center gap-2 flex-wrap">
                           <span>{it.name}</span>
-                          {(it.category === 'Pharmacy' || it.category === 'Consumables') && (
+                          {/* FEFO badge hidden temporarily */ false && (it.category === 'Pharmacy' || it.category === 'Consumables') && (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-teal-500/15 text-teal-800 dark:text-teal-200 border border-teal-500/30 text-[10px] font-bold shadow-2xs">
                               <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse"></span>
                               স্বয়ংক্রিয় FEFO ব্যাচ BX-{800 + idx * 12} (মেয়াদ: Nov 2026)
@@ -1280,7 +1280,8 @@ export const DueCollectionsView: React.FC = () => {
               </div>
             </div>
 
-            {/* স্বয়ংক্রিয় এফইএফও (FEFO) বিতরণ ও ব্যাচ ক্রেডিট উইজেট - Beautiful, Organized, & High-Grade */}
+            {/* FEFO Auto-Dispensing (Hidden temporarily - can be re-enabled anytime by changing false to true) */}
+            {false && (
             <div className="mb-4 p-4 bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-[#f8fafc] dark:to-[#14171f] rounded-2xl border-2 border-teal-500/30 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1419,6 +1420,7 @@ export const DueCollectionsView: React.FC = () => {
                 </div>
               )}
             </div>
+            )}
 
             {/* Additional Waiver / Counter Discount Field */}
             <div className="mb-4 p-3.5 bg-[#f8fafc] dark:bg-[#14171f] rounded-xl border border-outline-variant/70">
@@ -1710,10 +1712,10 @@ export const DueCollectionsView: React.FC = () => {
         <div className="p-4 border-b border-outline-variant flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-headline-sm font-headline-sm text-on-surface font-bold">
-              সাম্প্রতিক বকেয়া আদায় ও এফইএফও (FEFO) বিতরণ
+              সাম্প্রতিক বকেয়া আদায় ও ডেলিভারি হিস্ট্রি
             </h2>
             <p className="text-body-sm font-body-sm text-on-surface-variant">
-              Live audit stream of settled optical invoices and pharmacy FEFO allocations
+              Live audit stream of settled optical invoices and customer delivery logs
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -2170,13 +2172,15 @@ export const DueCollectionsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* FEFO Operational Info */}
+              {/* FEFO Operational Info (Hidden temporarily) */}
+              {false && (
               <div className="p-3.5 bg-teal-50 dark:bg-teal-950/40 rounded-2xl border border-teal-500/30 flex items-start gap-3">
                 <span className="material-symbols-outlined text-teal-600 dark:text-teal-400 text-[20px] shrink-0 mt-0.5">info</span>
                 <p className="text-xs text-teal-900 dark:text-teal-200 leading-relaxed font-medium">
                   হাসপাতাল অপটিক্যাল ও ফার্মেসি প্রটোকল অনুযায়ী ফার্মেসি পণ্যসমূহ স্বয়ংক্রিয়ভাবে <strong>FEFO (First Expired First Out)</strong> নীতিতে নিকটতম মেয়াদী লট থেকে ইস্যু ও ক্রেডিট সমন্বয় করা হয়।
                 </p>
               </div>
+              )}
 
               {/* Organized Batch Items List */}
               <div className="space-y-3">

@@ -473,7 +473,7 @@ export const QuickScannerModal: React.FC<QuickScannerModalProps> = ({
                 </div>
               </div>
 
-              {/* Stock Quantity & Storage Bin */}
+              {/* Stock and pricing */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                 <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant">
                   <span className="text-[10px] text-outline block uppercase font-bold">Stock on Hand:</span>
@@ -483,14 +483,6 @@ export const QuickScannerModal: React.FC<QuickScannerModalProps> = ({
                   <span className={`text-[10px] font-bold block ${matchedItem.stockQty <= (matchedItem.minThreshold || 2) ? 'text-red-600' : 'text-emerald-600'}`}>
                     {matchedItem.stockQty <= (matchedItem.minThreshold || 2) ? '⚠️ Low Stock Alert' : '✓ Healthy Reserve'}
                   </span>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant">
-                  <span className="text-[10px] text-outline block uppercase font-bold">Storage Bin:</span>
-                  <span className="text-[15px] font-bold text-secondary font-mono">
-                    {matchedItem.storageBin}
-                  </span>
-                  <span className="text-[10px] text-outline block">Dispensary Shelf</span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant">

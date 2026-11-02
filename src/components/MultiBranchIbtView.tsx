@@ -258,20 +258,20 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-5 p-4 lg:p-6 max-w-7xl mx-auto w-full">
+    <div className="flex flex-col gap-5 w-full">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-container-lowest dark:bg-[#15181f] p-5 rounded-2xl border border-outline-variant/70 dark:border-[#252a36] shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-4 sm:p-5 rounded-xl border border-slate-700/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
               <span className="material-symbols-outlined text-[22px]">hub</span>
             </span>
-            <h1 className="text-xl lg:text-2xl font-black text-on-surface">
+            <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md">
               ইন্টার-ব্রাঞ্চ স্টক ট্রান্সফার (IBT Requisition &amp; Gate-Pass)
             </h1>
           </div>
-          <p className="text-xs text-outline mt-1 mb-3">
-            মদিনা চক্ষু হাসপাতালের ৪টি শাখা ও সেন্ট্রাল রোবোটিক গ্লেজিং ল্যাবের মধ্যে ফ্রেম, লেন্স ও ফার্মেসি স্থানান্তর।
+          <p className="text-xs text-slate-400 mt-1 mb-3 leading-relaxed">
+            মদিনা চক্ষু হাসপাতালের ৪টি শাখা ও সেন্ট্রাল রোবোটিক গ্লেজিং ল্যাবের মধ্যে ফ্রেম, লেন্স ও অপটিক্যাল এক্সেসরিজ স্থানান্তর।
           </p>
           <div className="flex bg-surface-container dark:bg-[#1f242e] p-1 rounded-xl w-fit">
             <button

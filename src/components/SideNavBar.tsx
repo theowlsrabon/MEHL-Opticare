@@ -5,7 +5,6 @@ import {
   Boxes,
   Camera,
   ChevronRight,
-  Clock,
   Factory,
   Lock,
   PieChart,
@@ -25,6 +24,8 @@ import { MADINA_STAFF_PROFILES } from '../data/rolesData';
 import { useLanguage } from '../context/LanguageContext';
 
 interface SideNavBarProps {
+  isSidebarOpen: boolean;
+  onToggleSidebar: () => void;
   currentView: ViewMode;
   onSelectView: (view: ViewMode) => void;
   onOpenQuickScan: () => void;
@@ -52,6 +53,8 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
   currentUserRole = 'admin',
   authenticatedUser,
   onLogout,
+  isSidebarOpen,
+  onToggleSidebar
 }) => {
   const { language } = useLanguage();
   const profile = MADINA_STAFF_PROFILES[currentUserRole] || MADINA_STAFF_PROFILES.admin;
@@ -93,6 +96,7 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
     }
   ) => {
     const isActive = currentView === view;
+    const hideLabels = !isSidebarOpen;
     const locked = isViewLocked(view);
 
     const getBadgeClass = (variant?: string) => {
@@ -124,12 +128,12 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
         key={view}
         type="button"
         onClick={() => handleNavClick(view)}
-        className={`w-full rounded-xl px-3 py-2.5 flex items-center justify-between gap-2.5 cursor-pointer transition-all text-left group ${
+        className={`w-full rounded-lg px-3 py-2 flex items-center justify-between gap-2.5 cursor-pointer transition-all duration-150 text-left group ${
           isActive
-            ? 'bg-[#00c49f] text-white font-bold shadow-md shadow-[#00c49f]/25'
+            ? 'bg-[#08745f] text-white font-bold shadow-sm shadow-[#08745f]/30'
             : locked
-            ? 'text-outline/40 hover:bg-[#f1f5f9]/50 dark:hover:bg-[#121c26]/50 opacity-50'
-            : 'text-[#475569] dark:text-[#7d91a3] hover:bg-[#f1f5f9] dark:hover:bg-[#121c26] hover:text-[#0f172a] dark:hover:text-[#f0f6fc]'
+            ? 'text-slate-400/50 hover:bg-slate-100/40 dark:hover:bg-slate-800/40 opacity-50'
+            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
@@ -137,17 +141,17 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
             className={`shrink-0 ${
               isActive
                 ? 'text-white'
-                : 'text-[#64748b] dark:text-[#7d91a3] group-hover:text-[#00c49f] dark:group-hover:text-[#00c49f]'
+                : 'text-slate-500 dark:text-slate-400 group-hover:text-[#08745f]'
             } transition-colors`}
           >
             {icon}
           </span>
-          <span className="text-xs font-semibold truncate">
+          {!hideLabels && <span className={`text-xs font-semibold truncate ${language === 'bn' ? 'font-bangla leading-relaxed' : ''}`}>
             {language === 'bn' ? labelBn : labelEn}
-          </span>
+          </span>}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        {!hideLabels && <div className="flex items-center gap-1.5 shrink-0">
           {badge && !isActive && (
             <span
               className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${getBadgeClass(
@@ -163,7 +167,7 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
           ) : locked ? (
             <Lock size={12} className="text-outline/50" />
           ) : null}
-        </div>
+        </div>}
       </button>
     );
   };
@@ -179,34 +183,25 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
       )}
 
       <aside
-        className={`fixed left-0 top-16 bottom-0 w-64 z-35 flex flex-col justify-between p-3.5 bg-white dark:bg-[#0d141b] border-r border-[#e2e8f0] dark:border-[#182531] shadow-lg lg:shadow-none transition-transform duration-200 ease-in-out ${
+        className={`fixed left-0 top-16 bottom-0 z-35 flex flex-col justify-between p-3.5 bg-white dark:bg-[#0d141b] border-r border-[#e2e8f0] dark:border-[#182531] shadow-lg lg:shadow-none transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'} ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         <div className="flex flex-col gap-2.5 overflow-y-auto pr-1">
-          {/* Branch Pill Box (Matching PharmaPulse Sample) */}
-          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#f8fafc] dark:bg-[#090d12] border border-[#e2e8f0] dark:border-[#182531]">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#00c49f] animate-pulse"></span>
-              <span className="text-xs font-bold text-[#0f172a] dark:text-[#f0f6fc] tracking-tight font-mono">
-                mehl-main
-              </span>
-            </div>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-[#e6fbf5] dark:bg-[#00c49f]/15 text-[#00a884] dark:text-[#00f5b4] border border-[#a3f3db] dark:border-[#00c49f]/30">
-              BR-DHAKA
-            </span>
-          </div>
-
+          {/* Collapse Toggle Button (Desktop Only) */}
+          <button
+            onClick={onToggleSidebar}
+            className="hidden lg:flex absolute -right-3 top-4 w-6 h-6 bg-white dark:bg-[#0d141b] border border-[#e2e8f0] dark:border-[#182531] rounded-full items-center justify-center shadow-md hover:text-[#00c49f] transition-colors z-50 cursor-pointer"
+          >
+            <ChevronRight size={14} className={`transition-transform duration-300 ${isSidebarOpen ? 'rotate-180' : ''}`} />
+          </button>
           {/* SECTION 1: CLINICAL & LAB OPERATIONS */}
           <div className="flex flex-col gap-1 mt-1">
-            <div className="flex items-center justify-between px-2.5 py-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3]">
-                CLINICAL &amp; LAB OPERATIONS
+            {isSidebarOpen && <div className="px-2.5 py-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3] ${language === 'bn' ? 'font-bangla tracking-normal' : ''}`}>
+                {language === 'bn' ? 'ক্লিনিক্যাল ও ল্যাব অপারেশন' : 'CLINICAL & LAB OPERATIONS'}
               </span>
-              <span className="text-[10px] text-[#94a3b8] dark:text-[#52667a] font-bangla font-semibold">
-                ক্লিনিক্যাল ও ল্যাব অপারেশন
-              </span>
-            </div>
+            </div>}
 
             {renderNavItem(
               'executive-dashboard',
@@ -242,14 +237,11 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
 
           {/* SECTION 2: SUPPLY CHAIN & FINANCE */}
           <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-[#e2e8f0] dark:border-[#182531]">
-            <div className="flex items-center justify-between px-2.5 py-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3]">
-                SUPPLY CHAIN &amp; FINANCE
+            {isSidebarOpen && <div className="px-2.5 py-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3] ${language === 'bn' ? 'font-bangla tracking-normal' : ''}`}>
+                {language === 'bn' ? 'সাপ্লাই চেইন ও ফিন্যান্স' : 'SUPPLY CHAIN & FINANCE'}
               </span>
-              <span className="text-[10px] text-[#94a3b8] dark:text-[#52667a] font-bangla font-semibold">
-                সাপ্লাই চেইন ও ফিন্যান্স
-              </span>
-            </div>
+            </div>}
 
             {renderNavItem(
               'multi-branch-ibt',
@@ -283,7 +275,8 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               { text: 'CN/DN', variant: 'amber' }
             )}
 
-            {renderNavItem(
+            {/* PHARMACY MODULE (Hidden temporarily as requested - can be re-enabled anytime by changing false to true) */}
+            {false && renderNavItem(
               'pharmacy-command',
               <Pill size={17} />,
               'FEFO Auto-Dispensing',
@@ -294,14 +287,11 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
 
           {/* SECTION 3: REPORTS, SETTINGS & SECURITY */}
           <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-[#e2e8f0] dark:border-[#182531]">
-            <div className="flex items-center justify-between px-2.5 py-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3]">
-                REPORTS, SETTINGS &amp; SECURITY
+            {isSidebarOpen && <div className="px-2.5 py-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider text-[#64748b] dark:text-[#7d91a3] ${language === 'bn' ? 'font-bangla tracking-normal' : ''}`}>
+                {language === 'bn' ? 'রিপোর্টস, সেটিংস ও নিরাপত্তা' : 'REPORTS, SETTINGS & SECURITY'}
               </span>
-              <span className="text-[10px] text-[#94a3b8] dark:text-[#52667a] font-bangla font-semibold">
-                রিপোর্টস, সেটিংস ও নিরাপত্তা
-              </span>
-            </div>
+            </div>}
 
             {renderNavItem(
               'reports',
@@ -331,31 +321,9 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
 
         {/* Sidebar Bottom: Expiring / Low Stock Box & Terminal Footer */}
         <div className="flex flex-col gap-2 pt-2 border-t border-[#e2e8f0] dark:border-[#182531]">
-          {/* Expiring / Low Stock Pill Card (Exact Match to Sample) */}
-          <div
-            onClick={() => handleNavClick('stock-master')}
-            className="p-2.5 rounded-xl bg-[#f8fafc] dark:bg-[#090d12] border border-[#e2e8f0] dark:border-[#182531] flex items-center justify-between cursor-pointer hover:border-[#ff9f43]/60 transition-colors group"
-            title="Click to view Low Stock Items"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-[#fff8ed] dark:bg-[#ff9f43]/15 text-[#d97706] dark:text-[#ff9f43] flex items-center justify-center shrink-0">
-                <Clock size={15} />
-              </div>
-              <div className="leading-tight">
-                <span className="text-[9px] text-[#64748b] dark:text-[#7d91a3] uppercase font-bold block">
-                  Expiring / Low Stock
-                </span>
-                <span className="text-xs font-bold text-[#0f172a] dark:text-[#f0f6fc] font-mono">
-                  {activeLabJobsCount} In Pipeline
-                </span>
-              </div>
-            </div>
-            <ChevronRight size={14} className="text-[#64748b] dark:text-[#7d91a3] group-hover:translate-x-0.5 transition-transform" />
-          </div>
-
           {/* Terminal Version & Active Staff Status */}
           <div className="flex items-center justify-between px-1 text-[10px] text-[#64748b] dark:text-[#7d91a3]">
-            <span className="font-mono">Terminal v4.12</span>
+            {isSidebarOpen && <span className="font-mono">Terminal v4.12</span>}
             <span className="flex items-center gap-1.5 text-[#00c49f] font-semibold">
               <span className="w-1.5 h-1.5 rounded-full bg-[#00c49f] animate-pulse"></span>
               Online
@@ -363,19 +331,19 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
           </div>
 
           {/* Staff Profile Bar */}
-          <div className="flex items-center justify-between p-2 rounded-xl bg-[#f8fafc] dark:bg-[#090d12] border border-[#e2e8f0] dark:border-[#182531]">
+          <div className="flex items-center justify-between p-2 rounded-xl bg-[#f8fafc] dark:bg-[#121c26] border border-[#e2e8f0] dark:border-[#1e2d3d]">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-[#00c49f] text-white flex items-center justify-center font-bold text-xs uppercase shrink-0 shadow-xs">
+              <div className="w-8 h-8 rounded-lg bg-[#08745f] text-white flex items-center justify-center font-bold text-xs uppercase shrink-0 shadow-xs">
                 {displayName ? displayName.charAt(0).toUpperCase() : 'ME'}
               </div>
-              <div className="leading-tight truncate">
-                <span className="text-xs font-bold text-[#0f172a] dark:text-[#f0f6fc] block truncate">
+              {isSidebarOpen && <div className="leading-tight truncate">
+                <span className="text-xs font-bold text-[#0f172a] dark:text-white block truncate">
                   {displayName}
                 </span>
                 <span className="text-[10px] text-[#64748b] dark:text-[#7d91a3] block font-medium uppercase tracking-tight truncate">
                   {displayRoleTitle}
                 </span>
-              </div>
+              </div>}
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button

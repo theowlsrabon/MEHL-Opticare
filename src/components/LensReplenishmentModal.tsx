@@ -171,12 +171,6 @@ export const LensReplenishmentModal: React.FC<LensReplenishmentModalProps> = ({
                   {minThreshold} Blanks
                 </span>
               </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-outline">Storage Bin / Vault Rack:</span>
-                <span className="font-medium text-on-surface">
-                  {item.storageBin || 'Vault 4A, Shelf 2'}
-                </span>
-              </div>
 
               {/* Progress bar visual */}
               <div className="w-full bg-surface-container dark:bg-[#252a38] rounded-full h-2 mt-1 overflow-hidden">

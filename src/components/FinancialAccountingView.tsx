@@ -48,17 +48,17 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   return (
     <div className="flex flex-col gap-5 p-4 lg:p-6 max-w-7xl mx-auto w-full">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-container-lowest dark:bg-[#15181f] p-5 rounded-2xl border border-outline-variant/70 dark:border-[#252a36] shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-4 sm:p-5 rounded-xl border border-slate-700/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <span className="material-symbols-outlined text-[22px]">query_stats</span>
             </span>
-            <h1 className="text-xl lg:text-2xl font-black text-on-surface">
+            <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md">
               অপটিক্স প্রফিট অ্যানালিটিক্স ও আর্থিক হিসাব (P&amp;L)
             </h1>
           </div>
-          <p className="text-xs text-outline mt-1">
+          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
             মদিনা অপটিক্সের ব্র্যান্ডভিত্তিক গ্রস মার্জিন, গোপনীয় হোলসেল কস্ট সাইফার ডিকোডার এবং অপারেটিং পিএন্ডএল লেজার।
           </p>
         </div>
@@ -95,7 +95,7 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
           <div className="text-2xl font-black text-on-surface mt-1">
             ৳{(financialSummary.grossOpticalRevenue + financialSummary.pharmacyRevenue + financialSummary.consultationRevenue)?.toLocaleString()}
           </div>
-          <div className="text-[11px] text-teal-600 font-semibold mt-1">অপটিক্যাল + ড্রাগ + কনসালটেন্সি</div>
+          <div className="text-[11px] text-teal-600 font-semibold mt-1">অপটিক্যাল রিটেইল + ক্লিনিক্যাল কনসালটেন্সি</div>
         </div>
 
         <div className="bg-surface-container-lowest dark:bg-[#15181f] p-4 rounded-xl border border-outline-variant/70 dark:border-[#252a36]">
@@ -186,7 +186,7 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <span className="font-data-rx font-bold text-on-surface">৳{financialSummary.grossOpticalRevenue?.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-on-surface">ফার্মেসি ড্রাগস ও চক্ষু ড্রপস বিক্রয়</span>
+                  <span className="text-on-surface">অপটিক্যাল লেন্স কোটিং ও ফিটিংস সেবা</span>
                   <span className="font-data-rx font-bold text-on-surface">৳{financialSummary.pharmacyRevenue?.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
@@ -213,7 +213,7 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <span className="font-data-rx font-bold text-on-surface">৳{financialSummary.opticalCogsBDT?.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-on-surface">ফার্মাকোপিয়া ড্রাগ ব্যাচ ক্রয়মূল্য</span>
+                  <span className="text-on-surface">লেন্স মেটেরিয়াল ও ল্যাব কনজিউমেবলস ব্যয়</span>
                   <span className="font-data-rx font-bold text-on-surface">৳{financialSummary.pharmacyCogsBDT?.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between pt-1 font-extrabold border-t border-dashed border-slate-300 dark:border-[#272d3a]">
@@ -299,9 +299,8 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   { brand: 'Ray-Ban Italy (Luxottica)', cat: 'Premium Metal Frames', cipher: '*R-B-K*', cost: 4800, sell: 8800, margin: 45.5, tier: 'High Margin' },
                   { brand: 'Titan Eyeplus (Flex Titan)', cat: 'Memory Metal Eyewear', cipher: '*M-T-P*', cost: 2100, sell: 4200, margin: 50.0, tier: 'High Margin' },
                   { brand: 'Gucci Eyewear (Kering)', cat: 'Luxury Acetate Sunglasses', cipher: '*G-C-X*', cost: 11000, sell: 21000, margin: 47.6, tier: 'High Margin' },
-                  { brand: 'Essilor Crizal Alize 1.56', cat: 'AR Hard-Coated Blanks', cipher: '*E-S-L*', cost: 1200, sell: 2600, margin: 53.8, tier: 'Superior Margin' },
-                  { brand: 'Vigamox (Novartis/Alcon)', cat: 'Sterile Antibiotic Drops', cipher: '*V-G-M*', cost: 340, sell: 520, margin: 34.6, tier: 'Standard Pharma' },
-                  { brand: 'Alcon Total30 Silicone Hydrogel', cat: 'Contact Lens Packs', cipher: '*A-L-C*', cost: 1600, sell: 2600, margin: 38.5, tier: 'Standard Pharma' },
+                  { brand: 'Zeiss DuraVision Platinum 1.60', cat: 'Premium Anti-Reflective Lens', cipher: '*Z-S-P*', cost: 2400, sell: 4800, margin: 50.0, tier: 'Superior Margin' },
+                  { brand: 'Alcon Total30 Silicone Hydrogel', cat: 'Contact Lens Packs', cipher: '*A-L-C*', cost: 1600, sell: 2600, margin: 38.5, tier: 'Contact Lens' },
                 ].map((item, idx) => (
                   <tr key={idx} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60">
                     <td className="py-3 px-4">

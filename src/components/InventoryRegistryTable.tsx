@@ -3,12 +3,10 @@ import { InventoryItem, UserProfile, Supplier, PurchaseOrder } from '../types';
 import { initialSuppliers } from '../data/enterpriseData';
 import { BatchBarcodePrintModal } from './BatchBarcodePrintModal';
 import { BulkReorderModal } from './BulkReorderModal';
-import { StockVelocityMiniChart } from './StockVelocityMiniChart';
-import { ItemVelocityDetailModal } from './ItemVelocityDetailModal';
-import { ItemVelocityProfile } from '../utils/stockVelocityUtils';
 
 interface InventoryRegistryTableProps {
   items: InventoryItem[];
+  initialSearchQuery?: string;
   currentUser?: UserProfile;
   suppliers?: Supplier[];
   onRestock: (item: InventoryItem) => void;
@@ -22,6 +20,7 @@ interface InventoryRegistryTableProps {
 
 export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   items,
+  initialSearchQuery = '',
   currentUser,
   suppliers = initialSuppliers,
   onRestock,
@@ -32,19 +31,24 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   onViewItemWiseSales,
   onBatchPrint,
 }) => {
-  const [filterChip, setFilterChip] = useState<'all' | 'frames' | 'rayban' | 'essilor' | 'zeiss' | 'solutions' | 'low'>('all');
-  const [searchFilter, setSearchFilter] = useState('');
+  const [filterChip, setFilterChip] = useState<'all' | 'frames' | 'low'>('all');
+  const [selectedBrand, setSelectedBrand] = useState<string>('all');
+  const [searchFilter, setSearchFilter] = useState(initialSearchQuery);
   const [showCostValuation, setShowCostValuation] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isBulkReorderModalOpen, setIsBulkReorderModalOpen] = useState(false);
   const [bulkReorderSuccessToast, setBulkReorderSuccessToast] = useState<string | null>(null);
-  const [selectedVelocityProfile, setSelectedVelocityProfile] = useState<ItemVelocityProfile | null>(null);
-  const [selectedVelocityItem, setSelectedVelocityItem] = useState<InventoryItem | null>(null);
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.canViewPurchaseCost;
   const BDT_RATE = 118;
+
+  // Dynamic Brands extracted from current items
+  const uniqueBrands = useMemo(() => {
+    const brands = items.map((i) => i.brand).filter(Boolean) as string[];
+    return Array.from(new Set(brands)).sort();
+  }, [items]);
 
   // Stock Financial Valuation Calculations
   const totalStockUnits = items.reduce((acc, curr) => acc + (curr.stockQty || 0), 0);
@@ -73,11 +77,10 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   const filteredItems = items.filter((item) => {
     // Quick filter chip
     if (filterChip === 'frames' && !item.category.includes('Frame')) return false;
-    if (filterChip === 'rayban' && !item.name.toLowerCase().includes('ray-ban')) return false;
-    if (filterChip === 'essilor' && !item.name.toLowerCase().includes('essilor')) return false;
-    if (filterChip === 'zeiss' && !item.name.toLowerCase().includes('zeiss')) return false;
-    if (filterChip === 'solutions' && item.category !== 'Accessories') return false;
     if (filterChip === 'low' && item.stockQty > item.minThreshold) return false;
+
+    // Dynamic brand filter
+    if (selectedBrand !== 'all' && item.brand !== selectedBrand) return false;
 
     // Search filter
     if (searchFilter.trim()) {
@@ -86,7 +89,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
         item.name.toLowerCase().includes(q) ||
         item.sku.toLowerCase().includes(q) ||
         item.specs.toLowerCase().includes(q) ||
-        item.storageBin.toLowerCase().includes(q) ||
         (item.brand && item.brand.toLowerCase().includes(q)) ||
         (item.model && item.model.toLowerCase().includes(q))
       );
@@ -150,6 +152,12 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
     }
   }, [someFilteredSelected]);
 
+  useEffect(() => {
+    if (initialSearchQuery !== undefined) {
+      setSearchFilter(initialSearchQuery);
+    }
+  }, [initialSearchQuery]);
+
   const toggleSelectItem = (id: string) => {
     setSelectedItemIds((prev) => {
       const next = new Set(prev);
@@ -193,18 +201,18 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   return (
     <div className="flex flex-col gap-5">
       {/* Optical Stock Valuation Summary (কতো টাকার স্টক আছে) */}
-      <div className="bg-white dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl p-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-outline-variant/60 dark:border-[#242936]">
+      <div className="bg-white dark:bg-[#0e1422] border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-teal-500/10 text-teal-600">
-                <span className="material-symbols-outlined text-[20px]">account_balance_wallet</span>
+              <span className="p-1.5 rounded-lg bg-[#00c49f]/10 text-[#00c49f]">
+                <span className="material-symbols-outlined text-[18px]">account_balance_wallet</span>
               </span>
-              <h2 className="text-base font-extrabold text-on-surface">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white font-bangla">
                 অপটিক্যাল স্টক ভ্যালুয়েশন ও মোট মজুদ মূল্য (Optical Stock Valuation)
               </h2>
             </div>
-            <p className="text-xs text-outline mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-bangla leading-relaxed">
               বর্তমান শোরুম ও ওয়্যারহাউজে রক্ষিত ফ্রেম, লেন্স ও এক্সেসরিজের মোট বাজারমূল্য ও ক্রয়মূল্য হিসাব।
             </p>
           </div>
@@ -212,20 +220,20 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowCostValuation(!showCostValuation)}
-              className="px-3 py-1.5 rounded-xl border border-outline-variant/70 text-xs font-bold text-outline hover:text-on-surface bg-[#f8fafc] dark:bg-[#1f2432] flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-lg border border-slate-200/90 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-[#111827] flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <span className="material-symbols-outlined text-[16px]">
+              <span className="material-symbols-outlined text-[15px]">
                 {showCostValuation ? 'visibility_off' : 'visibility'}
               </span>
-              <span>{showCostValuation ? 'ক্রয়মূল্য লুকান' : 'ক্রয়মূল্য দেখুন'}</span>
+              <span className="font-bangla">{showCostValuation ? 'ক্রয়মূল্য লুকান' : 'ক্রয়মূল্য দেখুন'}</span>
             </button>
 
             {onViewItemWiseSales && (
               <button
                 onClick={onViewItemWiseSales}
-                className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-[#00c49f] hover:bg-[#00b390] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer font-bangla"
               >
-                <span className="material-symbols-outlined text-[16px]">category</span>
+                <span className="material-symbols-outlined text-[15px]">category</span>
                 <span>ITEM WISE SALES দেখুন</span>
               </button>
             )}
@@ -235,17 +243,17 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
         {/* Valuation KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-4">
           {/* 1. Total Retail Valuation */}
-          <div className="p-4 rounded-xl bg-gradient-to-br from-teal-500/10 via-[#f8fafc] to-[#f8fafc] dark:from-teal-950/20 dark:via-[#1a1e29] dark:to-[#1a1e29] border border-teal-500/30">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-teal-700 dark:text-teal-400 block">
+          <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#00a884] dark:text-[#00f5b4] block font-bangla">
               মোট স্টক বিক্রয়মূল্য (Retail Value)
             </span>
-            <div className="text-2xl font-black text-on-surface font-mono mt-1">
+            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-1">
               ৳{totalRetailValuationBDT.toLocaleString('en-US')}
             </div>
-            <div className="text-[11px] text-outline font-mono mt-0.5">
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
               ≈ ${totalRetailValuationUSD.toLocaleString('en-US')} USD
             </div>
-            <div className="text-[10px] text-teal-600 font-semibold mt-1">
+            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1 font-bangla">
               শোরুম বিক্রয়মূল্য অনুযায়ী সম্পূর্ণ স্টক মান
             </div>
           </div>
@@ -313,193 +321,153 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
       </div>
 
       <section className="bg-surface-container-lowest dark:bg-[#1a1d26] border border-outline-variant/80 dark:border-[#262c3b] rounded-2xl shadow-xs overflow-hidden flex flex-col">
-      {/* Table Top Control Bar */}
-      <div className="p-4 border-b border-outline-variant/60 dark:border-[#262c3b] flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white dark:bg-[#1e222e]">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-extej-orange flex items-center justify-center">
-            <span className="material-symbols-outlined text-[20px]">inventory_2</span>
+      {/* Table Top Control Bar - Compact Single Line */}
+      <div className="px-3.5 py-2.5 border-b border-outline-variant/60 dark:border-[#262c3b] flex flex-col md:flex-row md:items-center justify-between gap-2.5 bg-white dark:bg-[#1e222e]">
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-orange-500/10 text-extej-orange flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-[17px]">inventory_2</span>
           </div>
           <div>
-            <h2 className="text-sm font-bold text-on-surface">
+            <h2 className="text-xs sm:text-sm font-bold text-on-surface whitespace-nowrap">
               Optical Stock Registry &amp; Shelf Master
             </h2>
-            <p className="text-[11px] text-outline">
+            <p className="text-[10px] text-outline hidden sm:block">
               Real-time stock across Frame Racks, Lens Blanks &amp; Dispensing Consumables
             </p>
           </div>
         </div>
 
-        {/* Rapid Barcode Scanner Input Box */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Compact Single-Line Controls */}
+        <div className="flex items-center gap-1.5 shrink-0 flex-nowrap overflow-x-auto">
+          {/* Rapid Barcode Scanner Input */}
           <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-3 text-extej-orange text-[18px]">
+            <span className="material-symbols-outlined absolute left-2.5 text-extej-orange text-[15px]">
               barcode_scanner
             </span>
             <input
               type="text"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Scan frame or lens barcode (F4)..."
-              className="w-64 sm:w-72 h-9 pl-9 pr-24 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 dark:border-[#2e3547] rounded-xl text-on-surface placeholder:text-outline focus:border-extej-orange focus:ring-1 focus:ring-orange-500/20 transition-all font-data-rx text-[12px] outline-hidden"
+              placeholder="Scan barcode (F4)..."
+              className="w-40 sm:w-52 h-7.5 pl-8 pr-12 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 dark:border-[#2e3547] rounded-lg text-on-surface placeholder:text-outline focus:border-extej-orange focus:ring-1 focus:ring-orange-500/20 transition-all font-data-rx text-[11px] outline-hidden"
             />
-            <span className="absolute right-2 px-1.5 py-0.5 text-[10px] font-data-rx font-bold text-extej-orange bg-orange-500/10 rounded-md pointer-events-none">
-              AUTO-LOOKUP
-            </span>
+            {searchFilter ? (
+              <button
+                type="button"
+                onClick={() => setSearchFilter('')}
+                className="absolute right-1.5 text-outline hover:text-on-surface cursor-pointer p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title="Clear search"
+              >
+                <span className="material-symbols-outlined text-[13px] block">close</span>
+              </button>
+            ) : (
+              <span className="absolute right-1.5 px-1 py-0.2 text-[8px] font-data-rx font-bold text-extej-orange bg-orange-500/10 rounded pointer-events-none">
+                F4
+              </span>
+            )}
           </div>
-          <button 
-            onClick={() => setSearchFilter('')}
-            className="px-3 py-2 bg-[#f8fafc] dark:bg-[#232836] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px]">tune</span>
-            <span>Reset</span>
-          </button>
 
-          {/* Batch Print Feature Button */}
+          {/* Batch Print Feature Button (Compact) */}
           <button
             onClick={handleOpenBatchPrint}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer whitespace-nowrap ${
+            className={`h-7.5 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-2xs cursor-pointer whitespace-nowrap ${
               selectedItemIds.size > 0
-                ? 'bg-gradient-to-r from-teal-600 to-[#169b90] hover:from-teal-700 hover:to-[#128279] text-white ring-2 ring-teal-500/30'
+                ? 'bg-gradient-to-r from-teal-600 to-[#169b90] hover:from-teal-700 hover:to-[#128279] text-white ring-1 ring-teal-500/30'
                 : 'bg-[#f8fafc] dark:bg-[#232836] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface'
             }`}
-            title="Batch print barcodes for selected inventory items in a single printable layout"
+            title="Batch print barcodes for selected inventory items"
           >
-            <span className="material-symbols-outlined text-[16px] text-teal-600 dark:text-teal-400">
+            <span className="material-symbols-outlined text-[14px] text-teal-600 dark:text-teal-400">
               print_connect
             </span>
-            <span>Batch Print {selectedItemIds.size > 0 ? `(${selectedItemIds.size})` : 'Barcodes'}</span>
+            <span>Batch Print {selectedItemIds.size > 0 ? `(${selectedItemIds.size})` : ''}</span>
           </button>
 
-          {/* Bulk Reorder Feature Button */}
-          <button
-            onClick={handleOpenBulkReorder}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer whitespace-nowrap ${
-              selectedItemIds.size > 0
-                ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white ring-2 ring-amber-500/30'
-                : 'bg-[#f8fafc] dark:bg-[#232836] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface'
-            }`}
-            title="Generate a unified combined purchase order for selected inventory items"
-          >
-            <span className="material-symbols-outlined text-[16px] text-amber-600 dark:text-amber-400">
-              receipt_long
-            </span>
-            <span>Bulk Reorder PO {selectedItemIds.size > 0 ? `(${selectedItemIds.size})` : ''}</span>
-          </button>
-
+          {/* Add Glasses Button (Compact) */}
           {onAddNewGlasses && (
             <button
               onClick={onAddNewGlasses}
-              className="px-3.5 py-2 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer whitespace-nowrap"
+              className="h-7.5 px-2.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-2xs cursor-pointer whitespace-nowrap"
+              title="Add Glasses & Barcode"
             >
-              <span className="material-symbols-outlined text-[16px]">add_circle</span>
-              <span>Add Glasses &amp; Barcode</span>
+              <span>Add Glasses</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Fast Filter Pills */}
-      <div className="px-4 py-2.5 bg-[#f8fafc] dark:bg-[#161922] border-b border-outline-variant/40 dark:border-[#262c3b] flex flex-wrap items-center gap-2">
-        <span className="text-[11px] text-outline font-semibold uppercase tracking-wider mr-1">
-          Quick Views:
-        </span>
-        <button
-          onClick={() => setFilterChip('all')}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-            filterChip === 'all'
-              ? 'bg-gradient-to-r from-extej-orange to-[#ff914d] text-white shadow-xs'
-              : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
-          }`}
-        >
-          All Items ({items.length})
-        </button>
-
-        {/* Bulk Reorder Checkbox Control */}
-        <label
-          className={`px-3 py-1 border rounded-full text-xs font-bold flex items-center gap-2 transition-all cursor-pointer select-none ${
-            allLowStockSelected
-              ? 'bg-amber-600 text-white border-amber-600 shadow-xs ring-2 ring-amber-500/20'
-              : someLowStockSelected
-              ? 'bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/50'
-              : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40'
-          }`}
-          title="Bulk Reorder: Select all low-stock items (< min threshold) to generate a single combined purchase order"
-        >
-          <input
-            type="checkbox"
-            checked={allLowStockSelected}
-            ref={(el) => {
-              if (el) el.indeterminate = someLowStockSelected;
-            }}
-            onChange={toggleSelectAllLowStock}
-            className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
-          />
-          <span className="material-symbols-outlined text-[15px] text-amber-600 dark:text-amber-400">
-            add_shopping_cart
+      {/* Fast Filter Pills & Dynamic Brand Selector */}
+      <div className="px-4 py-2.5 bg-[#f8fafc] dark:bg-[#161922] border-b border-outline-variant/40 dark:border-[#262c3b] flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-outline font-semibold uppercase tracking-wider mr-1">
+            Quick Views:
           </span>
-          <span>Bulk Reorder ({lowStockItems.length} Low Stock)</span>
-        </label>
-        <button
-          onClick={() => setFilterChip('frames')}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-            filterChip === 'frames'
-              ? 'bg-[#169b90] text-white shadow-xs'
-              : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
-          }`}
-        >
-          Optical Frames &amp; Butterfly Tags ({items.filter((i) => i.category.includes('Frame')).length})
-        </button>
-        <button
-          onClick={() => setFilterChip('rayban')}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-            filterChip === 'rayban'
-              ? 'bg-gradient-to-r from-extej-orange to-[#ff914d] text-white shadow-xs'
-              : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
-          }`}
-        >
-          Ray-Ban Frames
-        </button>
-        <button
-          onClick={() => setFilterChip('essilor')}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-            filterChip === 'essilor'
-              ? 'bg-gradient-to-r from-extej-orange to-[#ff914d] text-white shadow-xs'
-              : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
-          }`}
-        >
-          Essilor Crizal (210)
-        </button>
-        <button
-          onClick={() => setFilterChip('zeiss')}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-            filterChip === 'zeiss'
-              ? 'bg-gradient-to-r from-extej-orange to-[#ff914d] text-white shadow-xs'
-              : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
-          }`}
-        >
-          Zeiss ClearView (142)
-        </button>
-        <button
-          onClick={() => setFilterChip('solutions')}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-            filterChip === 'solutions'
-              ? 'bg-gradient-to-r from-extej-orange to-[#ff914d] text-white shadow-xs'
-              : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
-          }`}
-        >
-          Contact Solutions (65)
-        </button>
-        <button
-          onClick={() => setFilterChip('low')}
-          className={`px-3 py-1 border rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-            filterChip === 'low'
-              ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
-              : 'bg-rose-500/10 text-rose-500 border-rose-500/30'
-          }`}
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-          Low Stock &lt; 5 Pcs (18)
-        </button>
+          <button
+            onClick={() => setFilterChip('all')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+              filterChip === 'all'
+                ? 'bg-gradient-to-r from-extej-orange to-[#ff914d] text-white shadow-xs'
+                : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
+            }`}
+          >
+            All Items ({items.length})
+          </button>
+
+          <button
+            onClick={() => setFilterChip('frames')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+              filterChip === 'frames'
+                ? 'bg-[#169b90] text-white shadow-xs'
+                : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
+            }`}
+          >
+            Optical Frames ({items.filter((i) => i.category.includes('Frame')).length})
+          </button>
+
+          <button
+            onClick={() => setFilterChip('low')}
+            className={`px-3 py-1 border rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              filterChip === 'low'
+                ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
+                : 'bg-rose-500/10 text-rose-500 border-rose-500/30'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+            Low Stock ({lowStockItems.length})
+          </button>
+
+          {/* Bulk Reorder Action Pill Button */}
+          <button
+            type="button"
+            onClick={handleOpenBulkReorder}
+            className="px-3 py-1 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+            title="Bulk Reorder: Generate a single combined purchase order for low-stock items"
+          >
+            <span className="material-symbols-outlined text-[15px] text-amber-600 dark:text-amber-400">
+              add_shopping_cart
+            </span>
+            <span>Bulk Reorder PO ({lowStockItems.length} Low Stock)</span>
+          </button>
+        </div>
+
+        {/* Dynamic Brand Dropdown */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-outline font-semibold uppercase tracking-wider">
+            Brand:
+          </span>
+          <select
+            value={selectedBrand}
+            onChange={(e) => setSelectedBrand(e.target.value)}
+            className="h-7 px-2.5 bg-white dark:bg-[#202430] border border-outline-variant/80 dark:border-[#2c3344] text-on-surface rounded-lg text-xs font-semibold focus:border-extej-orange outline-hidden cursor-pointer"
+          >
+            <option value="all">All Brands ({uniqueBrands.length})</option>
+            {uniqueBrands.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Data Table */}
@@ -522,15 +490,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               <th className="px-4 py-2">Category</th>
               <th className="px-4 py-2">Optical Specs / Range</th>
               <th className="px-4 py-2">In-Stock Qty</th>
-              <th className="px-4 py-2 min-w-[140px]">
-                <div className="flex items-center gap-1">
-                  <span>30D Velocity</span>
-                  <span className="material-symbols-outlined text-[13px] text-teal-600 dark:text-teal-400">trending_up</span>
-                </div>
-                <span className="text-[9px] font-normal text-outline block lowercase first-letter:uppercase">
-                  Usage trend &amp; burn rate
-                </span>
-              </th>
               <th className="px-4 py-2">
                 <div className="flex items-center gap-1">
                   <span>Pricing &amp; Cost</span>
@@ -540,7 +499,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                   {isAdmin ? 'Wholesale & Negotiated' : 'Negotiated (Cost Restricted)'}
                 </span>
               </th>
-              <th className="px-4 py-2">Storage Bin</th>
               <th className="px-4 py-2 text-right">Actions</th>
             </tr>
           </thead>
@@ -632,16 +590,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                     </div>
                   </td>
 
-                  <td className="px-4 py-2.5">
-                    <StockVelocityMiniChart
-                      item={item}
-                      onOpenDetails={(prof, itm) => {
-                        setSelectedVelocityProfile(prof);
-                        setSelectedVelocityItem(itm);
-                      }}
-                    />
-                  </td>
-
                   <td className="px-4 py-2.5 font-data-rx text-[12px]">
                     {isAdmin ? (
                       <div>
@@ -676,35 +624,15 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                     )}
                   </td>
 
-                  <td className="px-4 py-2.5">
-                    <span
-                      className={`px-2 py-0.5 rounded font-data-rx text-[11px] ${
-                        isLow
-                          ? 'bg-tertiary-fixed text-on-tertiary-fixed-variant font-semibold'
-                          : 'bg-surface-container-low border border-outline-variant text-on-surface'
-                      }`}
-                    >
-                      {item.storageBin}
-                    </span>
-                  </td>
-
                   <td className="px-4 py-2.5 text-right">
                     <div className="inline-flex items-center gap-1 opacity-90 group-hover:opacity-100">
-                      {isLow ? (
-                        <button
-                          onClick={() => onPoReorder(item)}
-                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-xs cursor-pointer"
-                        >
-                          PO Reorder
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => onRestock(item)}
-                          className="px-2.5 py-1 bg-[#f1f4f9] dark:bg-[#232836] hover:bg-[#e4e9f2] dark:hover:bg-[#2a3040] rounded-lg text-[11px] font-bold text-on-surface transition-all cursor-pointer"
-                        >
-                          + Restock
-                        </button>
-                      )}
+                      <button
+                        onClick={() => onRestock(item)}
+                        className="px-2.5 py-1 bg-[#f1f4f9] dark:bg-[#232836] hover:bg-[#e4e9f2] dark:hover:bg-[#2a3040] rounded-lg text-[11px] font-bold text-on-surface transition-all cursor-pointer"
+                        title="Add stock quantity"
+                      >
+                        + Restock
+                      </button>
                       <button
                         onClick={() => onPrintBarcode(item)}
                         className="px-2 py-1 rounded-lg bg-[#169b90]/10 hover:bg-[#169b90]/20 text-[#169b90] transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px]"
@@ -722,12 +650,12 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
         </table>
       </div>
 
-      {/* Table Pagination & Bulk Status */}
+      {/* Table Summary & Bulk Status */}
       <div className="p-3.5 bg-[#f8fafc] dark:bg-[#161922] border-t border-outline-variant/60 dark:border-[#262c3b] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-outline">
         <div className="flex flex-wrap items-center gap-2">
           <span>
             Showing <strong className="text-on-surface">{filteredItems.length}</strong> of{' '}
-            <strong className="text-on-surface">1,240</strong> inventory items
+            <strong className="text-on-surface">{items.length}</strong> inventory items
           </span>
           <span className="text-outline/40">|</span>
           <span className="text-[11px] bg-white dark:bg-[#1a1d26] px-2 py-0.5 rounded-md border border-outline-variant/70 dark:border-[#2b3140]">
@@ -739,27 +667,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               <span>{selectedItemIds.size} selected for batch print</span>
             </span>
           )}
-        </div>
-        <div className="flex items-center gap-1 font-medium">
-          <button className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#202430] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface text-xs disabled:opacity-40">
-            Previous
-          </button>
-          <button className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-extej-orange to-[#ff914d] text-white text-xs font-bold shadow-xs">
-            1
-          </button>
-          <button className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#202430] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface text-xs">
-            2
-          </button>
-          <button className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#202430] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface text-xs">
-            3
-          </button>
-          <span className="px-1 text-outline">...</span>
-          <button className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#202430] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface text-xs">
-            62
-          </button>
-          <button className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#202430] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface text-xs">
-            Next
-          </button>
         </div>
       </div>
     </section>
@@ -912,20 +819,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
       onClearBatch={() => setSelectedItemIds(new Set())}
     />
 
-    {/* Item 30-Day Velocity Analytics Modal */}
-    {selectedVelocityItem && selectedVelocityProfile && (
-      <ItemVelocityDetailModal
-        isOpen={!!selectedVelocityItem}
-        onClose={() => {
-          setSelectedVelocityItem(null);
-          setSelectedVelocityProfile(null);
-        }}
-        item={selectedVelocityItem}
-        profile={selectedVelocityProfile}
-        onRestock={onRestock}
-        onPoReorder={onPoReorder}
-      />
-    )}
     </div>
   );
 };

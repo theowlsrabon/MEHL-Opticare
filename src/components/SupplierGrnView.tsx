@@ -78,19 +78,19 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-5 p-4 lg:p-6 max-w-7xl mx-auto w-full">
+    <div className="flex flex-col gap-5 w-full">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-container-lowest dark:bg-[#15181f] p-5 rounded-2xl border border-outline-variant/70 dark:border-[#252a36] shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-4 sm:p-5 rounded-xl border border-slate-700/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
               <span className="material-symbols-outlined text-[22px]">local_shipping</span>
             </span>
-            <h1 className="text-xl lg:text-2xl font-black text-on-surface">
+            <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md">
               সাপ্লায়ার প্রকিউরমেন্ট ও গুডস রিসিভড নোট (GRN Inward)
             </h1>
           </div>
-          <p className="text-xs text-outline mt-1">
+          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
             ভেন্ডর অর্ডার ট্র্যাকিং, বারকোড/লট ইনস্পেকশন, মেয়াদ নির্ধারণ এবং অটোমেটিক স্টক ইন্টিগ্রেশন।
           </p>
         </div>

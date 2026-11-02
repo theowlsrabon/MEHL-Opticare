@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserRole, SecurityAuditLog, SystemConfig } from '../types';
 import { MADINA_STAFF_PROFILES } from '../data/rolesData';
 import { UserAccountsManager } from './UserAccountsManager';
+import { LabTechniciansManager } from './LabTechniciansManager';
 
 interface SettingsRolesViewProps {
   currentRole: UserRole;
@@ -20,7 +21,10 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
   systemConfig,
   onUpdateSystemConfig,
 }) => {
-  const [activeTab, setActiveTab] = useState<'accounts' | 'rbac' | 'system' | 'audit'>('accounts');
+  const initialTab = typeof window !== 'undefined' && sessionStorage.getItem('settingsInitialTab') === 'technicians'
+    ? (sessionStorage.removeItem('settingsInitialTab'), 'technicians')
+    : 'accounts';
+  const [activeTab, setActiveTab] = useState<'accounts' | 'technicians' | 'rbac' | 'system' | 'audit'>(initialTab as 'accounts' | 'technicians');
   const [configForm, setConfigForm] = useState<SystemConfig>(systemConfig);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -36,17 +40,17 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
   return (
     <div className="flex flex-col gap-5 p-4 lg:p-6 max-w-7xl mx-auto w-full">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-container-lowest dark:bg-[#15181f] p-5 rounded-2xl border border-outline-variant/70 dark:border-[#252a36] shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-4 sm:p-5 rounded-xl border border-slate-700/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-slate-500/10 text-slate-600 dark:text-slate-300">
               <span className="material-symbols-outlined text-[22px]">manage_accounts</span>
             </span>
-            <h1 className="text-xl lg:text-2xl font-black text-on-surface">
+            <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md">
               সেটিংস, রোল পারমিশন ও নিরাপত্তা অডিট (Settings &amp; RBAC)
             </h1>
           </div>
-          <p className="text-xs text-outline mt-1">
+          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
             ভূমিকাভিত্তিক এক্সেস কন্ট্রোল (RBAC), মাল্টি-ব্রাঞ্চ নিরাপত্তা প্যারামিটার এবং অডিট হিস্ট্রি।
           </p>
         </div>
@@ -86,6 +90,18 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('technicians')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+            activeTab === 'technicians'
+              ? 'bg-[#00c49f] text-white shadow-xs'
+              : 'text-outline hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">construction</span>
+          <span>Technicians</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('system')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'system'
@@ -114,6 +130,8 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
       {activeTab === 'accounts' && (
         <UserAccountsManager currentUsername={currentUsername} />
       )}
+
+      {activeTab === 'technicians' && <LabTechniciansManager />}
 
       {/* TAB 1: RBAC PROFILES & PERMISSIONS */}
       {activeTab === 'rbac' && (
@@ -172,7 +190,7 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 { label: 'গোপন পাইকারি ক্রয়মূল্য ও সাইফার দেখা', key: 'canViewPurchaseCost', desc: 'হোলসেল কস্ট ও প্রফিট মার্জিন' },
-                { label: 'ফার্মেসি FEFO ওষুধ বিতরণ অনুমতি', key: 'canDispensePharmacy', desc: 'প্রেসক্রিপশন ও ওয়ার্ড ডিসপেনসেশন' },
+                // { label: 'ফার্মেসি FEFO ওষুধ বিতরণ অনুমতি', key: 'canDispensePharmacy', desc: 'প্রেসক্রিপশন ও ওয়ার্ড ডিসপেনসেশন' }, // Hidden temporarily
                 { label: 'ইন্টার-ব্রাঞ্চ (IBT) অর্ডার অনুমোদন', key: 'canApproveIBT', desc: 'শাখা ট্রান্সফার ও গেটপাস সাইন' },
                 { label: 'রিটার্ন, রিফান্ড ও ক্রেডিট নোট ইস্যু', key: 'canProcessReturns', desc: 'ওয়ারেন্টি ও ভেন্ডর ডেবিট নোট' },
                 { label: 'রোবোটিক ল্যাব সিএনসি এজার পরিচালনা', key: 'canAdvanceStages', desc: 'লেন্স শেপ ও বেভেল ক্যালিব্রেশন' },
@@ -241,14 +259,14 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] font-bold text-outline">FEFO এক্সপায়ারি ওয়ার্নিং দিন (Threshold)</label>
+                <label className="text-[11px] font-bold text-outline">লো-স্টক লেন্স রিঅর্ডার সীমা (Threshold)</label>
                 <input
                   type="number"
                   value={configForm.fefoThresholdDays}
                   onChange={(e) => setConfigForm({ ...configForm, fefoThresholdDays: parseInt(e.target.value) || 90 })}
                   className="w-full mt-1 px-2.5 py-1.5 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]"
                 />
-                <span className="text-[10px] text-outline">এই দিনের কম মেয়াদ থাকলে প্রায়োরিটি #১ হবে</span>
+                <span className="text-[10px] text-outline">এই পরিমাণের নিচে স্টক নামলে সতর্কবার্তা দিবে</span>
               </div>
 
               <div>

@@ -190,19 +190,6 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
 
             <div>
               <label className="text-[11px] font-bold text-outline block mb-1">
-                Storage Bin / Rack Location
-              </label>
-              <input
-                type="text"
-                value={storageBin}
-                onChange={(e) => setStorageBin(e.target.value)}
-                placeholder="e.g. Rack 2A, Drawer B-04"
-                className="w-full h-9 px-3 text-xs bg-white dark:bg-[#202430] border border-outline-variant/80 dark:border-[#2c3344] rounded-xl text-on-surface outline-hidden"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-outline block mb-1">
                 Initial Stock Quantity (Pairs)
               </label>
               <input

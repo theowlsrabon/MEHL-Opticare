@@ -93,6 +93,14 @@ export interface OpticalJob {
   bevelType?: string;
   odAxis?: string;
   osAxis?: string;
+  odSph?: string;
+  osSph?: string;
+  odCyl?: string;
+  osCyl?: string;
+  odAdd?: string;
+  osAdd?: string;
+  odPd?: string;
+  osPd?: string;
   axisStatus?: 'passed' | 'pending' | 'failed';
   powerVerified?: boolean;
   pdValue?: string;
@@ -535,4 +543,3 @@ export interface SystemConfig {
   enableAutoTrayConveyorDispatch: boolean;
   primaryCurrencySymbol: string;
 }
-

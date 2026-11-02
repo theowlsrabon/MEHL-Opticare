@@ -106,6 +106,7 @@ export const NewInvoiceModal: React.FC<NewInvoiceModalProps> = ({
   const [lensColor, setLensColor] = useState<string>('clear');
   const [lensDesign, setLensDesign] = useState<string>('single_vision');
   const [lensCustomConfig, setLensCustomConfig] = useState<LensConfiguration | null>(null);
+  const [negotiatedLensPrice, setNegotiatedLensPrice] = useState<number>(600);
 
   // Optical Prescription Grid (OD / OS)
   const [rxGrid, setRxGrid] = useState([
@@ -271,7 +272,11 @@ export const NewInvoiceModal: React.FC<NewInvoiceModalProps> = ({
       coating: curCoat.bn,
     };
   }, [lensCustomConfig, lensMaterial, lensCoating, lensColor, lensDesign]);
-  const lensPrice = currentLens.price;
+  const lensPrice = negotiatedLensPrice || currentLens.price;
+
+  useEffect(() => {
+    setNegotiatedLensPrice(currentLens.price);
+  }, [currentLens.price]);
 
   // Selected salesman calculation
   const selectedSalesman = salesmen.find((s) => s.id === selectedSalesmanId) || {
@@ -313,11 +318,20 @@ export const NewInvoiceModal: React.FC<NewInvoiceModalProps> = ({
       frameName: `${activeFrame.brand} ${activeFrame.model} (${activeFrame.sku})`,
       lensName: currentLens.name,
       rxSummary,
+      odSph: rxGrid[0].sph,
+      odCyl: rxGrid[0].cyl,
+      odAdd: rxGrid[0].add,
+      odPd: rxGrid[0].pd,
       odAxis: rxGrid[0].axis,
+      osSph: rxGrid[1].sph,
+      osCyl: rxGrid[1].cyl,
+      osAdd: rxGrid[1].add,
+      osPd: rxGrid[1].pd,
       osAxis: rxGrid[1].axis,
       pdValue: binocularPd,
       framePrice,
       lensPrice,
+      negotiatedLensPrice: lensPrice,
       subtotal,
       discountAmount,
       total: netPayable,
@@ -464,7 +478,7 @@ export const NewInvoiceModal: React.FC<NewInvoiceModalProps> = ({
                 <span>3. Ophthalmic Lens Selection &amp; Full Prescription Grid</span>
               </div>
               <span id="lens-badge-price" className="text-xs font-mono font-bold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/50 px-2.5 py-1 rounded-lg">
-                Lens: ৳{currentLens.price?.toLocaleString()}
+                Lens: ৳{lensPrice?.toLocaleString()}
               </span>
             </div>
 
@@ -481,6 +495,32 @@ export const NewInvoiceModal: React.FC<NewInvoiceModalProps> = ({
                 onSelectDesign={setLensDesign}
                 onConfigurationChange={(cfg) => setLensCustomConfig(cfg)}
               />
+            </div>
+
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-teal-200 bg-teal-50/30 px-3 py-2.5 dark:border-teal-900/50 dark:bg-teal-950/20">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-teal-600">handshake</span>
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-100">
+                  Agreed / Negotiated Lens Price (দরদাম চূড়ান্ত লেন্স মূল্য)
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-gray-500">
+                  Guide: <strong className="text-gray-700 dark:text-gray-300">৳{currentLens.price?.toLocaleString()}</strong>
+                </span>
+                <label className="flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 dark:border-[#2b3244] dark:bg-[#1a202c]">
+                  <span className="mr-1 text-xs font-bold text-gray-500">৳</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    value={negotiatedLensPrice}
+                    onChange={(e) => setNegotiatedLensPrice(Number(e.target.value) || 0)}
+                    aria-label="Negotiated lens price"
+                    className="w-24 bg-transparent text-sm font-bold text-gray-800 outline-none dark:text-gray-100"
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Exact Optical Prescription Grid Table Matrix (OD and OS) */}

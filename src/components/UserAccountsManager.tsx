@@ -32,7 +32,7 @@ const ALL_MODULES: { id: ViewMode; name: string; section: string }[] = [
   { id: 'supplier-grn', name: 'Suppliers & GRN Inward', section: 'Supply Chain & Finance' },
   { id: 'financial-accounting', name: 'Profit Analytics & Accounts (P&L)', section: 'Supply Chain & Finance' },
   { id: 'returns-refunds', name: 'Returns, Refunds & Credit (CN/DN)', section: 'Supply Chain & Finance' },
-  { id: 'pharmacy-command', name: 'FEFO Auto-Dispensing (Pharmacy)', section: 'Supply Chain & Finance' },
+  // { id: 'pharmacy-command', name: 'FEFO Auto-Dispensing (Pharmacy)', section: 'Supply Chain & Finance' }, // Temporarily hidden
   { id: 'reports', name: 'Reports & Analytics', section: 'Reports & Security' },
   { id: 'salesmen', name: 'Sales Staff & Commission', section: 'Reports & Security' },
   { id: 'settings-roles', name: 'Settings & Role Permissions (RBAC)', section: 'Reports & Security' },

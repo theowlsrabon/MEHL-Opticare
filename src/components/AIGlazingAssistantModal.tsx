@@ -203,16 +203,16 @@ export const AIGlazingAssistantModal: React.FC<AIGlazingAssistantModalProps> = (
               Prescription Refraction Matrix (OD / OS)
             </span>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-2">
               {/* OD Matrix */}
-              <div className="bg-surface-container-lowest p-3 rounded-lg border border-outline-variant">
+              <div className="bg-surface-container-lowest p-2 rounded-lg border border-outline-variant">
                 <div className="text-[12px] font-bold text-on-surface pb-1 border-b border-surface-container mb-2 flex items-center justify-between">
                   <span className="px-2 py-0.5 bg-surface-container rounded text-[11px] font-data-rx font-bold">
                     OD (Right Eye)
                   </span>
                   <span className="text-[10px] text-outline">Oculus Dexter</span>
                 </div>
-                <div className="grid grid-cols-5 gap-2 text-center font-data-rx text-[12px]">
+                <div className="grid grid-cols-5 gap-1 text-center font-data-rx text-[12px]">
                   <div>
                     <span className="text-[10px] text-outline block">SPH</span>
                     <input
@@ -262,14 +262,14 @@ export const AIGlazingAssistantModal: React.FC<AIGlazingAssistantModalProps> = (
               </div>
 
               {/* OS Matrix */}
-              <div className="bg-surface-container-lowest p-3 rounded-lg border border-outline-variant">
+              <div className="bg-surface-container-lowest p-2 rounded-lg border border-outline-variant">
                 <div className="text-[12px] font-bold text-on-surface pb-1 border-b border-surface-container mb-2 flex items-center justify-between">
                   <span className="px-2 py-0.5 bg-secondary-fixed text-on-secondary-fixed rounded text-[11px] font-data-rx font-bold">
                     OS (Left Eye)
                   </span>
                   <span className="text-[10px] text-outline">Oculus Sinister</span>
                 </div>
-                <div className="grid grid-cols-5 gap-2 text-center font-data-rx text-[12px]">
+                <div className="grid grid-cols-5 gap-1 text-center font-data-rx text-[12px]">
                   <div>
                     <span className="text-[10px] text-outline block">SPH</span>
                     <input
@@ -321,7 +321,7 @@ export const AIGlazingAssistantModal: React.FC<AIGlazingAssistantModalProps> = (
           </div>
 
           {/* Machine & Material Config */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-2">
             <div>
               <label className="text-[11px] font-semibold text-outline block mb-1">
                 Frame &amp; Mount Chassis

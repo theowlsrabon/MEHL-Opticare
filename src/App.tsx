@@ -44,8 +44,8 @@ import { LoginPage } from './components/LoginPage';
 import { TopNavBar } from './components/TopNavBar';
 import { SideNavBar } from './components/SideNavBar';
 import { KpiSummaryCards } from './components/KpiSummaryCards';
-import { ExtejDashboardHero } from './components/ExtejDashboardHero';
 import { LabPipelineBoard } from './components/LabPipelineBoard';
+import { ExtejDashboardHero } from './components/ExtejDashboardHero';
 import { InventoryRegistryTable } from './components/InventoryRegistryTable';
 import { DueCollectionsView } from './components/DueCollectionsView';
 import { ReportsView } from './components/ReportsView';
@@ -431,6 +431,15 @@ export default function App() {
     }
   };
 
+  // Mobile sidebar state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Collapsible sidebar state
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Right-hand Activity Feed Drawer state
+  const [isActivityFeedOpen, setIsActivityFeedOpen] = useState(false);
+
   // Modals state
   const [isNewInvoiceOpen, setIsNewInvoiceOpen] = useState(false);
   const [isCreateTrayOpen, setIsCreateTrayOpen] = useState(false);
@@ -466,7 +475,7 @@ export default function App() {
       return jobs.filter((j) => j.priority === 'express' || j.priority === 'stat');
     }
     if (pipelineFilter === 'ready') {
-      return jobs.filter((j) => j.stage === 5);
+      return jobs.filter((j) => j.stage >= 3);
     }
     return jobs;
   }, [jobs, pipelineFilter]);
@@ -482,12 +491,14 @@ export default function App() {
     setTimeout(() => setCameraToast(null), 4500);
   };
 
-  // Global Keyboard listener for F4 or ⌘K / Ctrl+K
+  // Global Keyboard listener for F4, ⌘K / Ctrl+K, and Escape for Activity Feed drawer
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F4' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
         e.preventDefault();
         setIsQuickScanOpen(true);
+      } else if (e.key === 'Escape') {
+        setIsActivityFeedOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -504,15 +515,16 @@ export default function App() {
     const targetJob = jobs.find((j) => j.id === jobId);
     if (!targetJob) return;
 
-    const nextStage = Math.min(5, targetJob.stage + 1) as 1 | 2 | 3 | 4 | 5;
+    if (targetJob.stage >= 3) return;
+    const nextStage = (targetJob.stage + 1) as 1 | 2 | 3;
     if (nextStage === targetJob.stage) return;
 
-    // Automated SMS Notification Trigger when transitioning to Stage 5 (Ready for Handover)
+    // Automated SMS notification when the job reaches Ready Handover.
     let stage5SmsStatus: 'delivered' | undefined = undefined;
     let stage5SmsSentAt: string | undefined = undefined;
     let stage5SmsMessage: string | undefined = undefined;
 
-    if (nextStage === 5) {
+    if (nextStage === 3) {
       stage5SmsSentAt = formatAuditTimestamp();
       stage5SmsStatus = 'delivered';
       stage5SmsMessage = buildReadyForPickupMessage(targetJob, 'en');
@@ -538,23 +550,23 @@ export default function App() {
     setJobs((prev) =>
       prev.map((job) => {
         if (job.id === jobId) {
-          const smsAuditNotice = nextStage === 5
+          const smsAuditNotice = nextStage === 3
             ? ` • Automated SMS notification dispatched to ${job.patientPhone} ("Order Ready for Pickup" via live Telco gateway).`
             : '';
 
           const newAuditEntry = createStageTransitionEntry(job, nextStage, {
             actor: operator || currentUser.name,
-            notes: (customNote ? `${customNote}. ` : '') + (nextStage === 5 ? `Stage 5 Staging Complete.${smsAuditNotice}` : ''),
+            notes: (customNote ? `${customNote}. ` : '') + (nextStage === 3 ? `Stage 3 Staging Complete.${smsAuditNotice}` : ''),
           });
 
           return {
             ...job,
             stage: nextStage,
             progressPercent: nextStage === 2 ? 65 : nextStage === 3 ? 100 : undefined,
-            smsNotificationStatus: nextStage === 5 ? stage5SmsStatus : job.smsNotificationStatus,
-            smsNotificationSentAt: nextStage === 5 ? stage5SmsSentAt : job.smsNotificationSentAt,
-            smsNotificationMessage: nextStage === 5 ? stage5SmsMessage : job.smsNotificationMessage,
-            smsNotificationRecipient: nextStage === 5 ? job.patientPhone : job.smsNotificationRecipient,
+            smsNotificationStatus: nextStage === 3 ? stage5SmsStatus : job.smsNotificationStatus,
+            smsNotificationSentAt: nextStage === 3 ? stage5SmsSentAt : job.smsNotificationSentAt,
+            smsNotificationMessage: nextStage === 3 ? stage5SmsMessage : job.smsNotificationMessage,
+            smsNotificationRecipient: nextStage === 3 ? job.patientPhone : job.smsNotificationRecipient,
             auditTrail: [...(job.auditTrail || []), newAuditEntry],
           };
         }
@@ -684,6 +696,10 @@ export default function App() {
     );
   };
 
+  const handleRemoveSalesman = (id: string) => {
+    setSalesmen((prev) => prev.filter((salesman) => salesman.id !== id));
+  };
+
   const handleInvoiceCreated = (invoice: any) => {
     const now = new Date();
     const todayDateStr = now.toISOString().slice(0, 10);
@@ -700,6 +716,14 @@ export default function App() {
       rxSummary: invoice.rxSummary || 'OD: -1.50 / OS: -1.25 (Standard Refraction)',
       odAxis: invoice.odAxis || '90°',
       osAxis: invoice.osAxis || '85°',
+      odSph: invoice.odSph,
+      odCyl: invoice.odCyl,
+      odAdd: invoice.odAdd,
+      odPd: invoice.odPd,
+      osSph: invoice.osSph,
+      osCyl: invoice.osCyl,
+      osAdd: invoice.osAdd,
+      osPd: invoice.osPd,
       pdValue: invoice.pdValue || '63.0mm',
       stage: 1,
       urgency: invoice.isRush ? 'rush' : 'standard',
@@ -939,15 +963,22 @@ export default function App() {
         onOpenShiftSummary={() => setCurrentView('reports')}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        onSearchSubmit={() => setCurrentView('stock-master')}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
+        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         currentUserRole={currentUserRole}
         onRoleChange={handleRoleChange}
         onOpenSmsCenter={() => setIsSmsModalOpen(true)}
+        onOpenActivityFeed={() => setIsActivityFeedOpen(true)}
         authenticatedUser={authenticatedUser}
         onLogout={handleLogout}
       />
 
       {/* 2. Fixed Left Sidebar */}
       <SideNavBar
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         currentView={currentView}
         onSelectView={(v) => {
           if (v === 'ai-glazing') setIsGlazingAssistantOpen(true);
@@ -959,20 +990,40 @@ export default function App() {
         totalInventoryCount={totalInventoryUnits}
         activeLabJobsCount={activeLabJobsCount}
         totalDueAmount={totalDueAmount}
+        isOpenMobile={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
         currentUserRole={currentUserRole}
+        authenticatedUser={authenticatedUser}
+        onLogout={handleLogout}
       />
 
-      {/* 3. Main Dashboard Workspace (Pushed comfortably below fixed 64px header and 256px from left on desktop) */}
-      <main className="pt-20 sm:pt-24 lg:pl-64 pl-0 flex-1 flex flex-col p-4 sm:p-6 gap-6 bg-surface dark:bg-[#111317] min-h-screen overflow-x-hidden transition-colors">
-        {/* Clean, Unified Workspace Header */}
-        <header className="flex flex-col gap-3.5 pb-3.5 border-b border-outline-variant/60 dark:border-[#262c3b]">
+      {/* 3. Main Dashboard Workspace (Pushed comfortably below fixed 64px header with clear gap from 256px sidebar on desktop) */}
+      <main className={`pt-20 sm:pt-24 flex-1 flex flex-col px-4 sm:px-6 lg:px-8 pb-8 gap-6 bg-surface dark:bg-[#111317] min-h-screen overflow-x-hidden transition-[margin,width] duration-300 ease-in-out ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
+        {/* Workspace Header */}
+        {currentView !== 'executive-dashboard' && (
+        <header
+          className={`flex flex-col gap-3.5 pb-3.5 border-b ${
+            currentView === 'lab-pipeline'
+              ? 'bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-slate-700/80 rounded-xl px-4 py-3.5 shadow-sm'
+              : 'border-outline-variant/60 dark:border-[#262c3b]'
+          }`}
+        >
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
             <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-lg sm:text-xl font-bold text-on-surface tracking-tight font-headline-md">
-                {language === 'bn' ? (
-                  <>
-                    {currentView === 'lab-pipeline' && 'ল্যাব গ্লেজিং ও কনভেয়ার কিউ'}
+              {currentView === 'lab-pipeline' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mb-1.5 rounded-full bg-[#00c49f]/15 text-[#00f5b4] border border-[#00c49f]/30 text-[10px] font-bold uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00c49f]" />
+                  Lab Glazing
+                </span>
+              )}
+              <div className="flex items-center gap-2.5 flex-wrap justify-center lg:justify-start">
+                {currentView !== 'executive-dashboard' && (
+                  <h1 className={`text-lg sm:text-xl font-bold tracking-tight font-headline-md text-center lg:text-left ${
+                    currentView === 'lab-pipeline' ? 'text-white' : 'text-on-surface'
+                  }`}>
+                  {language === 'bn' ? (
+                    <>
+                      {currentView === 'lab-pipeline' && 'ল্যাব গ্লেজিং ও কনভেয়ার কিউ'}
                     {currentView === 'modina-erp' && 'পিওএস ও সেলস বিলিং (মদিনা ইআরপি)'}
                     {currentView === 'stock-master' && 'স্টক ও ফ্রেম রেজিস্ট্রি'}
                     {currentView === 'due-collections' && 'বকেয়া আদায় ও লেজার'}
@@ -994,7 +1045,7 @@ export default function App() {
                     {currentView === 'due-collections' && 'Due Collections & Customer Ledger'}
                     {currentView === 'reports' && 'Workshop Analytics & Telemetry'}
                     {currentView === 'salesmen' && 'Sales Staff & Commission Ledgers'}
-                    {currentView === 'executive-dashboard' && 'Executive C-Suite Dashboard'}
+                    {currentView === 'executive-dashboard' && null}
                     {currentView === 'pharmacy-command' && 'Pharmacy Command Center (FEFO)'}
                     {currentView === 'multi-branch-ibt' && 'Multi-Branch Inter-Transfer (IBT)'}
                     {currentView === 'supplier-grn' && 'Suppliers & Goods Received Notes (GRN)'}
@@ -1003,104 +1054,120 @@ export default function App() {
                     {currentView === 'settings-roles' && 'Settings, Role Permissions & Security Audit'}
                   </>
                 )}
-              </h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                {language === 'bn' ? 'স্টেশন #০২ লাইভ' : 'Station #02 Live'}
-              </span>
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#f1f4f9] dark:bg-[#1a1d26] text-outline border border-outline-variant/60 dark:border-[#272d3b]">
-                <span className="material-symbols-outlined text-[13px] text-[#169b90]">shield_person</span>
-                <span className="font-bold text-on-surface">{currentUser.name}</span>
-                <span className="text-outline">({currentUser.roleTitle})</span>
-              </span>
-            </div>
-            <p className="text-[11px] text-outline font-medium mt-0.5">
-              {language === 'bn' ? (
-                <>
-                  {currentView === 'lab-pipeline' && 'এসিলর ডেল্টা ২০০ এজার • লেন্স প্রস্তুতকরণ থেকে আইএসও ২১৯৮৭ পরীক্ষণ পর্যন্ত ৫-ধাপের কনভেয়ার ট্রে সিস্টেম'}
-                  {currentView === 'modina-erp' && 'ইউনিফাইড অপটিক্যাল পিওএস: বারকোড স্ক্যানার, অটো ফ্রেম ডিটেইলস, পাইকারি কস্ট সিফার ও সেলস কমিশন'}
-                  {currentView === 'stock-master' && 'ডিজাইনার ফ্রেম, লেন্স ইনভেন্টরি, বিন রেজিস্ট্রি এবং বারকোড প্রিন্টার'}
-                  {currentView === 'due-collections' && 'গ্রাহক বকেয়া ব্যবস্থাপনা, এসএমএস নোটিফিকেশন এবং পেমেন্ট নিষ্পত্তিকরণ'}
-                  {currentView === 'reports' && 'ল্যাব মেশিনের কার্যক্ষমতা, হুইল স্থায়িত্ব, ক্ষতি হার এবং স্টাফ কমিশন লেজার'}
-                  {currentView === 'salesmen' && 'বিক্রয়কর্মী টিম, মাসিক লক্ষ্যমাত্রা, কমিশন টায়ার এবং পারফরম্যান্স ট্র্যাকিং'}
-                  {currentView === 'executive-dashboard' && 'হসপিটাল অপটিক্যাল কেপিআই, নেটওয়ার্ক স্ট্যাটাস এবং জরুরি অ্যাকশন ম্যাট্রিক্স'}
-                  {currentView === 'pharmacy-command' && 'স্বয়ংক্রিয় এফইএফও (FEFO) ব্যাচ অ্যালটমেন্ট ও আই-ড্রপ ডিসপেনসারি'}
-                  {currentView === 'multi-branch-ibt' && 'শাখা রিকুইজিশন, চালান গেটপাস ও লাইভ ট্রানজিট ট্র্যাকিং'}
-                  {currentView === 'supplier-grn' && 'অনুমোদিত ভেন্ডর ডিরেক্টরি, ফ্রেম পিও ও গুডস রিসিভড নোট (GRN)'}
-                  {currentView === 'financial-accounting' && 'মাসিক আয়-ব্যয় বিবরণী, পাইকারি কস্ট সিফার ও ব্র্যান্ড মার্জিন'}
-                  {currentView === 'returns-refunds' && 'কাস্টমার ওয়ারেন্টি ক্রেডিট নোট (CN) এবং সরবরাহকারী ডেবিট নোট (DN)'}
-                  {currentView === 'settings-roles' && 'ইউজার পারমিশন কন্ট্রোল (RBAC), সিস্টেম ব্যাকআপ ও অডিট ট্রেইল'}
-                </>
-              ) : (
-                <>
-                  {currentView === 'lab-pipeline' && 'Essilor Delta 200 Edger • Real-time 5-stage optical tray conveyor from lens pulling to ISO 21987 inspection'}
-                  {currentView === 'modina-erp' && 'Single-Page Optical ERP: Barcode Scanner, Auto-Populated Frame Details, Confidential Wholesale Cost & Rx Grid Matrix'}
-                  {currentView === 'stock-master' && 'Live inventory of designer frames, optical lenses, storage bin registry, and barcode generator'}
-                  {currentView === 'due-collections' && 'Outstanding customer receivables, SMS delivery alerts, and settlement register'}
-                  {currentView === 'reports' && 'Essilor Delta 200 hourly velocity, diamond wheel wear, lens spoilage rate, and commission ledgers'}
-                  {currentView === 'salesmen' && 'Active sales executives, performance targets, commission tiers (2.5% - 5.5%), and sales volume'}
-                  {currentView === 'executive-dashboard' && 'C-suite optical enterprise metrics, multi-branch network status, and urgent action matrix'}
-                  {currentView === 'pharmacy-command' && 'Automated First-Expiry First-Out (FEFO) batch picker, sterile ophthalmic drops & prescription dispensation'}
-                  {currentView === 'multi-branch-ibt' && 'Requisition orders, dispatch manifests, security gate passes & real-time transit telemetry'}
-                  {currentView === 'supplier-grn' && 'Approved vendor directories, optical frame POs, quality inspection & Goods Received Notes (GRN)'}
-                  {currentView === 'financial-accounting' && 'Monthly P&L income statements, confidential wholesale cipher *M-M-P*, and brand margins'}
-                  {currentView === 'returns-refunds' && 'Customer warranty credit notes (CN) and supplier rejection debit notes (DN) audit register'}
-                  {currentView === 'settings-roles' && 'Granular role-based access control (RBAC), multi-branch parameters & security audit logs'}
-                </>
+                </h1>
+                )}
+              </div>
+              {currentView !== 'executive-dashboard' && (
+                <p className={`text-[11px] font-medium mt-0.5 text-center lg:text-left ${
+                  currentView === 'lab-pipeline' ? 'text-slate-300' : 'text-outline'
+                }`}>
+                {language === 'bn' ? (
+                  <>
+                    {currentView === 'lab-pipeline' && 'এসিলর ডেল্টা ২০০ এজার • লেন্স প্রস্তুতকরণ থেকে আইএসও ২১৯৮৭ পরীক্ষণ পর্যন্ত ৫-ধাপের কনভেয়ার ট্রে সিস্টেম'}
+                    {currentView === 'modina-erp' && 'ইউনিফাইড অপটিক্যাল পিওএস: বারকোড স্ক্যানার, অটো ফ্রেম ডিটেইলস, পাইকারি কস্ট সিফার ও সেলস কমিশন'}
+                    {currentView === 'stock-master' && 'ডিজাইনার ফ্রেম, লেন্স ইনভেন্টরি, বিন রেজিস্ট্রি এবং বারকোড প্রিন্টার'}
+                    {currentView === 'due-collections' && 'গ্রাহক বকেয়া ব্যবস্থাপনা, এসএমএস নোটিফিকেশন এবং পেমেন্ট নিষ্পত্তিকরণ'}
+                    {currentView === 'reports' && 'ল্যাব মেশিনের কার্যক্ষমতা, হুইল স্থায়িত্ব, ক্ষতি হার এবং স্টাফ কমিশন লেজার'}
+                    {currentView === 'salesmen' && 'বিক্রয়কর্মী টিম, মাসিক লক্ষ্যমাত্রা, কমিশন টায়ার এবং পারফরম্যান্স ট্র্যাকিং'}
+                    {currentView === 'pharmacy-command' && 'স্বয়ংক্রিয় এফইএফও (FEFO) ব্যাচ অ্যালটমেন্ট ও আই-ড্রপ ডিসপেনসারি'}
+                    {currentView === 'multi-branch-ibt' && 'শাখা রিকুইজিশন, চালান গেটপাস ও লাইভ ট্রানজিট ট্র্যাকিং'}
+                    {currentView === 'supplier-grn' && 'অনুমোদিত ভেন্ডর ডিরেক্টরি, ফ্রেম পিও ও গুডস রিসিভড নোট (GRN)'}
+                    {currentView === 'financial-accounting' && 'মাসিক আয়-ব্যয় বিবরণী, পাইকারি কস্ট সিফার ও ব্র্যান্ড মার্জিন'}
+                    {currentView === 'returns-refunds' && 'কাস্টমার ওয়ারেন্টি ক্রেডিট নোট (CN) এবং সরবরাহকারী ডেবিট নোট (DN) অডিট রেজিস্টার'}
+                    {currentView === 'settings-roles' && 'ইউজার পারমিশন কন্ট্রোল (RBAC), সিস্টেম ব্যাকআপ ও অডিট ট্রেইল'}
+                  </>
+                ) : (
+                  <>
+                    {currentView === 'lab-pipeline' && 'Essilor Delta 200 Edger • Real-time 5-stage optical tray conveyor from lens pulling to ISO 21987 inspection'}
+                    {currentView === 'modina-erp' && 'Single-Page Optical ERP: Barcode Scanner, Auto-Populated Frame Details, Confidential Wholesale Cost & Rx Grid Matrix'}
+                    {currentView === 'stock-master' && 'Live inventory of designer frames, optical lenses, and barcode generator'}
+                    {currentView === 'due-collections' && 'Outstanding customer receivables, SMS delivery alerts, and settlement register'}
+                    {currentView === 'reports' && 'Essilor Delta 200 hourly velocity, diamond wheel wear, lens spoilage rate, and commission ledgers'}
+                    {currentView === 'salesmen' && 'Active sales executives, performance targets, commission tiers (2.5% - 5.5%), and sales volume'}
+                    {currentView === 'pharmacy-command' && 'Automated First-Expiry First-Out (FEFO) batch picker, sterile ophthalmic drops & prescription dispensation'}
+                    {currentView === 'multi-branch-ibt' && 'Requisition orders, dispatch manifests, security gate passes & real-time transit telemetry'}
+                    {currentView === 'supplier-grn' && 'Approved vendor directories, optical frame POs, quality inspection & Goods Received Notes (GRN)'}
+                    {currentView === 'financial-accounting' && 'Monthly P&L income statements, confidential wholesale cipher *M-M-P*, and brand margins'}
+                    {currentView === 'returns-refunds' && 'Customer warranty credit notes (CN) and supplier rejection debit notes (DN) audit register'}
+                    {currentView === 'settings-roles' && 'Granular role-based access control (RBAC), multi-branch parameters & security audit logs'}
+                  </>
+                )}
+                </p>
               )}
-            </p>
-          </div>
+            </div>
 
           {/* Context-Specific Action Bar */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className={`lab-header-actions flex items-center gap-1 justify-center lg:justify-end min-w-0 ${
+            currentView === 'lab-pipeline' ? 'flex-nowrap whitespace-nowrap overflow-hidden' : 'flex-wrap'
+          }`}>
+            {/* Dedicated Activity Feed Button (Right-hand side) — hidden on Executive Dashboard */}
+            {currentView !== 'executive-dashboard' && currentView !== 'lab-pipeline' && (
+              <button
+                type="button"
+                onClick={() => setIsActivityFeedOpen(true)}
+                className="px-3 py-1.5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 hover:border-[#00c49f] dark:hover:border-[#00c49f] rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
+                title={language === 'bn' ? 'অ্যাক্টিভিটি ফিড ও লাইভ অডিট ট্রেইল দেখুন' : 'View Live Activity Feed & Audit Trail'}
+              >
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00c49f] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#00c49f]"></span>
+              </span>
+              <span className="material-symbols-outlined text-[16px] text-[#00c49f] group-hover:scale-110 transition-transform">
+                browse_activity
+              </span>
+              <span className={language === 'bn' ? 'font-bangla' : ''}>
+                {language === 'bn' ? 'অ্যাক্টিভিটি ফিড' : 'Activity Feed'}
+              </span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                {recentActivityLogs.length}
+              </span>
+            </button>
+            )}
+
             {currentView === 'lab-pipeline' && (
               <>
                 {/* Segmented Mode Switcher */}
-                <div className="flex items-center p-1 bg-[#f1f4f9] dark:bg-[#1e2330] rounded-xl border border-outline-variant/60 dark:border-[#2b3243]">
+                <div className={`lab-view-switcher ${labViewMode === 'telemetry' ? 'is-telemetry' : ''}`}>
                   <button
                     onClick={() => setLabViewMode('conveyor')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      labViewMode === 'conveyor'
-                        ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
-                        : 'text-outline hover:text-on-surface'
+                    className={`lab-view-switcher__button ${
+                      labViewMode === 'conveyor' ? 'is-active text-white' : 'text-slate-600 dark:text-slate-300'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[16px]">view_column</span>
-                    <span>{language === 'bn' ? 'কনভেয়ার বোর্ড' : 'Conveyor Board'}</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20, lineHeight: '20px', width: 20, height: 20 }}>view_column</span>
+                    <span>{language === 'bn' ? 'কনভেয়ার' : 'Board'}</span>
                   </button>
                   <button
                     onClick={() => setLabViewMode('telemetry')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      labViewMode === 'telemetry'
-                        ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
-                        : 'text-outline hover:text-on-surface'
+                    className={`lab-view-switcher__button ${
+                      labViewMode === 'telemetry' ? 'is-active text-white' : 'text-slate-600 dark:text-slate-300'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[16px]">monitoring</span>
-                    <span>{language === 'bn' ? 'এজার টেলিমেট্রি' : 'Edger Telemetry'}</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20, lineHeight: '20px', width: 20, height: 20 }}>monitoring</span>
+                    <span>{language === 'bn' ? 'টেলিমেট্রি' : 'Telemetry'}</span>
                   </button>
                 </div>
 
                 <button
                   onClick={() => setIsFloatingCameraActive((prev) => !prev)}
-                  className={`px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                  className={`px-1.5 py-0.5 border rounded-md text-xs leading-4 font-bold whitespace-nowrap flex items-center gap-0.5 shrink-0 shadow-xs transition-all cursor-pointer ${
                     isFloatingCameraActive
                       ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-500/20'
                       : 'bg-emerald-50/90 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
                   }`}
                   title="Camera Barcode & QR Scanner"
                 >
-                  <span className="material-symbols-outlined text-[16px]">photo_camera</span>
-                  <span>{isFloatingCameraActive ? (language === 'bn' ? 'ক্যামেরা লাইভ' : 'Camera Live') : (language === 'bn' ? 'ক্যামেরা স্ক্যান' : 'Camera Scan')}</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20, lineHeight: '20px', width: 20, height: 20 }}>photo_camera</span>
+                  <span>{isFloatingCameraActive ? (language === 'bn' ? 'লাইভ' : 'Live') : (language === 'bn' ? 'স্ক্যান' : 'Scan')}</span>
                 </button>
 
                 <button
                   onClick={() => setIsSmsModalOpen(true)}
-                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                  className="px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-md text-xs leading-4 font-bold whitespace-nowrap flex items-center gap-0.5 shrink-0 shadow-xs transition-all cursor-pointer"
                   title="SMS Notification Gateway & Patient Dispatch Hub"
                 >
-                  <span className="material-symbols-outlined text-[16px]">sms</span>
-                  <span>{language === 'bn' ? 'এসএমএস গেটওয়ে' : 'SMS Gateway'}</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20, lineHeight: '20px', width: 20, height: 20 }}>sms</span>
+                  <span>{language === 'bn' ? 'এসএমএস' : 'SMS'}</span>
                 </button>
 
                 <button
@@ -1111,10 +1178,10 @@ export default function App() {
                     }
                     setIsCreateTrayOpen(true);
                   }}
-                  className="px-3.5 py-1.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                  className="px-1.5 py-0.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-md text-xs leading-4 font-bold whitespace-nowrap flex items-center gap-0.5 shrink-0 shadow-xs transition-all cursor-pointer"
                 >
-                  <span className="material-symbols-outlined text-[16px]">add</span>
-                  <span>{language === 'bn' ? '+ নতুন গ্লেজিং অর্ডার' : '+ New Glazing Order'}</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20, lineHeight: '20px', width: 20, height: 20 }}>add</span>
+                  <span>{language === 'bn' ? 'নতুন অর্ডার' : 'New Order'}</span>
                 </button>
               </>
             )}
@@ -1123,23 +1190,26 @@ export default function App() {
               <>
                 <button
                   onClick={() => setIsFloatingCameraActive((prev) => !prev)}
-                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="h-7.5 px-2.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs hover:bg-emerald-100 transition-all"
+                  title="Camera Scan"
                 >
-                  <span className="material-symbols-outlined text-[16px]">photo_camera</span>
+                  <span className="material-symbols-outlined text-[15px]">photo_camera</span>
                   <span>{language === 'bn' ? 'ক্যামেরা স্ক্যান' : 'Camera Scan'}</span>
                 </button>
                 <button
                   onClick={() => setIsQuickScanOpen(true)}
-                  className="px-3 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="h-7.5 px-2.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs hover:bg-slate-200 transition-all"
+                  title="Quick Barcode (F4)"
                 >
-                  <span className="material-symbols-outlined text-[16px] text-[#169b90]">barcode_scanner</span>
+                  <span className="material-symbols-outlined text-[15px] text-[#169b90]">barcode_scanner</span>
                   <span>{language === 'bn' ? 'কুইক বারকোড (F4)' : 'Quick Barcode (F4)'}</span>
                 </button>
                 <button
                   onClick={() => setIsNewInvoiceOpen(true)}
-                  className="px-3.5 py-1.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                  className="h-7.5 px-2.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                  title="Quick Invoice"
                 >
-                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  <span className="material-symbols-outlined text-[15px]">add</span>
                   <span>{language === 'bn' ? '+ দ্রুত ইনভয়েস' : '+ Quick Invoice'}</span>
                 </button>
               </>
@@ -1190,13 +1260,8 @@ export default function App() {
             )}
           </div>
         </div>
-
-        {/* Real-time Activity Feed Component (Latest 3 Audit Trail Logs for Recent Lab Advancements) */}
-        <ActivityFeed
-          logs={recentActivityLogs}
-          onViewJob={(jobId) => setSelectedJobId(jobId)}
-        />
       </header>
+        )}
 
         {/* View Switcher Content */}
         {currentView === 'lab-pipeline' && (
@@ -1204,34 +1269,34 @@ export default function App() {
             {labViewMode === 'conveyor' ? (
               <div className="flex flex-col gap-4">
                 {/* Clean Conveyor Pipeline Overview & Quick Filter Bar */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 bg-surface-container-lowest dark:bg-[#181c25] rounded-2xl border border-outline-variant/70 dark:border-[#262c3b] shadow-2xs">
+                <div className="lab-summary-toolbar flex flex-col md:flex-row md:items-center justify-between gap-2 p-2 bg-surface-container-lowest dark:bg-[#181c25] rounded-xl border border-outline-variant/70 dark:border-[#262c3b] shadow-2xs">
                   {/* Left Metrics Capsules */}
                   <div className="flex items-center gap-2 sm:gap-3 flex-wrap text-xs">
                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] rounded-xl border border-outline-variant/60 dark:border-[#2b3346]">
-                      <span className="material-symbols-outlined text-[16px] text-[#169b90]">inventory_2</span>
-                      <span className="text-outline">মোট সক্রিয় ট্রে:</span>
-                      <span className="font-bold text-on-surface font-data-rx">{jobs.length}টি</span>
+                      <span className="material-symbols-outlined text-[12px] text-[#169b90]">inventory_2</span>
+                      <span className="text-outline">{language === 'bn' ? 'মোট সক্রিয় ট্রে:' : 'Active trays:'}</span>
+                      <span className="font-bold text-on-surface font-data-rx">{jobs.length}{language === 'bn' ? 'টি' : ''}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-xl border border-amber-500/20">
-                      <span className="material-symbols-outlined text-[16px]">bolt</span>
-                      <span>জরুরি রাশ (2H):</span>
+                      <span className="material-symbols-outlined text-[12px]">bolt</span>
+                      <span>{language === 'bn' ? 'জরুরি রাশ (2H):' : 'Urgent (2H):'}</span>
                       <span className="font-bold font-data-rx">
-                        {jobs.filter((j) => j.priority === 'express' || j.priority === 'stat').length}টি
+                        {jobs.filter((j) => j.priority === 'express' || j.priority === 'stat').length}{language === 'bn' ? 'টি' : ''}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-500/20">
-                      <span className="material-symbols-outlined text-[16px]">task_alt</span>
-                      <span>ডেলিভারি প্রস্তুত:</span>
+                      <span className="material-symbols-outlined text-[12px]">task_alt</span>
+                      <span>{language === 'bn' ? 'ডেলিভারি প্রস্তুত:' : 'Ready to deliver:'}</span>
                       <span className="font-bold font-data-rx">
-                        {jobs.filter((j) => j.stage === 5).length}টি
+                        {jobs.filter((j) => j.stage >= 3).length}{language === 'bn' ? 'টি' : ''}
                       </span>
                     </div>
 
                     <div className="hidden xl:flex items-center gap-1.5 text-[11px] text-outline px-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                      <span>Essilor Delta 200 • ৯৮.৪% অন-টাইম</span>
+                      <span>{language === 'bn' ? 'Essilor Delta 200 • ৯৮.৪% অন-টাইম' : 'Essilor Delta 200 • 98.4% on-time'}</span>
                     </div>
                   </div>
 
@@ -1246,7 +1311,7 @@ export default function App() {
                           : 'text-outline hover:text-on-surface'
                       }`}
                     >
-                      সকল ট্রে ({jobs.length})
+                      {language === 'bn' ? `সকল ট্রে (${jobs.length})` : `All Trays (${jobs.length})`}
                     </button>
                     <button
                       type="button"
@@ -1257,8 +1322,8 @@ export default function App() {
                           : 'text-outline hover:text-amber-600'
                       }`}
                     >
-                      <span className="material-symbols-outlined text-[14px]">bolt</span>
-                      <span>রাশ ({jobs.filter((j) => j.priority === 'express' || j.priority === 'stat').length})</span>
+                      <span className="material-symbols-outlined text-[12px]">bolt</span>
+                      <span>{language === 'bn' ? `রাশ (${jobs.filter((j) => j.priority === 'express' || j.priority === 'stat').length})` : `Rush (${jobs.filter((j) => j.priority === 'express' || j.priority === 'stat').length})`}</span>
                     </button>
                     <button
                       type="button"
@@ -1269,8 +1334,8 @@ export default function App() {
                           : 'text-outline hover:text-emerald-600'
                       }`}
                     >
-                      <span className="material-symbols-outlined text-[14px]">check</span>
-                      <span>প্রস্তুত ({jobs.filter((j) => j.stage === 5).length})</span>
+                      <span className="material-symbols-outlined text-[12px]">check</span>
+                      <span>{language === 'bn' ? `প্রস্তুত (${jobs.filter((j) => j.stage >= 3).length})` : `Ready (${jobs.filter((j) => j.stage >= 3).length})`}</span>
                     </button>
                   </div>
                 </div>
@@ -1295,14 +1360,10 @@ export default function App() {
                 />
               </div>
             ) : (
-              /* Workshop Velocity & Machine Telemetry View */
               <ExtejDashboardHero
                 jobs={jobs}
-                onSelectView={(v) => {
-                  if (v === 'ai-glazing') setIsGlazingAssistantOpen(true);
-                  else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
-                  else setCurrentView(v);
-                }}
+                showOverviewCards={false}
+                onSelectView={(view) => setCurrentView(view)}
                 onOpenCreateTray={() => setIsCreateTrayOpen(true)}
                 onOpenQuickScan={() => setIsQuickScanOpen(true)}
                 onViewJobRx={(job) => setSelectedJobId(job.id)}
@@ -1315,6 +1376,7 @@ export default function App() {
           <ModinaOpticsErpPos
             salesmenList={salesmen}
             onAddSalesman={handleAddSalesman}
+            onManageSalesmen={() => setCurrentView('salesmen')}
             onRecordSale={(sale) => {
               setSalesRecords((prev) => [sale, ...prev]);
               setSalesmen((prev) =>
@@ -1329,12 +1391,16 @@ export default function App() {
                 )
               );
             }}
+            onOpenQuickScan={() => setIsQuickScanOpen(true)}
+            onOpenLiveCamera={() => setIsFloatingCameraActive((prev) => !prev)}
+            onOpenNewInvoice={() => setIsNewInvoiceOpen(true)}
           />
         )}
 
         {currentView === 'stock-master' && (
           <InventoryRegistryTable
             items={inventory}
+            initialSearchQuery={searchQuery}
             currentUser={currentUser}
             suppliers={suppliers}
             onRestock={handleRestock}
@@ -1366,12 +1432,14 @@ export default function App() {
 
         {currentView === 'salesmen' && (
           <SalesmanManagementView
+            canManage={currentUserRole === 'admin'}
             salesmen={salesmen}
             salesRecords={salesRecords}
             onAddSalesman={handleAddSalesman}
             onUpdateSalesman={handleUpdateSalesman}
             onToggleSalesmanStatus={handleToggleSalesmanStatus}
             onToggleStatus={handleToggleSalesmanStatus}
+            onRemoveSalesman={handleRemoveSalesman}
             onViewPerformanceReport={() => setCurrentView('reports')}
           />
         )}
@@ -1523,6 +1591,10 @@ export default function App() {
       <CreateLabTrayModal
         isOpen={isCreateTrayOpen}
         onClose={() => setIsCreateTrayOpen(false)}
+        onManageTechnicians={() => {
+          sessionStorage.setItem('settingsInitialTab', 'technicians');
+          setCurrentView('settings-roles');
+        }}
         inventory={inventory}
         onCreateJob={handleCreateJob}
       />
@@ -1575,6 +1647,9 @@ export default function App() {
         isOpen={!!selectedJob}
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
+        onUpdateJob={(updatedJob) => {
+          setJobs(currentJobs => currentJobs.map(item => item.id === updatedJob.id ? updatedJob : item));
+        }}
         onAdvanceJob={(jobId, customNote, operator) => handleAdvanceJob(jobId, customNote, operator)}
         onSendToAIGlazing={() => {
           setSelectedJobId(null);
@@ -1626,7 +1701,7 @@ export default function App() {
 
       {/* Automated Stage 5 SMS Notification Dispatch Banner */}
       {smsToast && (
-        <div className="fixed top-20 right-6 z-50 bg-gradient-to-r from-emerald-700 to-teal-800 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-emerald-400/60 animate-in fade-in slide-in-from-top-4 duration-200 max-w-md">
+        <div className="fixed top-20 right-6 z-50 bg-[#08745f] text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-emerald-400/60 animate-in fade-in slide-in-from-top-4 duration-200 max-w-md">
           <span className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
             <span className="material-symbols-outlined text-[20px]">sms</span>
           </span>
@@ -1713,6 +1788,68 @@ export default function App() {
                 handleCameraBarcodeDetected(code, format);
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Slide-over Activity Feed Drawer (Right-Hand Side) */}
+      {isActivityFeedOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop Overlay */}
+          <div
+            onClick={() => setIsActivityFeedOpen(false)}
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+          />
+
+          {/* Slide-over Right Panel */}
+          <div className="relative w-full max-w-4xl bg-white dark:bg-[#0e1422] h-full shadow-2xl border-l border-slate-200/90 dark:border-slate-800 z-10 flex flex-col overflow-hidden animate-slideInRight">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-[#111827]/80 backdrop-blur-md">
+              <div className="flex items-center gap-2.5">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00c49f] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#00c49f]"></span>
+                </span>
+                <span className="material-symbols-outlined text-[20px] text-[#00c49f]">
+                  browse_activity
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span className={language === 'bn' ? 'font-bangla' : ''}>
+                      {language === 'bn' ? 'অ্যাক্টিভিটি ফিড ও লাইভ অডিট ট্রেইল' : 'Activity Feed & Live Audit Trail'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#00c49f]/10 text-[#00a884] dark:text-[#00f5b4] border border-[#00c49f]/30">
+                      {recentActivityLogs.length} events
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bangla">
+                    {language === 'bn'
+                      ? 'ল্যাব গ্লেজিং, চেক-ইন এবং স্টেজ আপডেটের লাইভ টাইমলাইন'
+                      : 'Live chronological stream of laboratory glazing, intake check-ins, and technician updates'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsActivityFeedOpen(false)}
+                className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Close Feed (Esc)"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            {/* Drawer Body containing ONLY the ActivityFeed */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              <ActivityFeed
+                logs={recentActivityLogs}
+                onViewJob={(jobId) => {
+                  setSelectedJobId(jobId);
+                }}
+                initialMinimized={false}
+              />
+            </div>
           </div>
         </div>
       )}

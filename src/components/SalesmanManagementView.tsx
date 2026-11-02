@@ -2,22 +2,26 @@ import React, { useState, useMemo } from 'react';
 import { Salesman, SaleRecord } from '../types';
 
 interface SalesmanManagementViewProps {
+  canManage?: boolean;
   salesmen: Salesman[];
   salesRecords: SaleRecord[];
   onAddSalesman: (salesman: Salesman) => void;
   onUpdateSalesman: (salesman: Salesman) => void;
   onToggleSalesmanStatus?: (id: string) => void;
   onToggleStatus?: (id: string) => void;
+  onRemoveSalesman?: (id: string) => void;
   onViewPerformanceReport: () => void;
 }
 
 export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
+  canManage = true,
   salesmen,
   salesRecords,
   onAddSalesman,
   onUpdateSalesman,
   onToggleSalesmanStatus,
   onToggleStatus,
+  onRemoveSalesman,
   onViewPerformanceReport,
 }) => {
   const toggleStatus = onToggleSalesmanStatus || onToggleStatus;
@@ -184,13 +188,13 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
             <span>View Commission Analytics</span>
           </button>
 
-          <button
+          {canManage && <button
             onClick={handleOpenCreate}
             className="px-4 py-2 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-[#169b90]/20 transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-[18px]">person_add</span>
             <span>+ Add Salesman</span>
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -395,7 +399,7 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-between pt-3 border-t border-outline-variant/60 dark:border-[#202534] gap-2">
+              {canManage && <div className="flex items-center justify-between pt-3 border-t border-outline-variant/60 dark:border-[#202534] gap-2">
                 <button
                   type="button"
                   onClick={() => toggleStatus?.(sm.id)}
@@ -421,8 +425,20 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
                     <span className="material-symbols-outlined text-[15px]">edit</span>
                     <span>Edit</span>
                   </button>
+                  {onRemoveSalesman && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Remove ${sm.name} permanently?`)) onRemoveSalesman(sm.id);
+                      }}
+                      className="px-3 py-1.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">person_remove</span>
+                      <span>Remove</span>
+                    </button>
+                  )}
                 </div>
-              </div>
+              </div>}
             </div>
           );
         })}

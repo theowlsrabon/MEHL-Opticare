@@ -39,8 +39,8 @@ interface OphthalmicLensSelectorProps {
 export const MATERIALS = [
   {
     id: 'cr39',
-    bn: 'CR-39 প্লাস্টিক',
-    en: 'CR-39',
+    bn: 'প্লাস্টিক',
+    en: 'Plastic',
     basePrice: 600,
     icon: (
       <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-950/60 border border-purple-300 dark:border-purple-800 flex items-center justify-center shrink-0">
@@ -285,8 +285,8 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                 onClick={() => onSelectMaterial(m.id)}
                 className={`flex items-center gap-2.5 p-2.5 rounded-xl text-left transition-all cursor-pointer ${
                   isSelected
-                    ? 'border-2 border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
-                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] hover:border-sky-300 dark:hover:border-slate-600'
+                    ? 'border-2 border-[#00c49f] bg-[#00c49f]/10 dark:bg-[#00c49f]/15 shadow-sm shadow-[#00c49f]/15'
+                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] hover:border-[#00c49f]/40 dark:hover:border-slate-600'
                 }`}
               >
                 {m.icon}
@@ -294,7 +294,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                   <div
                     className={`text-xs font-bold truncate ${
                       isSelected
-                        ? 'text-blue-700 dark:text-blue-400'
+                        ? 'text-[#00a884] dark:text-[#00f5b4]'
                         : 'text-slate-700 dark:text-slate-200'
                     }`}
                   >
@@ -327,8 +327,8 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                 onClick={() => onSelectCoating(c.id)}
                 className={`flex items-center gap-2.5 p-2.5 rounded-xl text-left transition-all cursor-pointer ${
                   isSelected
-                    ? 'border-2 border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
-                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] hover:border-sky-300 dark:hover:border-slate-600'
+                    ? 'border-2 border-[#00c49f] bg-[#00c49f]/10 dark:bg-[#00c49f]/15 shadow-sm shadow-[#00c49f]/15'
+                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] hover:border-[#00c49f]/40 dark:hover:border-slate-600'
                 }`}
               >
                 {c.icon}
@@ -336,7 +336,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                   <div
                     className={`text-xs font-bold truncate ${
                       isSelected
-                        ? 'text-blue-700 dark:text-blue-400'
+                        ? 'text-[#00a884] dark:text-[#00f5b4]'
                         : 'text-slate-700 dark:text-slate-200'
                     }`}
                   >
@@ -369,15 +369,15 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                 onClick={() => onSelectColor(col.id)}
                 className={`flex flex-col items-center justify-center text-center p-3 rounded-xl transition-all cursor-pointer ${
                   isSelected
-                    ? 'border-2 border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
-                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] hover:border-sky-300 dark:hover:border-slate-600'
+                    ? 'border-2 border-[#00c49f] bg-[#00c49f]/10 dark:bg-[#00c49f]/15 shadow-sm shadow-[#00c49f]/15'
+                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] hover:border-[#00c49f]/40 dark:hover:border-slate-600'
                 }`}
               >
                 <div className="mb-1.5">{col.icon}</div>
                 <div
                   className={`text-xs font-bold truncate w-full ${
                     isSelected
-                      ? 'text-blue-700 dark:text-blue-400'
+                      ? 'text-[#00a884] dark:text-[#00f5b4]'
                       : 'text-slate-700 dark:text-slate-200'
                   }`}
                 >
@@ -409,14 +409,14 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                 onClick={() => onSelectDesign(d.id)}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl text-center transition-all cursor-pointer ${
                   isSelected
-                    ? 'border-2 border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
-                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] hover:border-sky-300 dark:hover:border-slate-600'
+                    ? 'border-2 border-[#00c49f] bg-[#00c49f]/10 dark:bg-[#00c49f]/15 shadow-sm shadow-[#00c49f]/15'
+                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] hover:border-[#00c49f]/40 dark:hover:border-slate-600'
                 }`}
               >
                 <div
                   className={`text-xs font-bold ${
                     isSelected
-                      ? 'text-blue-700 dark:text-blue-400'
+                      ? 'text-[#00a884] dark:text-[#00f5b4]'
                       : 'text-slate-700 dark:text-slate-200'
                   }`}
                 >
@@ -432,27 +432,30 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
       </div>
 
       {/* Bottom Summary Bar (Dark Container) */}
-      <div className="bg-[#0b1120] text-white rounded-xl p-3 border border-slate-800 shadow-md flex flex-col items-center justify-center">
-        <div className="text-[11px] text-sky-400 font-medium mb-1 tracking-wide">
-          নির্বাচিত লেন্স
+      <div className="bg-[#090d12] text-white rounded-xl p-3 border border-[#1e2d3d] shadow-md flex flex-col items-center justify-center">
+        <div className="text-[11px] text-[#00c49f] font-bold mb-1 tracking-wide uppercase">
+          নির্বাচিত লেন্স কনফিগারেশন
         </div>
         <div className="text-xs sm:text-sm font-bold flex flex-wrap items-center justify-center gap-2 text-slate-100">
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2.5 h-2.5 rounded-xs bg-purple-400"></span>
+          <span className="flex items-center gap-1.5 bg-[#121c26] px-2 py-0.5 rounded-md border border-[#1e2d3d]">
+            <span className="inline-block w-2 h-2 rounded-full bg-purple-400"></span>
             <span>{curMat.bn}</span>
           </span>
-          <span className="text-slate-500">•</span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2.5 h-2.5 rounded-xs bg-slate-200"></span>
+          <span className="text-slate-600">•</span>
+          <span className="flex items-center gap-1.5 bg-[#121c26] px-2 py-0.5 rounded-md border border-[#1e2d3d]">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
             <span>{curCoat.bn}</span>
           </span>
-          <span className="text-slate-500">•</span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+          <span className="text-slate-600">•</span>
+          <span className="flex items-center gap-1.5 bg-[#121c26] px-2 py-0.5 rounded-md border border-[#1e2d3d]">
+            <span className="inline-block w-2 h-2 rounded-full bg-sky-400"></span>
             <span>{curColor.bn}</span>
           </span>
-          <span className="text-slate-500">•</span>
-          <span className="text-sky-400 font-black">{curDesign.bn}</span>
+          <span className="text-slate-600">•</span>
+          <span className="flex items-center gap-1.5 bg-[#121c26] px-2 py-0.5 rounded-md border border-[#1e2d3d]">
+            <span className="inline-block w-2 h-2 rounded-full bg-[#00f5b4]"></span>
+            {curDesign.bn}
+          </span>
         </div>
       </div>
     </div>

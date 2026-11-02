@@ -386,12 +386,20 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
         patientPhone: mobileNumber,
         refDoctor: 'Dr. Tariq Modina',
         rxSummary: `OD: ${odSph} / OS: ${osSph}`,
+        odSph,
+        odCyl,
+        odAdd,
+        odPd: odIpd,
         stage: 1,
         urgency: 'rush',
         deliveryTime: deliveryCommitment,
         frameName: (cartItems || []).find((i) => i.categoryType === 'frame')?.name || 'Ray-Ban Aviator RB3025',
         lensName: (cartItems || []).find((i) => i.categoryType === 'lens')?.name || 'Crizal Alize 1.61 Hi-Index',
         odAxis: odAxis,
+        osSph,
+        osCyl,
+        osAdd,
+        osPd: osIpd,
         osAxis: osAxis,
         pdValue: `${odIpd}/${osIpd}mm`,
         paidAmount: numericReceived,
@@ -444,19 +452,19 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
       )}
 
       {/* TOP SYSTEM & ROLE STATUS BAR */}
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white border border-slate-700/80 rounded-xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center font-bold shadow-xs">
             <span className="material-symbols-outlined text-[24px]">point_of_sale</span>
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-headline-sm font-bold text-on-surface">Madina Optical POS &amp; Hospital ERP</h1>
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md">Madina Optical POS &amp; Hospital ERP</h1>
               <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-primary-fixed text-primary font-data-rx">
                 v3.2 Rx-Sync
               </span>
             </div>
-            <p className="text-[12px] text-outline">
+            <p className="text-xs text-slate-400 leading-relaxed">
               Dynamic Negotiated Pricing • Eyewear 35x15mm Tail Tags • Secret Cost Floor • Clinical Rx Matrix
             </p>
           </div>

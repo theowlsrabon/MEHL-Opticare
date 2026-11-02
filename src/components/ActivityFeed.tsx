@@ -23,6 +23,7 @@ interface ActivityFeedProps {
   logs: ActivityFeedItem[];
   onViewJob?: (jobId: string) => void;
   className?: string;
+  initialMinimized?: boolean;
 }
 
 export type TimeFilterPeriod = 'all' | '24h' | '7d' | '30d' | 'custom';
@@ -51,8 +52,9 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   logs,
   onViewJob,
   className = '',
+  initialMinimized = true,
 }) => {
-  const [isFeedMinimized, setIsFeedMinimized] = useState(true);
+  const [isFeedMinimized, setIsFeedMinimized] = useState(initialMinimized);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [isPerformanceModalOpen, setIsPerformanceModalOpen] = useState(false);
 
@@ -316,14 +318,14 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
         isFeedMinimized ? 'p-2 sm:px-3 sm:py-2' : 'p-3 sm:p-3.5'
       } ${className}`}
     >
-      {/* Feed Header (Single-line when minimized) */}
+      {/* Feed Header (Single-line or wrapped cleanly when space is constrained) */}
       <div
-        className={`flex items-center justify-between gap-2.5 ${
+        className={`flex flex-wrap items-center justify-between gap-2.5 ${
           isFeedMinimized ? '' : 'pb-2 border-b border-outline-variant/40 dark:border-[#222734]'
         }`}
       >
         {/* Title, Live Pulse & Latest Log Snippet */}
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 max-w-full">
           <div className="relative flex h-2 w-2 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
@@ -339,7 +341,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
           {isFeedMinimized && latestLog && (
             <div
               onClick={() => setIsFeedMinimized(false)}
-              className="hidden sm:flex items-center gap-2 text-[10px] bg-surface-container/50 dark:bg-[#131720] border border-outline-variant/40 dark:border-[#242b3b] px-2 py-0.5 rounded-lg cursor-pointer hover:border-teal-500/50 transition-colors truncate max-w-xl text-outline hover:text-on-surface"
+              className="hidden lg:flex items-center gap-2 text-[10px] bg-surface-container/50 dark:bg-[#131720] border border-outline-variant/40 dark:border-[#242b3b] px-2 py-0.5 rounded-lg cursor-pointer hover:border-teal-500/50 transition-colors truncate max-w-md xl:max-w-xl text-outline hover:text-on-surface"
               title="Click to expand details"
             >
               <span className="font-mono font-bold text-slate-800 dark:text-slate-200 shrink-0">
@@ -358,7 +360,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
         </div>
 
         {/* Right Header Controls: Action Type Filter, Date Range Picker & Feed Toggles */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 flex-wrap ml-auto">
           {/* Action Type Filter Pills */}
           <div className="flex items-center bg-surface-container/70 dark:bg-[#1c222c] border border-outline-variant/60 dark:border-[#272e3d] rounded-lg p-0.5 text-xs">
             <button

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Barcode from 'react-barcode';
+import QRCode from 'qrcode';
 import { Salesman, SaleRecord } from '../types';
 import { printElementById } from '../utils/printUtils';
 import {
@@ -43,8 +44,12 @@ interface PrescriptionRow {
 
 interface Props {
   salesmenList?: Salesman[];
+  onManageSalesmen?: () => void;
   onAddSalesman?: (salesman: Salesman) => void;
   onRecordSale?: (sale: SaleRecord) => void;
+  onOpenQuickScan?: () => void;
+  onOpenLiveCamera?: () => void;
+  onOpenNewInvoice?: () => void;
 }
 
 // Optical Inventory Catalog for Barcode Scanning
@@ -153,39 +158,41 @@ const INITIAL_SALES_HISTORY = [
 
 export const ModinaOpticsErpPos: React.FC<Props> = ({
   salesmenList,
+  onManageSalesmen,
   onAddSalesman,
   onRecordSale,
+  onOpenQuickScan,
+  onOpenLiveCamera,
+  onOpenNewInvoice,
 }) => {
   // Navigation / View Tabs
   const [activeTab, setActiveTab] = useState<'pos' | 'salesmen-analytics'>('pos');
 
   // 1. Patient & Basic Info State
-  const [patientName, setPatientName] = useState<string>('Al-Amin Chowdhury');
-  const [patientPhone, setPatientPhone] = useState<string>('01712-984433');
-  const [optometrist, setOptometrist] = useState<string>('Dr. K. Zaman, MBBS, DO (Ophth)');
-  const [deliveryDate, setDeliveryDate] = useState<string>(
-    new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
+  const [patientName, setPatientName] = useState<string>('');
+  const [patientPhone, setPatientPhone] = useState<string>('');
+  const [optometrist, setOptometrist] = useState<string>('');
+  const [deliveryDate, setDeliveryDate] = useState<string>('');
 
   // 2. Optical Frame Barcode Scanner & Inventory State
-  const [barcodeInput, setBarcodeInput] = useState<string>('FRM-RB-5228');
+  const [barcodeInput, setBarcodeInput] = useState<string>('');
   const [isScanning, setIsScanning] = useState<boolean>(false);
-  const [scanMessage, setScanMessage] = useState<string>('Barcode verified: Ray-Ban Optics (RB-5228)');
-  const [scannedFrame, setScannedFrame] = useState<FrameProduct>(INVENTORY_CATALOG[0]);
-  const [negotiatedPrice, setNegotiatedPrice] = useState<number>(17500);
+  const [scanMessage, setScanMessage] = useState<string>('');
+  const [scannedFrame, setScannedFrame] = useState<FrameProduct | null>(null);
+  const [negotiatedPrice, setNegotiatedPrice] = useState<number>(0);
   const [showAdminConfidential, setShowAdminConfidential] = useState<boolean>(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   // 3. Ophthalmic Lens Selection & Prescription Grid (ছবি অনুযায়ী ৪-ধাপের সিলেকশন)
-  const [lensMaterial, setLensMaterial] = useState<string>('cr39');
-  const [lensCoating, setLensCoating] = useState<string>('white');
-  const [lensColor, setLensColor] = useState<string>('clear');
-  const [lensDesign, setLensDesign] = useState<string>('single_vision');
+  const [lensMaterial, setLensMaterial] = useState<string>('');
+  const [lensCoating, setLensCoating] = useState<string>('');
+  const [lensColor, setLensColor] = useState<string>('');
+  const [lensDesign, setLensDesign] = useState<string>('');
   const [lensCustomConfig, setLensCustomConfig] = useState<LensConfiguration | null>(null);
 
   const [rxGrid, setRxGrid] = useState<PrescriptionRow[]>([
-    { eye: 'OD (Right)', sph: '-1.50', cyl: '-0.75', axis: '90°', add: '+1.75', pd: '31.5' },
-    { eye: 'OS (Left)', sph: '-1.25', cyl: '-0.50', axis: '85°', add: '+1.75', pd: '31.5' },
+    { eye: 'OD (Right)', sph: '', cyl: '', axis: '', add: '', pd: '' },
+    { eye: 'OS (Left)', sph: '', cyl: '', axis: '', add: '', pd: '' },
   ]);
 
   // 4. Salesman Assignment & Commission
@@ -200,7 +207,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     }
   }, [salesmenList]);
 
-  const [selectedSalesmanId, setSelectedSalesmanId] = useState<string>('sm-1');
+  const [selectedSalesmanId, setSelectedSalesmanId] = useState<string>('');
   const [salesHistory, setSalesHistory] = useState(INITIAL_SALES_HISTORY);
 
   // Salesmen Filter & Admin State
@@ -216,12 +223,13 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   });
 
   // 5. Dynamic Price Calculation & Invoice Actions
-  const [specialDiscount, setSpecialDiscount] = useState<number>(500);
-  const [advancePaid, setAdvancePaid] = useState<number>(10000);
+  const [specialDiscount, setSpecialDiscount] = useState<number>(0);
+  const [advancePaid, setAdvancePaid] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'bKash' | 'Nagad' | 'Card'>('bKash');
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
   const [printDocType, setPrintDocType] = useState<'invoice' | 'job-card'>('invoice');
   const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState<string>('INV-9022');
+  const [prescriptionQrDataUrl, setPrescriptionQrDataUrl] = useState('');
 
   // Auto-focus barcode input on mount
   useEffect(() => {
@@ -239,6 +247,9 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
         index: '1.56',
       };
     }
+    if (!lensMaterial && !lensCoating && !lensColor && !lensDesign) {
+      return { id: 'no-lens', name: 'No lens configuration selected', price: 0, coating: '', index: '' };
+    }
     const curMat = MATERIALS.find((m) => m.id === lensMaterial) || MATERIALS[0];
     const curCoat = COATINGS.find((c) => c.id === lensCoating) || COATINGS[0];
     const curColor = COLORS.find((c) => c.id === lensColor) || COLORS[0];
@@ -253,9 +264,28 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     };
   }, [lensCustomConfig, lensMaterial, lensCoating, lensColor, lensDesign]);
 
+  useEffect(() => {
+    const payload = `MEHL-RX:${JSON.stringify({
+      type: 'MEHL-RX',
+      invoiceNumber: currentInvoiceNumber,
+      patientName,
+      patientPhone,
+      frameName: scannedFrame ? `${scannedFrame.brand} ${scannedFrame.model}` : '',
+      lensName: selectedLens.price > 0 ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}` : '',
+      rxGrid,
+    })}`;
+
+    QRCode.toDataURL(payload, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 220,
+      color: { dark: '#0f172a', light: '#ffffff' },
+    }).then(setPrescriptionQrDataUrl).catch(() => setPrescriptionQrDataUrl(''));
+  }, [currentInvoiceNumber, patientName, patientPhone, scannedFrame, selectedLens, rxGrid]);
+
   // Selected Salesman Object
   const currentSalesman = useMemo(() => {
-    return salesmen.find((s) => s.id === selectedSalesmanId) || salesmen[0];
+    return salesmen.find((s) => s.id === selectedSalesmanId);
   }, [salesmen, selectedSalesmanId]);
 
   // Financial Calculations
@@ -299,6 +329,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
         setNegotiatedPrice(matched.guidePrice);
         setScanMessage(`Verified item: ${matched.brand} (${matched.model})`);
       } else {
+        setScannedFrame(null);
+        setNegotiatedPrice(0);
         setScanMessage(`Barcode "${cleaned}" not in local catalog. Type a valid barcode or click quick samples below.`);
       }
     }, 150);
@@ -379,6 +411,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
   // Generate Invoice and Record
   const handleGenerateInvoice = () => {
+    if (!scannedFrame || !currentSalesman) return;
     const invId = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
     setCurrentInvoiceNumber(invId);
 
@@ -425,6 +458,27 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       status: 'completed',
     };
 
+    const prescriptionPayload = {
+      type: 'MEHL-RX',
+      invoiceNumber: invId,
+      patientName: patientName || '',
+      patientPhone: patientPhone || '',
+      frameName: `${scannedFrame.brand} ${scannedFrame.model}`,
+      lensName: selectedLens.price > 0
+        ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}`
+        : '',
+      rxGrid,
+    };
+    try {
+      const saved = JSON.parse(localStorage.getItem('mehl-pos-prescriptions') || '{}') as Record<string, unknown>;
+      localStorage.setItem('mehl-pos-prescriptions', JSON.stringify({
+        ...saved,
+        [invId]: prescriptionPayload,
+      }));
+    } catch {
+      // Keep POS generation usable if browser storage is unavailable.
+    }
+
     setSalesHistory((prev) => [newRecord, ...prev]);
     onRecordSale?.(fullSaleRecord);
     setShowPrintModal(true);
@@ -434,63 +488,98 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     <div className="w-full text-slate-800 dark:text-slate-100 font-sans">
       {/* Top Application Header Bar */}
       <div className="max-w-7xl mx-auto mb-5">
-        <div className="bg-white dark:bg-[#1a202c] border border-teal-100 dark:border-teal-950/60 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white border border-slate-700/80 rounded-xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-teal-700 via-teal-600 to-emerald-500 text-white flex items-center justify-center shadow-md shadow-teal-700/20">
-              <i className="fa-solid fa-glasses text-2xl"></i>
+            <div className="w-11 h-11 rounded-lg bg-gradient-to-tr from-[#00c49f] to-[#009b7d] text-white flex items-center justify-center shadow-sm shadow-[#00c49f]/20">
+              <i className="fa-solid fa-glasses text-xl"></i>
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-                  Modina Optics <span className="text-teal-600 dark:text-teal-400">ERP</span>
+                <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md">
+                  Modina Optics <span className="text-[#00c49f]">ERP</span>
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                  <i className="fa-solid fa-circle text-[7px] text-emerald-500 mr-1 animate-pulse"></i>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#00c49f]/10 text-[#00a884] dark:text-[#00f5b4] border border-[#00c49f]/25">
+                  <i className="fa-solid fa-circle text-[6px] text-[#00c49f] mr-1 animate-pulse"></i>
                   Terminal #01 Live
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Single-Page Optical POS, Barcode Scanning, Exact Rx Matrix & Sales Commission Suite
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Single-Page Optical POS, Barcode Scanning, Exact Rx Matrix &amp; Sales Commission Suite
               </p>
             </div>
           </div>
 
-          {/* View Mode Tabs & Quick Stats */}
-          <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#141824] p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 self-start md:self-auto">
-            <button
-              type="button"
-              onClick={() => setActiveTab('pos')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'pos'
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <i className="fa-solid fa-cash-register"></i>
-              <span>POS &amp; Prescription Grid</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('salesmen-analytics')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'salesmen-analytics'
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <i className="fa-solid fa-chart-line"></i>
-              <span>Salesmen Performance &amp; Admin</span>
-            </button>
+          {/* Quick Action Icons & View Mode Tabs */}
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+            {/* Quick Action Buttons (Smaller Icons) */}
+            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-[#141824] p-1 rounded-xl border border-slate-200/80 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={onOpenLiveCamera}
+                className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                title="Camera Barcode Scanner"
+              >
+                <i className="fa-solid fa-camera text-xs"></i>
+                <span className="hidden sm:inline">Camera Scan</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenQuickScan}
+                className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-[#1f2637] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:bg-slate-200 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                title="Quick Barcode Scanner (F4)"
+              >
+                <i className="fa-solid fa-barcode text-xs text-[#00c49f]"></i>
+                <span className="hidden sm:inline">Quick Barcode</span>
+                <span className="text-[9px] font-mono px-1 py-0.2 bg-slate-200 dark:bg-slate-700 rounded text-slate-500">F4</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenNewInvoice || onOpenQuickScan}
+                className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-[#00c49f] to-[#009b7d] text-white hover:brightness-105 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                title="Quick Scan / Quick Invoice"
+              >
+                <i className="fa-solid fa-qrcode text-xs"></i>
+                <span>Quick Scan</span>
+              </button>
+            </div>
+
+            {/* View Mode Tabs */}
+            <div className="flex items-center gap-1 bg-slate-100/90 dark:bg-[#111827] p-1 rounded-xl border border-slate-200/80 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setActiveTab('pos')}
+                className={`h-7.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'pos'
+                    ? 'bg-[#00c49f] text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <i className="fa-solid fa-cash-register text-xs"></i>
+                <span>POS Invoicing</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('salesmen-analytics')}
+                className={`h-7.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'salesmen-analytics'
+                    ? 'bg-[#00c49f] text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <i className="fa-solid fa-chart-line text-xs"></i>
+                <span className="hidden sm:inline">Salesmen Admin</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Workspace Body */}
+      {/* Main Workspace Body - Sequential 1 to 5 Top-to-Bottom Flow */}
       <div className="max-w-7xl mx-auto">
         {activeTab === 'pos' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* LEFT COLUMN: Patient, Barcode, Lens & Rx Grid (8 Cols) */}
-            <div className="lg:col-span-8 flex flex-col gap-5">
+          <div className="flex flex-col gap-5">
               {/* SECTION 1: Patient & Basic Info Section */}
               <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs transition-all hover:border-teal-200 dark:hover:border-teal-900">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
@@ -548,6 +637,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         type="text"
                         value={optometrist}
                         onChange={(e) => setOptometrist(e.target.value)}
+                        placeholder="e.g., Dr. Name, Qualification"
                         className="w-full pl-8 pr-3 py-2 text-sm bg-slate-50 dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20 text-xs font-medium"
                       />
                     </div>
@@ -711,6 +801,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                             type="number"
                             value={negotiatedPrice}
                             onChange={(e) => setNegotiatedPrice(Number(e.target.value) || 0)}
+                            placeholder={scannedFrame.guidePrice ? `Suggested: ${scannedFrame.guidePrice}` : ''}
                             className="w-full pl-8 pr-3 py-2 text-base font-mono font-bold bg-white dark:bg-[#1a202c] border border-teal-300 dark:border-teal-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                           />
                         </div>
@@ -907,225 +998,229 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   <span className="text-teal-600 font-medium">Ready for Essilor Delta 200 Edger Processing</span>
                 </div>
               </div>
-            </div>
 
-            {/* RIGHT COLUMN: Salesman, Dynamic Calculation & Actions (4 Cols) */}
-            <div className="lg:col-span-4 flex flex-col gap-5">
-              {/* SECTION 4: Salesman Assignment & Live Commission */}
-              <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs">
+              {/* SECTION 4: Salesman Assignment & Live Commission (Now in Serial Top-to-Bottom Flow) */}
+              <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs transition-all hover:border-teal-200 dark:hover:border-teal-900">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
                   <div className="flex items-center gap-2 text-teal-700 dark:text-teal-400 font-bold text-sm">
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-id-badge"></i>
                     </span>
-                    <span>4. Salesman Assignment</span>
+                    <span>4. Salesman Assignment &amp; Live Commission</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddSalesmanModalOpen(true)}
-                    className="text-[11px] text-teal-600 hover:text-teal-700 font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <i className="fa-solid fa-plus-circle"></i> Add New
-                  </button>
-                </div>
-
-                <div className="mb-3">
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                    "Sale By" Floor Representative
-                  </label>
-                  <div className="relative">
-                    <i className="fa-solid fa-user-tie absolute left-3.5 top-3 text-teal-600 text-xs"></i>
-                    <select
-                      value={selectedSalesmanId}
-                      onChange={(e) => setSelectedSalesmanId(e.target.value)}
-                      className="w-full pl-9 pr-8 py-2.5 bg-slate-50 dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold focus:outline-none focus:border-teal-600 text-slate-900 dark:text-white"
+                  {onManageSalesmen && (
+                    <button
+                      type="button"
+                      onClick={onManageSalesmen}
+                      className="text-[11px] text-teal-600 hover:text-teal-700 font-bold flex items-center gap-1 cursor-pointer bg-teal-50 dark:bg-teal-950/40 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-900"
                     >
-                      {salesmen.map((sm) => (
-                        <option key={sm.id} value={sm.id}>
-                          {sm.name} ({sm.employeeId}) — {sm.commissionPct}%
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      <i className="fa-solid fa-users-gear"></i> Manage Salesmen
+                    </button>
+                  )}
                 </div>
 
-                {/* Salesman Live Commission Banner */}
-                {currentSalesman && (
-                  <div className="p-3 bg-teal-50/70 dark:bg-teal-950/30 rounded-xl border border-teal-200 dark:border-teal-900/60">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-slate-600 dark:text-slate-400">Commission Rate:</span>
-                      <span className="font-bold text-teal-700 dark:text-teal-300 font-mono">
-                        {currentSalesman.commissionPct}% of Net Sale
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600 dark:text-slate-400">Est. Commission on this order:</span>
-                      <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-sm">
-                        +৳{estimatedCommission.toFixed(2)}
-                      </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      "Sale By" Floor Representative
+                    </label>
+                    <div className="relative">
+                      <i className="fa-solid fa-user-tie absolute left-3.5 top-3 text-teal-600 text-xs"></i>
+                      <select
+                        value={selectedSalesmanId}
+                        onChange={(e) => {
+                          if (e.target.value === '__manage_salesmen__') {
+                            onManageSalesmen?.();
+                            return;
+                          }
+                          setSelectedSalesmanId(e.target.value);
+                        }}
+                        className="w-full pl-9 pr-8 py-2.5 bg-slate-50 dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold focus:outline-none focus:border-teal-600 text-slate-900 dark:text-white"
+                      >
+                        <option value="">Select Salesman</option>
+                        {salesmen.filter((sm) => sm.status === 'active').map((sm) => (
+                          <option key={sm.id} value={sm.id}>
+                            {sm.name}
+                          </option>
+                        ))}
+                        <option value="__manage_salesmen__">Add / Remove Salesman</option>
+                      </select>
                     </div>
                   </div>
-                )}
+
+                  {currentSalesman && (
+                    <div className="p-3.5 bg-teal-50/70 dark:bg-teal-950/30 rounded-xl border border-teal-200 dark:border-teal-900/60 text-sm font-semibold text-teal-800 dark:text-teal-200">
+                      <i className="fa-solid fa-user-check mr-2"></i>
+                      Selected: {currentSalesman.name}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* SECTION 5: Dynamic Price Calculation & Invoice Actions */}
-              <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-teal-200 dark:border-teal-900/80 p-5 shadow-md flex flex-col gap-4">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
+              {/* SECTION 5: Dynamic Price Calculation, Billing & Settlement */}
+              <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-teal-200 dark:border-teal-900/80 p-5 shadow-md">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
                   <div className="flex items-center gap-2 text-teal-700 dark:text-teal-400 font-bold text-sm">
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-calculator"></i>
                     </span>
-                    <span>5. Billing &amp; Settlement</span>
+                    <span>5. Billing, Dynamic Calculation &amp; Settlement</span>
                   </div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">BDT (৳)</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Currency: BDT (৳)</span>
                 </div>
 
-                {/* Calculation Rows */}
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                    <span>Negotiated Frame Price:</span>
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                      ৳{negotiatedPrice?.toLocaleString()}
-                    </span>
-                  </div>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                  {/* Left Column: Calculation Breakdown & Advance (7 cols) */}
+                  <div className="lg:col-span-7 flex flex-col gap-3">
+                    <div className="space-y-2 text-sm bg-slate-50/70 dark:bg-[#141824] p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                      <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                        <span>Negotiated Frame Price:</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          ৳{negotiatedPrice?.toLocaleString()}
+                        </span>
+                      </div>
 
-                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                    <span>Lens Package Price:</span>
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                      ৳{selectedLens.price?.toLocaleString()}
-                    </span>
-                  </div>
+                      <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                        <span>Lens Package Price:</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          ৳{selectedLens.price?.toLocaleString()}
+                        </span>
+                      </div>
 
-                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800">
-                    <span>Gross Subtotal:</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-white">
-                      ৳{grossTotal?.toLocaleString()}
-                    </span>
-                  </div>
+                      <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                        <span>Gross Subtotal:</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">
+                          ৳{grossTotal?.toLocaleString()}
+                        </span>
+                      </div>
 
-                  {/* Special Discount Field */}
-                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                    <span className="text-xs font-semibold">Special Discount (৳):</span>
-                    <input
-                      type="number"
-                      value={specialDiscount}
-                      onChange={(e) => setSpecialDiscount(Number(e.target.value) || 0)}
-                      className="w-28 text-right py-1 px-2 text-sm font-mono font-bold bg-slate-50 dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-rose-600 focus:outline-none focus:border-teal-500"
-                    />
-                  </div>
-
-                  {/* Highlighted Net Total */}
-                  <div className="p-3.5 bg-gradient-to-r from-teal-700 via-teal-600 to-emerald-600 text-white rounded-xl shadow-sm flex items-center justify-between mt-2">
-                    <div>
-                      <span className="text-[11px] uppercase tracking-wider text-teal-100 block font-semibold">
-                        Net Payable Total
-                      </span>
-                      <span className="text-2xl font-black font-mono">৳{netTotal?.toLocaleString()}</span>
+                      {/* Special Discount Field */}
+                      <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 pt-1">
+                        <span className="text-xs font-semibold">Special Discount (৳):</span>
+                        <input
+                          type="number"
+                          value={specialDiscount}
+                          onChange={(e) => setSpecialDiscount(Number(e.target.value) || 0)}
+                          className="w-32 text-right py-1 px-2.5 text-sm font-mono font-bold bg-white dark:bg-[#1a202c] border border-slate-200 dark:border-slate-700 rounded-lg text-rose-600 focus:outline-none focus:border-teal-500"
+                        />
+                      </div>
                     </div>
-                    <span className="text-xs bg-white/20 px-2.5 py-1 rounded-full font-bold">
-                      All Incl.
-                    </span>
-                  </div>
 
-                  {/* Advance Deposit & Due Balance */}
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                        Advance Deposit
-                      </label>
-                      <input
-                        type="number"
-                        value={advancePaid}
-                        onChange={(e) => setAdvancePaid(Number(e.target.value) || 0)}
-                        className="w-full py-1.5 px-2.5 text-sm font-mono font-bold bg-slate-50 dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-emerald-600 focus:outline-none focus:border-teal-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                        Due Balance
-                      </label>
-                      <div className="w-full py-1.5 px-2.5 text-sm font-mono font-bold bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/60 rounded-lg text-rose-600">
-                        ৳{dueBalance?.toLocaleString()}
+                    {/* Advance Deposit & Due Balance */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                          Advance Deposit (৳)
+                        </label>
+                        <input
+                          type="number"
+                          value={advancePaid}
+                          onChange={(e) => setAdvancePaid(Number(e.target.value) || 0)}
+                          className="w-full py-2 px-3 text-sm font-mono font-bold bg-slate-50 dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-xl text-emerald-600 focus:outline-none focus:border-teal-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                          Due Balance (৳)
+                        </label>
+                        <div className="w-full py-2 px-3 text-sm font-mono font-bold bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 rounded-xl text-rose-600 dark:text-rose-400">
+                          ৳{dueBalance?.toLocaleString()}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Payment Method Toggle Buttons */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    Select Payment Method:
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {/* bKash */}
+                  {/* Right Column: Net Total, Payment Methods & Action Button (5 cols) */}
+                  <div className="lg:col-span-5 flex flex-col gap-3">
+                    {/* Highlighted Net Total */}
+                    <div className="p-4 bg-gradient-to-r from-[#00c49f] via-[#00af8e] to-[#009277] text-white rounded-xl shadow-md shadow-[#00c49f]/20 flex items-center justify-between">
+                      <div>
+                        <span className="text-[11px] uppercase tracking-wider text-emerald-100 block font-bold">
+                          Net Payable Total
+                        </span>
+                        <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight">৳{netTotal?.toLocaleString()}</span>
+                      </div>
+                      <span className="text-xs bg-white/20 backdrop-blur-xs px-2.5 py-1 rounded-full font-bold border border-white/20">
+                        All Incl.
+                      </span>
+                    </div>
+
+                    {/* Payment Method Toggle Buttons */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Select Payment Method:
+                      </label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {/* bKash */}
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('bKash')}
+                          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer border ${
+                            paymentMethod === 'bKash'
+                              ? 'bg-[#d8226b] text-white border-[#b31453] shadow-md shadow-[#d8226b]/20 scale-[1.02]'
+                              : 'bg-slate-50 dark:bg-[#121c26] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-[#1e2d3d] hover:border-[#d8226b]/60'
+                          }`}
+                        >
+                          <i className="fa-solid fa-mobile-screen"></i>
+                          <span>bKash</span>
+                        </button>
+
+                        {/* Nagad */}
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('Nagad')}
+                          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer border ${
+                            paymentMethod === 'Nagad'
+                              ? 'bg-[#ea580c] text-white border-[#c2410c] shadow-md shadow-[#ea580c]/20 scale-[1.02]'
+                              : 'bg-slate-50 dark:bg-[#121c26] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-[#1e2d3d] hover:border-[#ea580c]/60'
+                          }`}
+                        >
+                          <i className="fa-solid fa-bolt"></i>
+                          <span>Nagad</span>
+                        </button>
+
+                        {/* Cash */}
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('Cash')}
+                          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer border ${
+                            paymentMethod === 'Cash'
+                              ? 'bg-[#00c49f] text-white border-[#00a884] shadow-md shadow-[#00c49f]/25 scale-[1.02]'
+                              : 'bg-slate-50 dark:bg-[#121c26] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-[#1e2d3d] hover:border-[#00c49f]/60'
+                          }`}
+                        >
+                          <i className="fa-solid fa-money-bill-wave"></i>
+                          <span>Cash</span>
+                        </button>
+
+                        {/* Card */}
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('Card')}
+                          className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer border ${
+                            paymentMethod === 'Card'
+                              ? 'bg-[#4f46e5] text-white border-[#4338ca] shadow-md shadow-[#4f46e5]/25 scale-[1.02]'
+                              : 'bg-slate-50 dark:bg-[#121c26] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-[#1e2d3d] hover:border-[#4f46e5]/60'
+                          }`}
+                        >
+                          <i className="fa-solid fa-credit-card"></i>
+                          <span>Card</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Primary Action Button */}
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('bKash')}
-                      className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer border ${
-                        paymentMethod === 'bKash'
-                          ? 'bg-pink-600 text-white border-pink-700 shadow-xs'
-                          : 'bg-slate-50 dark:bg-[#141824] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-pink-400'
-                      }`}
+                      onClick={handleGenerateInvoice}
+                      className="w-full py-3 bg-gradient-to-r from-[#00c49f] via-[#00b391] to-[#009c7e] hover:from-[#00b391] hover:to-[#00896f] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-[#00c49f]/30 active:scale-[0.99] transition-all cursor-pointer group mt-1"
                     >
-                      <i className="fa-solid fa-mobile-screen"></i>
-                      <span>bKash</span>
-                    </button>
-
-                    {/* Nagad */}
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('Nagad')}
-                      className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer border ${
-                        paymentMethod === 'Nagad'
-                          ? 'bg-orange-600 text-white border-orange-700 shadow-xs'
-                          : 'bg-slate-50 dark:bg-[#141824] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-orange-400'
-                      }`}
-                    >
-                      <i className="fa-solid fa-bolt"></i>
-                      <span>Nagad</span>
-                    </button>
-
-                    {/* Cash */}
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('Cash')}
-                      className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer border ${
-                        paymentMethod === 'Cash'
-                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                          : 'bg-slate-50 dark:bg-[#141824] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-emerald-400'
-                      }`}
-                    >
-                      <i className="fa-solid fa-money-bill-wave"></i>
-                      <span>Cash</span>
-                    </button>
-
-                    {/* Card */}
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('Card')}
-                      className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer border ${
-                        paymentMethod === 'Card'
-                          ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
-                          : 'bg-slate-50 dark:bg-[#141824] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-indigo-400'
-                      }`}
-                    >
-                      <i className="fa-solid fa-credit-card"></i>
-                      <span>Card</span>
+                      <i className="fa-solid fa-print text-base group-hover:scale-110 transition-transform"></i>
+                      <span>Generate Invoice &amp; Print Job Card / Tray Ticket</span>
                     </button>
                   </div>
                 </div>
-
-                {/* Primary Action Button */}
-                <button
-                  type="button"
-                  onClick={handleGenerateInvoice}
-                  className="w-full py-3.5 bg-gradient-to-r from-teal-600 via-teal-700 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-teal-700/20 active:scale-[0.99] transition-all cursor-pointer"
-                >
-                  <i className="fa-solid fa-print text-base"></i>
-                  <span>Generate Invoice &amp; Print Job Card / Tray Ticket</span>
-                </button>
               </div>
-            </div>
           </div>
         ) : (
           /* SECTION 4 VIEW B: Salesman Performance Analytics & Admin Management */
@@ -1497,8 +1592,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px]">SALE ATTRIBUTED TO</span>
-                      <span className="font-bold text-slate-900 dark:text-white">{currentSalesman.name}</span>
-                      <span className="text-slate-500 block text-[11px]">ID: {currentSalesman.employeeId}</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{currentSalesman?.name || 'Salesman not selected'}</span>
+                      <span className="text-slate-500 block text-[11px]">ID: {currentSalesman?.employeeId || '-'}</span>
                     </div>
                   </div>
 
@@ -1577,6 +1672,9 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         <Barcode value={currentInvoiceNumber} width={1.2} height={25} displayValue={false} margin={0} background="transparent" lineColor="#0f172a" />
                       </div>
                       <span className="text-[10px] text-slate-400 font-mono mt-1">ID: {currentInvoiceNumber}</span>
+                      {prescriptionQrDataUrl && (
+                        <img src={prescriptionQrDataUrl} alt="Prescription QR code" className="w-20 h-20 mt-1 object-contain" />
+                      )}
                     </div>
                   </div>
 

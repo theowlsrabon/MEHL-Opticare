@@ -194,7 +194,7 @@ export const AIEyewearStudioModal: React.FC<AIEyewearStudioModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="p-5 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Left Config Panel (5 cols) */}
           <div className="lg:col-span-6 flex flex-col gap-4">
             {activeTab === 'create' ? (
