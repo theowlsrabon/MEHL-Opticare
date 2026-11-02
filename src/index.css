@@ -1,6 +1,12 @@
 @import url('https://fonts.maateen.me/kalpurush/font.css');
 @import "tailwindcss";
 
+/* Tell Tailwind v4 to use the .dark CLASS on <html> for dark: utilities,
+   NOT the OS-level prefers-color-scheme media query.
+   Without this, dark: classes only respond to the OS setting and cannot
+   be toggled by JavaScript — making the manual dark mode button useless. */
+@variant dark (&:where(.dark, .dark *));
+
 .login-grid {
   background-image:
     linear-gradient(rgba(71, 85, 105, 0.09) 1px, transparent 1px),
@@ -225,6 +231,7 @@
    DARK MODE (DEEP CHARCOAL / MIDNIGHT SLATE - LINEAR/VERCEL STYLE)
    ===================================================================== */
 :root {
+  color-scheme: light;
   --app-bg: #f8fafc;
   --card-bg: #ffffff;
   --card-border: #e2e8f0;
@@ -244,6 +251,7 @@
 }
 
 .dark, [data-theme="dark"] {
+  color-scheme: dark;
   --color-background: #0b0f17;
   --color-surface: #0b0f17;
   --color-surface-bright: #141c2b;
@@ -298,6 +306,13 @@ body {
 .no-transition,
 .no-transition * {
   transition: none !important;
+}
+
+/* Smooth GPU-accelerated View Transitions for Theme Toggle */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.25s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Bilingual & Bengali Typography Fixes: generous line-height prevents character clipping */

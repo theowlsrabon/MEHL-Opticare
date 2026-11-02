@@ -9,15 +9,20 @@
         try {
           var stored = localStorage.getItem('theme');
           var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          if (stored === 'dark' || (!stored && prefersDark)) {
+          var isDark = stored === 'dark' || (!stored && prefersDark);
+          if (isDark) {
             document.documentElement.classList.add('dark');
+            document.documentElement.setAttribute('data-theme', 'dark');
           } else {
             document.documentElement.classList.remove('dark');
+            document.documentElement.setAttribute('data-theme', 'light');
           }
-          // Suppress transitions during initial theme application to prevent flash
+          // Suppress transitions during initial render frame to avoid jank
           document.documentElement.classList.add('no-transition');
-          window.addEventListener('load', function () {
-            document.documentElement.classList.remove('no-transition');
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              document.documentElement.classList.remove('no-transition');
+            });
           });
         } catch (e) {}
       })();

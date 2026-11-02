@@ -176,15 +176,27 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const toggleDarkMode = () => {
-    const nextMode = !isDarkMode;
-    setIsDarkMode(nextMode);
-    if (nextMode) {
+  const applyTheme = (dark: boolean) => {
+    setIsDarkMode(dark);
+    if (dark) {
       document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
       localStorage.setItem('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
       localStorage.setItem('theme', 'light');
+    }
+  };
+
+  const toggleDarkMode = () => {
+    const nextMode = !isDarkMode;
+    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+      (document as any).startViewTransition(() => {
+        applyTheme(nextMode);
+      });
+    } else {
+      applyTheme(nextMode);
     }
   };
 

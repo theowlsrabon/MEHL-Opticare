@@ -35,11 +35,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     document.documentElement.classList.toggle('dark', dark);
   }, []);
 
+  const applyTheme = (dark: boolean) => {
+    setIsDarkMode(dark);
+    document.documentElement.classList.toggle('dark', dark);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+  };
+
   const toggleDarkMode = () => {
     const nextMode = !isDarkMode;
-    setIsDarkMode(nextMode);
-    document.documentElement.classList.toggle('dark', nextMode);
-    localStorage.setItem('theme', nextMode ? 'dark' : 'light');
+    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+      (document as any).startViewTransition(() => {
+        applyTheme(nextMode);
+      });
+    } else {
+      applyTheme(nextMode);
+    }
   };
 
   const copy = language === 'bn' ? {
