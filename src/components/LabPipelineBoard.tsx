@@ -314,10 +314,10 @@ export const LabPipelineBoard: React.FC<LabPipelineBoardProps> = ({
                         ? 'bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043]'
                         : 'bg-slate-400 opacity-60 cursor-not-allowed'
                     }`}
-                    title={canAdvanceStages ? 'Advance to Ready Handover' : 'Requires Lab Technician or Admin role'}
+                    title={canAdvanceStages ? 'Mark as Ready for Handover' : 'Requires Lab Technician or Admin role'}
                   >
                     {!canAdvanceStages && <span className="material-symbols-outlined text-[11px]">lock</span>}
-                    <span>{language === 'bn' ? 'পরবর্তী ধাপ' : 'Advance'}</span>
+                    <span>{language === 'bn' ? 'প্রস্তুত' : 'Ready'}</span>
                   </button>
                 </div>
               </div>
@@ -429,7 +429,7 @@ export const LabPipelineBoard: React.FC<LabPipelineBoardProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenSmsModal(job)}
-                    className="p-1.5 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                    className="w-7 h-7 flex items-center justify-center text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg leading-none transition-colors cursor-pointer"
                     title="View Sent SMS / Resend Pickup Alert"
                   >
                     <span className="material-symbols-outlined text-[15px]">sms</span>
@@ -444,10 +444,12 @@ export const LabPipelineBoard: React.FC<LabPipelineBoardProps> = ({
                 </button>
                 <button
                   onClick={() => onSendWhatsApp(job)}
-                  className="p-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                  className="w-7 h-7 flex items-center justify-center text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg leading-none transition-colors cursor-pointer"
                   title="Resend WhatsApp Alert"
                 >
-                  <span className="material-symbols-outlined text-[16px]">chat</span>
+                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12.04 2a9.93 9.93 0 0 0-8.47 15.18L2 22l4.96-1.52A9.96 9.96 0 1 0 12.04 2Zm0 18.24a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-2.94.9.96-2.87-.2-.31a8.25 8.25 0 1 1 6.66 3.61Zm4.53-6.18c-.25-.12-1.47-.72-1.69-.8-.23-.08-.39-.12-.56.12-.16.25-.64.8-.78.96-.15.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.24-1.48-1.39-1.73-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.12-.15.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.13-.56-1.35-.77-1.85-.2-.49-.41-.42-.56-.43h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07s.89 2.4 1.02 2.57c.12.16 1.75 2.68 4.24 3.76.59.26 1.05.41 1.41.52.59.19 1.13.16 1.55.1.47-.07 1.47-.6 1.68-1.18.21-.58.21-1.08.15-1.18-.06-.1-.23-.16-.48-.29Z" />
+                  </svg>
                 </button>
               </div>
             </div>

@@ -16,13 +16,12 @@ export const BranchStatusBadge: React.FC<BranchStatusBadgeProps> = ({
   variant = 'bilingual',
   size = 'sm',
   className = '',
-  showIcon = true,
 }) => {
   // Determine effective status with backward compatibility
   const effectiveStatus: BranchStatus = status || (isActive !== false ? 'active' : 'inactive');
 
   const sizeClasses = {
-    xs: 'text-[9px] px-1.5 py-0.5 gap-1 leading-normal',
+    xs: 'text-[11px] px-1.5 py-0.5 gap-1 leading-normal',
     sm: 'text-[10px] px-2 py-0.5 gap-1.5 leading-normal',
     md: 'text-xs px-2.5 py-1 gap-1.5 leading-normal',
   }[size];
@@ -37,11 +36,6 @@ export const BranchStatusBadge: React.FC<BranchStatusBadgeProps> = ({
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
           <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
         </span>
-        {showIcon && (
-          <span className="material-symbols-outlined text-[13px] leading-none shrink-0">
-            engineering
-          </span>
-        )}
         <span className="font-bangla leading-relaxed">
           {variant === 'bilingual'
             ? 'রক্ষণাবেক্ষণ (Maintenance)'
@@ -86,11 +80,6 @@ export const BranchStatusBadge: React.FC<BranchStatusBadgeProps> = ({
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
         <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
       </span>
-      {showIcon && (
-        <span className="material-symbols-outlined text-[13px] leading-none shrink-0">
-          check_circle
-        </span>
-      )}
       <span className="font-bangla leading-relaxed">
         {variant === 'bilingual'
           ? 'সক্রিয় (Active)'

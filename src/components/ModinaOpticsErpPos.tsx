@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Barcode from 'react-barcode';
 import QRCode from 'qrcode';
-import { Salesman, SaleRecord } from '../types';
+import { InventoryItem, Salesman, SaleRecord } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 import { printElementById } from '../utils/printUtils';
 import {
   OphthalmicLensSelector,
@@ -44,12 +45,15 @@ interface PrescriptionRow {
 
 interface Props {
   salesmenList?: Salesman[];
+  salesRecords: SaleRecord[];
   onManageSalesmen?: () => void;
   onAddSalesman?: (salesman: Salesman) => void;
   onRecordSale?: (sale: SaleRecord) => void;
   onOpenQuickScan?: () => void;
   onOpenLiveCamera?: () => void;
   onOpenNewInvoice?: () => void;
+  inventory?: InventoryItem[];
+  initialScannedBarcode?: string;
 }
 
 // Optical Inventory Catalog for Barcode Scanning
@@ -145,26 +149,20 @@ const INITIAL_SALESMEN: Salesman[] = [
   { id: 'sm-4', name: 'Kamal Hossain', phone: '01678-554433', employeeId: 'MED-112', commissionPct: 3.5, status: 'active', totalSalesCount: 65, totalSalesVolumeBDT: 310000 },
 ];
 
-const INITIAL_SALES_HISTORY = [
-  { id: 'INV-9021', date: '2026-09-15', patientName: 'Md. Ariful Haque', salesmanName: 'Tanvir Ahmed', salesmanId: 'sm-1', frameModel: 'RB-5228 Wayfarer', totalAmount: 18500, commissionPct: 4.5, commissionEarned: 832.50, paymentMethod: 'bKash' },
-  { id: 'INV-9020', date: '2026-09-15', patientName: 'Farhana Yasmin', salesmanName: 'Sabrina Sultana', salesmanId: 'sm-2', frameModel: 'Titan FlexTech-0192', totalAmount: 6400, commissionPct: 5.0, commissionEarned: 320.00, paymentMethod: 'Cash' },
-  { id: 'INV-9019', date: '2026-09-14', patientName: 'Engr. Nazmul Huda', salesmanName: 'Tanvir Ahmed', salesmanId: 'sm-1', frameModel: 'Gucci GG-0840', totalAmount: 30200, commissionPct: 4.5, commissionEarned: 1359.00, paymentMethod: 'Card' },
-  { id: 'INV-9018', date: '2026-09-12', patientName: 'Dr. Shahinur Alam', salesmanName: 'Rafiqul Islam', salesmanId: 'sm-3', frameModel: 'Silhouette Minimal', totalAmount: 33000, commissionPct: 4.0, commissionEarned: 1320.00, paymentMethod: 'bKash' },
-  { id: 'INV-9017', date: '2026-09-10', patientName: 'Tahmina Begum', salesmanName: 'Kamal Hossain', salesmanId: 'sm-4', frameModel: 'Apex Pro 9041', totalAmount: 5400, commissionPct: 3.5, commissionEarned: 189.00, paymentMethod: 'Nagad' },
-  { id: 'INV-9016', date: '2026-09-08', patientName: 'Zubair Hossain', salesmanName: 'Tanvir Ahmed', salesmanId: 'sm-1', frameModel: 'Oakley Holbrook RX', totalAmount: 16800, commissionPct: 4.5, commissionEarned: 756.00, paymentMethod: 'Cash' },
-  { id: 'INV-9015', date: '2026-09-02', patientName: 'Rokeya Khandaker', salesmanName: 'Sabrina Sultana', salesmanId: 'sm-2', frameModel: 'RB-5228 Wayfarer', totalAmount: 22700, commissionPct: 5.0, commissionEarned: 1135.00, paymentMethod: 'Card' },
-  { id: 'INV-9014', date: '2026-08-28', patientName: 'Anwar Parvez', salesmanName: 'Rafiqul Islam', salesmanId: 'sm-3', frameModel: 'Titan FlexTech-0192', totalAmount: 7200, commissionPct: 4.0, commissionEarned: 288.00, paymentMethod: 'Cash' },
-];
-
 export const ModinaOpticsErpPos: React.FC<Props> = ({
   salesmenList,
+  salesRecords,
   onManageSalesmen,
   onAddSalesman,
   onRecordSale,
   onOpenQuickScan,
   onOpenLiveCamera,
   onOpenNewInvoice,
+  inventory = [],
+  initialScannedBarcode = '',
 }) => {
+  const { language } = useLanguage();
+  const text = (english: string, bengali: string) => language === 'bn' ? bengali : english;
   // Navigation / View Tabs
   const [activeTab, setActiveTab] = useState<'pos' | 'salesmen-analytics'>('pos');
 
@@ -189,6 +187,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   const [lensColor, setLensColor] = useState<string>('');
   const [lensDesign, setLensDesign] = useState<string>('');
   const [lensCustomConfig, setLensCustomConfig] = useState<LensConfiguration | null>(null);
+  const [negotiatedLensPrice, setNegotiatedLensPrice] = useState<number | ''>(0);
 
   const [rxGrid, setRxGrid] = useState<PrescriptionRow[]>([
     { eye: 'OD (Right)', sph: '', cyl: '', axis: '', add: '', pd: '' },
@@ -208,13 +207,12 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   }, [salesmenList]);
 
   const [selectedSalesmanId, setSelectedSalesmanId] = useState<string>('');
-  const [salesHistory, setSalesHistory] = useState(INITIAL_SALES_HISTORY);
-
   // Salesmen Filter & Admin State
-  const [salesFilter, setSalesFilter] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('monthly');
+  const [salesFilter, setSalesFilter] = useState<'all' | 'daily' | 'weekly' | 'monthly' | 'custom'>('all');
   const [customStartDate, setCustomStartDate] = useState<string>('2026-09-01');
   const [customEndDate, setCustomEndDate] = useState<string>('2026-09-15');
   const [isAddSalesmanModalOpen, setIsAddSalesmanModalOpen] = useState<boolean>(false);
+  const [invoiceCopy, setInvoiceCopy] = useState<SaleRecord | null>(null);
   const [newSalesman, setNewSalesman] = useState({
     name: '',
     phone: '',
@@ -227,6 +225,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   const [advancePaid, setAdvancePaid] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'bKash' | 'Nagad' | 'Card'>('bKash');
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
+  const [showInvoiceSummary, setShowInvoiceSummary] = useState<boolean>(false);
+  const [invoiceValidationErrors, setInvoiceValidationErrors] = useState<string[]>([]);
   const [printDocType, setPrintDocType] = useState<'invoice' | 'job-card'>('invoice');
   const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState<string>('INV-9022');
   const [prescriptionQrDataUrl, setPrescriptionQrDataUrl] = useState('');
@@ -265,6 +265,12 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   }, [lensCustomConfig, lensMaterial, lensCoating, lensColor, lensDesign]);
 
   useEffect(() => {
+    setNegotiatedLensPrice(selectedLens.price);
+  }, [selectedLens.price]);
+
+  const lensPrice = Number(negotiatedLensPrice) || 0;
+
+  useEffect(() => {
     const payload = `MEHL-RX:${JSON.stringify({
       type: 'MEHL-RX',
       invoiceNumber: currentInvoiceNumber,
@@ -290,8 +296,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
   // Financial Calculations
   const grossTotal = useMemo(() => {
-    return (Number(negotiatedPrice) || 0) + (selectedLens.price || 0);
-  }, [negotiatedPrice, selectedLens]);
+    return (Number(negotiatedPrice) || 0) + lensPrice;
+  }, [negotiatedPrice, lensPrice]);
 
   const netTotal = useMemo(() => {
     return Math.max(0, grossTotal - (Number(specialDiscount) || 0));
@@ -316,11 +322,26 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   const handleBarcodeSearch = (code: string) => {
     setIsScanning(true);
     const cleaned = code.trim();
-    const matched = INVENTORY_CATALOG.find(
+    const stockItem = inventory.find((item) => item.sku.toLowerCase() === cleaned.toLowerCase());
+    const catalogItem = INVENTORY_CATALOG.find(
       (item) =>
         item.barcode.toLowerCase() === cleaned.toLowerCase() ||
         item.model.toLowerCase().includes(cleaned.toLowerCase())
     );
+    const matched: FrameProduct | undefined = stockItem
+      ? {
+          barcode: stockItem.sku,
+          brand: stockItem.brand || '',
+          model: stockItem.model || stockItem.name,
+          frameType: 'Full Rim',
+          color: stockItem.color || 'Standard',
+          guidePrice: stockItem.sellPrice * 120,
+          wholesaleCost: stockItem.costPrice * 120,
+          secretCode: stockItem.adminCostCode || '',
+          binLocation: stockItem.storageBin || '',
+          stockQty: stockItem.stockQty || 0,
+        }
+      : catalogItem;
 
     setTimeout(() => {
       setIsScanning(false);
@@ -335,6 +356,12 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       }
     }, 150);
   };
+
+  useEffect(() => {
+    if (!initialScannedBarcode) return;
+    setBarcodeInput(initialScannedBarcode);
+    handleBarcodeSearch(initialScannedBarcode);
+  }, [initialScannedBarcode]);
 
   const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -355,7 +382,10 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   // Salesmen Filtered Records
   const filteredSalesHistory = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
-    return salesHistory.filter((rec) => {
+    return salesRecords
+      .filter((record) => record.status === 'completed' || record.status === 'delivered')
+      .filter((rec) => {
+      if (salesFilter === 'all') return true;
       if (salesFilter === 'daily') {
         return rec.date === todayStr;
       }
@@ -375,8 +405,23 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
         return rec.date >= customStartDate && rec.date <= customEndDate;
       }
       return true;
-    });
-  }, [salesHistory, salesFilter, customStartDate, customEndDate]);
+    })
+      .sort((a, b) => (b.timestamp || b.date).localeCompare(a.timestamp || a.date));
+  }, [salesRecords, salesFilter, customStartDate, customEndDate]);
+
+  const groupedSalesHistory = useMemo(() => {
+    return filteredSalesHistory.reduce<Record<string, SaleRecord[]>>((groups, sale) => {
+      (groups[sale.date] ||= []).push(sale);
+      return groups;
+    }, {});
+  }, [filteredSalesHistory]);
+
+  const formatSalesDate = (date: string) => {
+    const parsedDate = new Date(`${date}T00:00:00`);
+    return Number.isNaN(parsedDate.getTime())
+      ? date
+      : parsedDate.toLocaleDateString('bn-BD', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
 
   // Aggregate stats for filtered salesmen records
   const salesAggregate = useMemo(() => {
@@ -409,6 +454,18 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     setNewSalesman({ name: '', phone: '', employeeId: '', commissionPct: 4.5 });
   };
 
+  const handleReviewInvoice = () => {
+    const errors: string[] = [];
+    if (!patientName.trim()) errors.push(text('Patient name is required.', 'রোগীর নাম আবশ্যক।'));
+    if (!patientPhone.trim()) errors.push(text('Patient phone number is required.', 'রোগীর ফোন নম্বর আবশ্যক।'));
+    if (!scannedFrame) errors.push(text('Frame selection is required.', 'ফ্রেম নির্বাচন আবশ্যক।'));
+    if (selectedLens.id === 'no-lens' || !selectedLens.name.trim()) errors.push(text('Lens configuration is required.', 'লেন্স কনফিগারেশন আবশ্যক।'));
+    if (!currentSalesman) errors.push(text('Salesman assignment is required.', 'বিক্রয়কর্মী নিয়োগ আবশ্যক।'));
+
+    setInvoiceValidationErrors(errors);
+    if (errors.length === 0) setShowInvoiceSummary(true);
+  };
+
   // Generate Invoice and Record
   const handleGenerateInvoice = () => {
     if (!scannedFrame || !currentSalesman) return;
@@ -418,20 +475,6 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     const now = new Date();
     const todayDateStr = now.toISOString().split('T')[0];
     const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    // Record in local sales history
-    const newRecord = {
-      id: invId,
-      date: todayDateStr,
-      patientName: patientName || 'Walk-in Client',
-      salesmanName: currentSalesman.name,
-      salesmanId: currentSalesman.id,
-      frameModel: scannedFrame.model,
-      totalAmount: netTotal,
-      commissionPct: currentSalesman.commissionPct,
-      commissionEarned: estimatedCommission,
-      paymentMethod: paymentMethod,
-    };
 
     const fullSaleRecord: SaleRecord = {
       id: `sale-${Date.now()}`,
@@ -479,8 +522,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       // Keep POS generation usable if browser storage is unavailable.
     }
 
-    setSalesHistory((prev) => [newRecord, ...prev]);
     onRecordSale?.(fullSaleRecord);
+    setShowInvoiceSummary(false);
     setShowPrintModal(true);
   };
 
@@ -500,53 +543,27 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#00c49f]/10 text-[#00a884] dark:text-[#00f5b4] border border-[#00c49f]/25">
                   <i className="fa-solid fa-circle text-[6px] text-[#00c49f] mr-1 animate-pulse"></i>
-                  Terminal #01 Live
+                  {text('Terminal #01 Live', 'টার্মিনাল #০১ লাইভ')}
                 </span>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Single-Page Optical POS, Barcode Scanning, Exact Rx Matrix &amp; Sales Commission Suite
+                {text('Single-Page Optical POS, Barcode Scanning, Exact Rx Matrix & Sales Commission Suite', 'একক পৃষ্ঠার অপটিক্যাল POS, বারকোড স্ক্যানিং, নির্ভুল Rx ম্যাট্রিক্স ও বিক্রয় কমিশন স্যুট')}
               </p>
             </div>
           </div>
 
           {/* Quick Action Icons & View Mode Tabs */}
           <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
-            {/* Quick Action Buttons (Smaller Icons) */}
-            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-[#141824] p-1 rounded-xl border border-slate-200/80 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={onOpenLiveCamera}
-                className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                title="Camera Barcode Scanner"
-              >
-                <i className="fa-solid fa-camera text-xs"></i>
-                <span className="hidden sm:inline">Camera Scan</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onOpenQuickScan}
-                className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-[#1f2637] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:bg-slate-200 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                title="Quick Barcode Scanner (F4)"
-              >
-                <i className="fa-solid fa-barcode text-xs text-[#00c49f]"></i>
-                <span className="hidden sm:inline">Quick Barcode</span>
-                <span className="text-[9px] font-mono px-1 py-0.2 bg-slate-200 dark:bg-slate-700 rounded text-slate-500">F4</span>
-              </button>
-
+            <div className="flex items-center gap-1 bg-slate-100/90 dark:bg-[#111827] p-1 rounded-xl border border-slate-200/80 dark:border-slate-800">
               <button
                 type="button"
                 onClick={onOpenNewInvoice || onOpenQuickScan}
-                className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-[#00c49f] to-[#009b7d] text-white hover:brightness-105 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-[#166534] to-[#14532d] text-white hover:brightness-105 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
                 title="Quick Scan / Quick Invoice"
               >
                 <i className="fa-solid fa-qrcode text-xs"></i>
-                <span>Quick Scan</span>
+                <span>{text('Quick Scan', 'কুইক স্ক্যান')}</span>
               </button>
-            </div>
-
-            {/* View Mode Tabs */}
-            <div className="flex items-center gap-1 bg-slate-100/90 dark:bg-[#111827] p-1 rounded-xl border border-slate-200/80 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setActiveTab('pos')}
@@ -557,7 +574,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 }`}
               >
                 <i className="fa-solid fa-cash-register text-xs"></i>
-                <span>POS Invoicing</span>
+                <span>{text('POS Invoicing', 'POS ইনভয়েসিং')}</span>
               </button>
               <button
                 type="button"
@@ -569,7 +586,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 }`}
               >
                 <i className="fa-solid fa-chart-line text-xs"></i>
-                <span className="hidden sm:inline">Salesmen Admin</span>
+                <span className="hidden sm:inline">{text('Salesmen Admin', 'বিক্রয়কর্মী প্রশাসন')}</span>
               </button>
             </div>
           </div>
@@ -587,7 +604,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-user-injured"></i>
                     </span>
-                    <span>1. Patient &amp; Clinical Information</span>
+                    <span>{text('1. Patient & Clinical Information', '১. রোগী ও ক্লিনিক্যাল তথ্য')}</span>
                   </div>
                   <span className="text-[11px] text-slate-400 font-medium">
                     <i className="fa-solid fa-calendar-day mr-1"></i> Today: 15 Sep 2026
@@ -597,7 +614,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                      Patient Full Name <span className="text-rose-500">*</span>
+                      {text('Patient Full Name', 'রোগীর পূর্ণ নাম')} <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
                       <i className="fa-solid fa-user absolute left-3 top-3 text-slate-400 text-xs"></i>
@@ -605,7 +622,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         type="text"
                         value={patientName}
                         onChange={(e) => setPatientName(e.target.value)}
-                        placeholder="Enter patient name..."
+                        placeholder={text('Enter patient name...', 'রোগীর নাম লিখুন...')}
                         className="w-full pl-8 pr-3 py-2 text-sm bg-slate-50 dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20 font-medium"
                       />
                     </div>
@@ -613,7 +630,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                      Mobile Number <span className="text-rose-500">*</span>
+                      {text('Mobile Number', 'মোবাইল নম্বর')} <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
                       <i className="fa-solid fa-phone absolute left-3 top-3 text-slate-400 text-xs"></i>
@@ -629,7 +646,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                      Prescribed By / Refractionist
+                      {text('Prescribed By / Refractionist', 'প্রেসক্রাইবকারী / রিফ্র্যাকশনিস্ট')}
                     </label>
                     <div className="relative">
                       <i className="fa-solid fa-user-doctor absolute left-3 top-3 text-slate-400 text-xs"></i>
@@ -644,7 +661,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                      সম্ভাব্য হ্যান্ডওভার (Delivery Date)
+                      {text('Expected Delivery Date', 'সম্ভাব্য হ্যান্ডওভার তারিখ')}
                     </label>
                     <div className="relative">
                       <i className="fa-solid fa-calendar absolute left-3 top-3 text-slate-400 text-xs"></i>
@@ -666,7 +683,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-barcode"></i>
                     </span>
-                    <span>2. Frame Barcode Scanner &amp; Inventory Management</span>
+                    <span>{text('2. Frame Barcode Scanner & Inventory Management', '২. ফ্রেম বারকোড স্ক্যানার ও ইনভেন্টরি ব্যবস্থাপনা')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -679,7 +696,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                       }`}
                     >
                       <i className={`fa-solid ${showAdminConfidential ? 'fa-lock-open' : 'fa-lock'}`}></i>
-                      <span>{showAdminConfidential ? 'Hide Cost Info' : 'Show Admin Cost'}</span>
+                      <span>{showAdminConfidential ? text('Hide Cost Info', 'কস্ট তথ্য লুকান') : text('Show Admin Cost', 'প্রশাসনিক কস্ট দেখান')}</span>
                     </button>
                   </div>
                 </div>
@@ -687,12 +704,18 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 {/* Barcode Search Box */}
                 <div className="mb-4">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Dedicated Barcode / SKU Scanner Field (Type or Auto-Focus Hardware Scan &amp; press Enter)
+                    {text('Dedicated Barcode / SKU Scanner Field', 'ডেডিকেটেড বারকোড / SKU স্ক্যানার ফিল্ড')}
                   </label>
                   <div className="relative flex items-center">
-                    <span className="absolute left-3.5 text-teal-600 dark:text-teal-400">
+                    <button
+                      type="button"
+                      onClick={onOpenQuickScan}
+                      className="absolute left-2.5 w-7 h-7 flex items-center justify-center text-teal-600 dark:text-teal-400 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-950/40 cursor-pointer"
+                      title="Open barcode scanner"
+                      aria-label="Open barcode scanner"
+                    >
                       <i className="fa-solid fa-qrcode text-base"></i>
-                    </span>
+                    </button>
                     <input
                       ref={barcodeInputRef}
                       type="text"
@@ -868,11 +891,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-eye"></i>
                     </span>
-                    <span>3. Ophthalmic Lens Selection &amp; Full Prescription Grid</span>
+                    <span>{text('3. Ophthalmic Lens Selection & Full Prescription Grid', '৩. অপথালমিক লেন্স নির্বাচন ও পূর্ণ প্রেসক্রিপশন গ্রিড')}</span>
                   </div>
-                  <span id="lens-badge-price" className="text-xs font-mono font-bold text-teal-600 bg-teal-50 dark:bg-teal-950/50 px-2.5 py-1 rounded-lg">
-                    Lens: ৳{selectedLens.price?.toLocaleString()}
-                  </span>
                 </div>
 
                 {/* 4-Step Ophthalmic Lens Selection (উপাদান, কোটিং, রঙ/টিন্ট, লেন্স ডিজাইন) */}
@@ -999,6 +1019,22 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 </div>
               </div>
 
+              <div className="rounded-xl border border-teal-300 dark:border-teal-800 bg-teal-50/70 dark:bg-teal-950/20 p-3">
+                <label htmlFor="lens-negotiated-price" className="flex items-center justify-between gap-3 text-sm font-mono font-bold text-teal-800 dark:text-teal-200">
+                  <span className="shrink-0">{text('Negotiable Lens Price:', 'দরদামযোগ্য লেন্সের দাম:')} ৳</span>
+                  <input
+                    id="lens-negotiated-price"
+                    type="number"
+                    min="0"
+                    step="50"
+                    aria-label={text('Negotiated lens price in BDT', 'দরদাম করা লেন্সের দাম টাকা')}
+                    value={negotiatedLensPrice}
+                    onChange={(e) => setNegotiatedLensPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-32 h-10 px-3 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-[#141824] text-right font-mono text-sm font-bold text-teal-800 dark:text-teal-200 outline-hidden focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                  />
+                </label>
+              </div>
+
               {/* SECTION 4: Salesman Assignment & Live Commission (Now in Serial Top-to-Bottom Flow) */}
               <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs transition-all hover:border-teal-200 dark:hover:border-teal-900">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
@@ -1006,7 +1042,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-id-badge"></i>
                     </span>
-                    <span>4. Salesman Assignment &amp; Live Commission</span>
+                    <span>{text('4. Salesman Assignment & Live Commission', '৪. বিক্রয়কর্মী নিয়োগ ও লাইভ কমিশন')}</span>
                   </div>
                   {onManageSalesmen && (
                     <button
@@ -1014,7 +1050,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                       onClick={onManageSalesmen}
                       className="text-[11px] text-teal-600 hover:text-teal-700 font-bold flex items-center gap-1 cursor-pointer bg-teal-50 dark:bg-teal-950/40 px-2.5 py-1 rounded-lg border border-teal-200 dark:border-teal-900"
                     >
-                      <i className="fa-solid fa-users-gear"></i> Manage Salesmen
+                      <i className="fa-solid fa-users-gear"></i> {text('Manage Salesmen', 'বিক্রয়কর্মী ব্যবস্থাপনা')}
                     </button>
                   )}
                 </div>
@@ -1022,7 +1058,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                      "Sale By" Floor Representative
+                      {text('"Sale By" Floor Representative', '"বিক্রয়কারী" ফ্লোর প্রতিনিধি')}
                     </label>
                     <div className="relative">
                       <i className="fa-solid fa-user-tie absolute left-3.5 top-3 text-teal-600 text-xs"></i>
@@ -1037,13 +1073,13 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         }}
                         className="w-full pl-9 pr-8 py-2.5 bg-slate-50 dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold focus:outline-none focus:border-teal-600 text-slate-900 dark:text-white"
                       >
-                        <option value="">Select Salesman</option>
+                        <option value="">{text('Select Salesman', 'বিক্রয়কর্মী নির্বাচন করুন')}</option>
                         {salesmen.filter((sm) => sm.status === 'active').map((sm) => (
                           <option key={sm.id} value={sm.id}>
                             {sm.name}
                           </option>
                         ))}
-                        <option value="__manage_salesmen__">Add / Remove Salesman</option>
+                        <option value="__manage_salesmen__">{text('Add / Remove Salesman', 'বিক্রয়কর্মী যোগ / বাদ দিন')}</option>
                       </select>
                     </div>
                   </div>
@@ -1051,7 +1087,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   {currentSalesman && (
                     <div className="p-3.5 bg-teal-50/70 dark:bg-teal-950/30 rounded-xl border border-teal-200 dark:border-teal-900/60 text-sm font-semibold text-teal-800 dark:text-teal-200">
                       <i className="fa-solid fa-user-check mr-2"></i>
-                      Selected: {currentSalesman.name}
+                      {text('Selected:', 'নির্বাচিত:')} {currentSalesman.name}
                     </div>
                   )}
                 </div>
@@ -1083,7 +1119,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                       <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
                         <span>Lens Package Price:</span>
                         <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                          ৳{selectedLens.price?.toLocaleString()}
+                          ৳{lensPrice.toLocaleString()}
                         </span>
                       </div>
 
@@ -1133,22 +1169,22 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   {/* Right Column: Net Total, Payment Methods & Action Button (5 cols) */}
                   <div className="lg:col-span-5 flex flex-col gap-3">
                     {/* Highlighted Net Total */}
-                    <div className="p-4 bg-gradient-to-r from-[#00c49f] via-[#00af8e] to-[#009277] text-white rounded-xl shadow-md shadow-[#00c49f]/20 flex items-center justify-between">
+                    <div className="p-4 bg-gradient-to-r from-[#166534] via-[#14532d] to-[#123f27] text-white rounded-xl shadow-md shadow-[#14532d]/20 flex items-center justify-between">
                       <div>
                         <span className="text-[11px] uppercase tracking-wider text-emerald-100 block font-bold">
-                          Net Payable Total
+                          {text('Net Payable Total', 'নিট প্রদেয় মোট')}
                         </span>
                         <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight">৳{netTotal?.toLocaleString()}</span>
                       </div>
                       <span className="text-xs bg-white/20 backdrop-blur-xs px-2.5 py-1 rounded-full font-bold border border-white/20">
-                        All Incl.
+                        {text('All Incl.', 'সব অন্তর্ভুক্ত')}
                       </span>
                     </div>
 
                     {/* Payment Method Toggle Buttons */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                        Select Payment Method:
+                        {text('Select Payment Method:', 'পেমেন্ট পদ্ধতি নির্বাচন করুন:')}
                       </label>
                       <div className="grid grid-cols-4 gap-2">
                         {/* bKash */}
@@ -1190,7 +1226,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                           }`}
                         >
                           <i className="fa-solid fa-money-bill-wave"></i>
-                          <span>Cash</span>
+                          <span>{text('Cash', 'নগদ')}</span>
                         </button>
 
                         {/* Card */}
@@ -1204,7 +1240,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                           }`}
                         >
                           <i className="fa-solid fa-credit-card"></i>
-                          <span>Card</span>
+                          <span>{text('Card', 'কার্ড')}</span>
                         </button>
                       </div>
                     </div>
@@ -1212,12 +1248,19 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     {/* Primary Action Button */}
                     <button
                       type="button"
-                      onClick={handleGenerateInvoice}
-                      className="w-full py-3 bg-gradient-to-r from-[#00c49f] via-[#00b391] to-[#009c7e] hover:from-[#00b391] hover:to-[#00896f] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-[#00c49f]/30 active:scale-[0.99] transition-all cursor-pointer group mt-1"
+                      onClick={handleReviewInvoice}
+                      className="w-full py-3 bg-gradient-to-r from-[#166534] via-[#14532d] to-[#123f27] hover:from-[#14532d] hover:to-[#123f27] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-[#14532d]/30 active:scale-[0.99] transition-all cursor-pointer group mt-1"
                     >
                       <i className="fa-solid fa-print text-base group-hover:scale-110 transition-transform"></i>
-                      <span>Generate Invoice &amp; Print Job Card / Tray Ticket</span>
+                      <span>{text('Generate Invoice', 'ইনভয়েস তৈরি করুন')}</span>
                     </button>
+                    {invoiceValidationErrors.length > 0 && (
+                      <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300" role="alert">
+                        {invoiceValidationErrors.map((error) => (
+                          <div key={error}>{error}</div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1269,6 +1312,17 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     {f}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setSalesFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                    salesFilter === 'all'
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'bg-white dark:bg-[#1a202c] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-teal-400'
+                  }`}
+                >
+                  All History
+                </button>
               </div>
 
               {salesFilter === 'custom' && (
@@ -1326,7 +1380,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
             {/* Sales Breakdown Table */}
             <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
               <i className="fa-solid fa-list-check text-teal-600"></i>
-              Sales &amp; Commission Ledger ({filteredSalesHistory.length} Records)
+              Completed Orders &amp; Invoice Copies ({filteredSalesHistory.length} Records)
             </h3>
             <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 mb-6">
               <table className="w-full text-left border-collapse text-xs">
@@ -1341,28 +1395,56 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     <th className="p-3 text-right">Net Value</th>
                     <th className="p-3 text-right">Comm. %</th>
                     <th className="p-3 text-right">Commission</th>
+                    <th className="p-3 text-center">Invoice Copy</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {filteredSalesHistory.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-[#161c27]">
-                      <td className="p-3 font-mono font-bold text-teal-600">{row.id}</td>
-                      <td className="p-3 font-mono text-slate-500">{row.date}</td>
-                      <td className="p-3 font-semibold text-slate-900 dark:text-white">{row.patientName}</td>
-                      <td className="p-3 font-medium text-slate-800 dark:text-slate-200">{row.salesmanName}</td>
-                      <td className="p-3 text-slate-600 dark:text-slate-400">{row.frameModel}</td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-medium">
-                          {row.paymentMethod}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right font-mono font-bold">৳{row.totalAmount?.toLocaleString()}</td>
-                      <td className="p-3 text-right font-mono text-slate-500">{row.commissionPct}%</td>
-                      <td className="p-3 text-right font-mono font-bold text-emerald-600">
-                        ৳{row.commissionEarned.toFixed(2)}
+                  {Object.entries(groupedSalesHistory).map(([date, records]) => (
+                    <React.Fragment key={date}>
+                      <tr className="bg-teal-50 dark:bg-teal-950/30">
+                        <td colSpan={10} className="p-3 font-bold text-teal-800 dark:text-teal-200">
+                          <i className="fa-regular fa-calendar mr-2"></i>
+                          {formatSalesDate(date)} <span className="ml-2 text-[10px] font-semibold opacity-75">({records.length} orders)</span>
+                        </td>
+                      </tr>
+                      {records.map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-[#161c27]">
+                          <td className="p-3 font-mono font-bold text-teal-600">{row.invoiceNumber}</td>
+                          <td className="p-3 font-mono text-slate-500">{row.timestamp}</td>
+                          <td className="p-3 font-semibold text-slate-900 dark:text-white">{row.patientName}</td>
+                          <td className="p-3 font-medium text-slate-800 dark:text-slate-200">{row.salesmanName}</td>
+                          <td className="p-3 text-slate-600 dark:text-slate-400">{row.itemsSummary}</td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-medium">
+                              {row.paymentMethod}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold">৳{row.totalAmount.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono text-slate-500">{row.commissionPct}%</td>
+                          <td className="p-3 text-right font-mono font-bold text-emerald-600">
+                            ৳{row.commissionEarned.toFixed(2)}
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setInvoiceCopy(row)}
+                              className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <i className="fa-solid fa-file-invoice"></i>
+                              View / Print
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                  {filteredSalesHistory.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="p-8 text-center text-slate-500">
+                        এই সময়সীমায় কোনো সম্পন্ন অর্ডার পাওয়া যায়নি।
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1504,6 +1586,41 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
         </div>
       )}
 
+      {/* INVOICE SUMMARY REVIEW */}
+      {showInvoiceSummary && scannedFrame && currentSalesman && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-[#1a202c] rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">{text('Invoice Summary', 'ইনভয়েস সারসংক্ষেপ')}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{text('Review the details before generating and printing.', 'তৈরি ও প্রিন্ট করার আগে তথ্যগুলো যাচাই করুন।')}</p>
+              </div>
+              <button type="button" onClick={() => setShowInvoiceSummary(false)} className="w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close summary">
+                &times;
+              </button>
+            </div>
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3 text-xs">
+              <div><span className="block text-slate-500">{text('Patient', 'রোগী')}</span><strong className="text-slate-900 dark:text-white">{patientName}</strong></div>
+              <div><span className="block text-slate-500">{text('Phone', 'ফোন')}</span><strong className="text-slate-900 dark:text-white">{patientPhone}</strong></div>
+              <div><span className="block text-slate-500">{text('Salesman', 'বিক্রয়কর্মী')}</span><strong className="text-slate-900 dark:text-white">{currentSalesman.name}</strong></div>
+              <div><span className="block text-slate-500">{text('Payment', 'পেমেন্ট')}</span><strong className="text-slate-900 dark:text-white">{paymentMethod}</strong></div>
+              <div className="sm:col-span-2"><span className="block text-slate-500">{text('Frame', 'ফ্রেম')}</span><strong className="text-slate-900 dark:text-white">{scannedFrame.brand} {scannedFrame.model}</strong></div>
+              <div className="sm:col-span-2"><span className="block text-slate-500">{text('Lens', 'লেন্স')}</span><strong className="text-slate-900 dark:text-white">{selectedLens.name}</strong></div>
+              <div><span className="block text-slate-500">{text('Advance Paid', 'পরিশোধিত অগ্রিম')}</span><strong className="text-slate-900 dark:text-white">৳{Number(advancePaid || 0).toLocaleString()}</strong></div>
+              <div><span className="block text-slate-500">{text('Net Payable', 'নিট প্রদেয়')}</span><strong className="text-lg text-[#166534]">৳{netTotal.toLocaleString()}</strong></div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-200 dark:border-slate-800 flex justify-between gap-3">
+              <button type="button" onClick={() => setShowInvoiceSummary(false)} className="h-10 px-4 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200">
+                {text('Back to Edit', 'সম্পাদনায় ফিরুন')}
+              </button>
+              <button type="button" onClick={handleGenerateInvoice} className="h-10 px-4 rounded-lg bg-[#166534] hover:bg-[#14532d] text-white text-xs font-bold">
+                {text('Confirm & Generate', 'নিশ্চিত ও তৈরি করুন')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 2: PRINTABLE INVOICE & JOB CARD / TRAY TICKET MODAL */}
       {showPrintModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -1615,14 +1732,14 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         <td className="p-2 text-center text-slate-600 dark:text-slate-400">{scannedFrame.frameType}</td>
                         <td className="p-2 text-right font-mono font-bold">৳{negotiatedPrice?.toLocaleString()}</td>
                       </tr>
-                      {selectedLens.price > 0 && (
+                      {lensPrice > 0 && (
                         <tr>
                           <td className="p-2">
                             <span className="font-bold block">{selectedLens.name}</span>
                             <span className="text-[10px] text-slate-500">{selectedLens.coating}</span>
                           </td>
                           <td className="p-2 text-center text-slate-600 dark:text-slate-400">Index {selectedLens.index}</td>
-                          <td className="p-2 text-right font-mono font-bold">৳{selectedLens.price?.toLocaleString()}</td>
+                          <td className="p-2 text-right font-mono font-bold">৳{lensPrice.toLocaleString()}</td>
                         </tr>
                       )}
                     </tbody>
@@ -1815,6 +1932,69 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   <span>Open in Tab</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {invoiceCopy && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-[#1a202c] shadow-2xl">
+            <div className="no-print flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-3">
+              <h3 className="font-bold text-slate-900 dark:text-white">Completed Invoice Copy</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => printElementById('sales-invoice-copy-printable', { title: `Invoice_${invoiceCopy.invoiceNumber}` })}
+                  className="rounded-lg bg-teal-600 px-3 py-2 text-xs font-bold text-white hover:bg-teal-700"
+                >
+                  <i className="fa-solid fa-print mr-1.5"></i>Print Copy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceCopy(null)}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  aria-label="Close invoice copy"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </div>
+            <div id="sales-invoice-copy-printable" className="p-6 text-slate-900">
+              <div className="border-b border-slate-300 pb-4 text-center">
+                <h2 className="text-lg font-black uppercase">Modina Eye Hospital &amp; Optics</h2>
+                <p className="text-xs text-slate-500">Completed POS Invoice Copy</p>
+                <div className="my-3 flex justify-center">
+                  <Barcode value={invoiceCopy.invoiceNumber} format="CODE128" width={1.4} height={38} displayValue={false} margin={0} />
+                </div>
+                <div className="flex justify-center gap-4 font-mono text-xs">
+                  <span>Invoice: {invoiceCopy.invoiceNumber}</span>
+                  <span>Date: {formatSalesDate(invoiceCopy.date)}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 border-b border-slate-200 py-4 text-xs">
+                <div><span className="block text-slate-500">Patient</span><strong>{invoiceCopy.patientName}</strong></div>
+                <div><span className="block text-slate-500">Phone</span><strong>{invoiceCopy.patientPhone || '—'}</strong></div>
+                <div><span className="block text-slate-500">Salesman</span><strong>{invoiceCopy.salesmanName}</strong></div>
+                <div><span className="block text-slate-500">Payment Method</span><strong>{invoiceCopy.paymentMethod}</strong></div>
+              </div>
+              <div className="py-4">
+                <h4 className="mb-2 text-xs font-bold uppercase">Items / Order Summary</h4>
+                <div className="flex justify-between gap-4 border-y border-slate-200 py-3 text-xs">
+                  <span>{invoiceCopy.itemsSummary}</span>
+                  <strong className="whitespace-nowrap">৳{invoiceCopy.totalAmount.toLocaleString()}</strong>
+                </div>
+              </div>
+              <div className="ml-auto max-w-xs space-y-2 border-t border-slate-300 pt-3 text-xs">
+                <div className="flex justify-between"><span>Subtotal</span><strong>৳{invoiceCopy.subtotal.toLocaleString()}</strong></div>
+                <div className="flex justify-between"><span>Discount</span><strong>৳{invoiceCopy.discountAmount.toLocaleString()}</strong></div>
+                <div className="flex justify-between"><span>Net Total</span><strong>৳{invoiceCopy.totalAmount.toLocaleString()}</strong></div>
+                <div className="flex justify-between"><span>Paid</span><strong>৳{invoiceCopy.advancePaid.toLocaleString()}</strong></div>
+                <div className="flex justify-between text-rose-700"><span>Due</span><strong>৳{invoiceCopy.dueAmount.toLocaleString()}</strong></div>
+              </div>
+              <p className="mt-6 border-t border-slate-200 pt-3 text-center text-[10px] text-slate-500">
+                Invoice record retained in Modina Optics ERP.
+              </p>
             </div>
           </div>
         </div>

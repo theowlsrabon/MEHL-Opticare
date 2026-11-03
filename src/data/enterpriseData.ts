@@ -419,6 +419,7 @@ export const initialFinancialSummary: FinancialSummary = {
   cashCollectedBDT: 0,
   digitalPaymentsBDT: 0,
   outstandingReceivablesBDT: 0,
+  dueCollectionsBDT: 0,
 };
 
 export const initialExpenses: ExpenseItem[] = [];

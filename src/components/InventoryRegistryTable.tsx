@@ -39,6 +39,8 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isBulkReorderModalOpen, setIsBulkReorderModalOpen] = useState(false);
   const [bulkReorderSuccessToast, setBulkReorderSuccessToast] = useState<string | null>(null);
+  const [restockItem, setRestockItem] = useState<InventoryItem | null>(null);
+  const [restockQuantity, setRestockQuantity] = useState('');
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.canViewPurchaseCost;
@@ -94,6 +96,13 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
       );
     }
     return true;
+  }).sort((a, b) => {
+    const getCreatedTimestamp = (item: InventoryItem) => {
+      const match = item.id.match(/(\d{13})$/);
+      return match ? Number(match[1]) : 0;
+    };
+
+    return getCreatedTimestamp(b) - getCreatedTimestamp(a);
   });
 
   // Multi-item selection helpers for Batch Print & Bulk Reorder
@@ -200,6 +209,33 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="material-symbols-outlined text-[#169b90] text-[18px]">inventory_2</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#169b90]">
+              Optical Stock Registry
+            </span>
+          </div>
+          <h2 className="text-xl font-bold text-on-surface font-headline-md">
+            Stock &amp; Frames Management
+          </h2>
+          <p className="text-xs text-outline">
+            Manage optical inventory, stock quantity, pricing, storage bins, and frame barcodes
+          </p>
+        </div>
+        {onAddNewGlasses && (
+          <button
+            type="button"
+            onClick={onAddNewGlasses}
+            className="px-4 py-2 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-[#169b90]/20 transition-all cursor-pointer whitespace-nowrap"
+          >
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            <span>Add Frame</span>
+          </button>
+        )}
+      </div>
+
       {/* Optical Stock Valuation Summary (কতো টাকার স্টক আছে) */}
       <div className="bg-white dark:bg-[#0e1422] border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -329,7 +365,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           </div>
           <div>
             <h2 className="text-xs sm:text-sm font-bold text-on-surface whitespace-nowrap">
-              Optical Stock Registry &amp; Shelf Master
+              Current Stock
             </h2>
             <p className="text-[10px] text-outline hidden sm:block">
               Real-time stock across Frame Racks, Lens Blanks &amp; Dispensing Consumables
@@ -341,7 +377,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
         <div className="flex items-center gap-1.5 shrink-0 flex-nowrap overflow-x-auto">
           {/* Rapid Barcode Scanner Input */}
           <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-2.5 text-extej-orange text-[15px]">
+            <span className="material-symbols-outlined absolute left-2 text-extej-orange text-[15px]">
               barcode_scanner
             </span>
             <input
@@ -349,7 +385,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               placeholder="Scan barcode (F4)..."
-              className="w-40 sm:w-52 h-7.5 pl-8 pr-12 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 dark:border-[#2e3547] rounded-lg text-on-surface placeholder:text-outline focus:border-extej-orange focus:ring-1 focus:ring-orange-500/20 transition-all font-data-rx text-[11px] outline-hidden"
+              className="w-40 sm:w-52 h-7.5 pl-9 pr-12 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 dark:border-[#2e3547] rounded-lg text-on-surface placeholder:text-outline focus:border-extej-orange focus:ring-1 focus:ring-orange-500/20 transition-all font-data-rx text-[11px] outline-hidden"
             />
             {searchFilter ? (
               <button
@@ -367,30 +403,14 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
             )}
           </div>
 
-          {/* Batch Print Feature Button (Compact) */}
-          <button
-            onClick={handleOpenBatchPrint}
-            className={`h-7.5 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-2xs cursor-pointer whitespace-nowrap ${
-              selectedItemIds.size > 0
-                ? 'bg-gradient-to-r from-teal-600 to-[#169b90] hover:from-teal-700 hover:to-[#128279] text-white ring-1 ring-teal-500/30'
-                : 'bg-[#f8fafc] dark:bg-[#232836] border border-outline-variant/70 dark:border-[#2b3140] hover:bg-[#f1f4f9] text-on-surface'
-            }`}
-            title="Batch print barcodes for selected inventory items"
-          >
-            <span className="material-symbols-outlined text-[14px] text-teal-600 dark:text-teal-400">
-              print_connect
-            </span>
-            <span>Batch Print {selectedItemIds.size > 0 ? `(${selectedItemIds.size})` : ''}</span>
-          </button>
-
-          {/* Add Glasses Button (Compact) */}
+          {/* Add Frame Button (Compact) */}
           {onAddNewGlasses && (
             <button
               onClick={onAddNewGlasses}
               className="h-7.5 px-2.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-2xs cursor-pointer whitespace-nowrap"
-              title="Add Glasses & Barcode"
+              title="Add Frame & Barcode"
             >
-              <span>Add Glasses</span>
+              <span>Add Frame</span>
             </button>
           )}
         </div>
@@ -406,7 +426,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
             onClick={() => setFilterChip('all')}
             className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
               filterChip === 'all'
-                ? 'bg-gradient-to-r from-extej-orange to-[#ff914d] text-white shadow-xs'
+                ? 'bg-gradient-to-r from-[#166534] to-[#14532d] text-white shadow-xs'
                 : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
             }`}
           >
@@ -505,6 +525,8 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           <tbody className="divide-y divide-surface-container text-body-sm font-body-sm">
             {filteredItems.map((item) => {
               const margin = (((item.sellPrice - item.costPrice) / item.costPrice) * 100).toFixed(1);
+              const purchaseCostBDT = item.purchaseCostBDT ?? Math.round(item.costPrice * BDT_RATE);
+              const askingPriceBDT = item.askingPriceBDT ?? Math.round(item.sellPrice * BDT_RATE);
               const isLow = item.stockQty <= item.minThreshold;
               const isSelected = selectedItemIds.has(item.id);
 
@@ -531,9 +553,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
 
                   <td className="px-4 py-2.5 font-data-rx font-medium text-primary text-[12px]">
                     <div className="flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[16px] text-outline">
-                        qr_code_2
-                      </span>
                       <span>{item.sku}</span>
                     </div>
                   </td>
@@ -541,11 +560,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                   <td className="px-4 py-2.5">
                     <div className="font-bold text-on-surface flex items-center gap-2">
                       <span>{item.name}</span>
-                      {isLow && (
-                        <span className="px-1.5 py-0.2 bg-tertiary text-on-tertiary text-[9px] font-bold rounded">
-                          REORDER
-                        </span>
-                      )}
                     </div>
                     <div className="text-[11px] text-outline">{item.specs}</div>
                   </td>
@@ -596,7 +610,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                         <div className="flex items-center gap-1">
                           <span className="text-outline text-[10px]">Buy:</span>
                           <strong className="font-bold text-amber-700 dark:text-amber-400">
-                            ৳{(item.costPrice * 120)?.toLocaleString()}
+                            ৳{purchaseCostBDT.toLocaleString()}
                           </strong>
                           {item.adminCostCode && (
                             <span className="text-[9px] font-mono text-outline font-normal">
@@ -605,7 +619,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                           )}
                         </div>
                         <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">
-                          Guide: ৳{(item.sellPrice * 120)?.toLocaleString()} (+{margin}%)
+                          Guide: ৳{askingPriceBDT.toLocaleString()} (+{margin}%)
                         </div>
                       </div>
                     ) : (
@@ -617,7 +631,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                           </span>
                         </div>
                         <div className="text-[11px] text-on-surface font-semibold mt-0.5">
-                          Guide: ৳{(item.sellPrice * 120)?.toLocaleString()}{' '}
+                          Guide: ৳{askingPriceBDT.toLocaleString()}{' '}
                           <span className="text-[10px] text-emerald-600 font-medium">(Negotiable)</span>
                         </div>
                       </div>
@@ -627,7 +641,10 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                   <td className="px-4 py-2.5 text-right">
                     <div className="inline-flex items-center gap-1 opacity-90 group-hover:opacity-100">
                       <button
-                        onClick={() => onRestock(item)}
+                        onClick={() => {
+                          setRestockItem(item);
+                          setRestockQuantity('');
+                        }}
                         className="px-2.5 py-1 bg-[#f1f4f9] dark:bg-[#232836] hover:bg-[#e4e9f2] dark:hover:bg-[#2a3040] rounded-lg text-[11px] font-bold text-on-surface transition-all cursor-pointer"
                         title="Add stock quantity"
                       >
@@ -666,6 +683,47 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               <span className="material-symbols-outlined text-[13px]">check_circle</span>
               <span>{selectedItemIds.size} selected for batch print</span>
             </span>
+          )}
+
+          {restockItem && (
+            <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+              <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1d26] border border-outline-variant dark:border-[#2b3140] shadow-2xl p-5">
+                <h3 className="text-base font-bold text-on-surface">Restock {restockItem.name}</h3>
+                <p className="text-xs text-outline mt-1">Current stock: {restockItem.stockQty}</p>
+                <label className="block mt-4 text-xs font-bold text-on-surface">
+                  Quantity to add
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={restockQuantity}
+                    onChange={(e) => setRestockQuantity(e.target.value)}
+                    autoFocus
+                    className="mt-1.5 w-full h-10 px-3 border border-outline-variant dark:border-[#343b4d] rounded-lg bg-white dark:bg-[#11141c] text-on-surface outline-none focus:ring-2 focus:ring-teal-500/30"
+                  />
+                </label>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button
+                    type="button"
+                    onClick={() => setRestockItem(null)}
+                    className="px-3 py-2 rounded-lg border border-outline-variant text-xs font-bold text-on-surface cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!restockQuantity || Number(restockQuantity) < 1}
+                    onClick={() => {
+                      onRestock(restockItem, Number(restockQuantity));
+                      setRestockItem(null);
+                    }}
+                    className="px-3 py-2 rounded-lg bg-[#169b90] hover:bg-[#128279] disabled:opacity-50 text-white text-xs font-bold cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Restock
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -719,70 +777,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
         </div>
       </div>
     )}
-
-    {/* Floating Action Button (FAB) for Bulk Combined Purchase Order */}
-    <div className="fixed bottom-6 right-6 sm:right-8 z-40 animate-in slide-in-from-bottom-5 duration-200">
-      {selectedItemIds.size > 0 ? (
-        <button
-          type="button"
-          onClick={handleOpenBulkReorder}
-          className="group flex items-center gap-3 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs sm:text-sm shadow-2xl hover:shadow-amber-500/30 transition-all duration-200 hover:scale-105 active:scale-95 border border-amber-400/30 cursor-pointer ring-4 ring-amber-500/20"
-          title="Click to generate unified combined Purchase Order for selected items"
-        >
-          <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-[20px] text-white animate-pulse">
-              receipt_long
-            </span>
-          </div>
-          <div className="text-left leading-tight">
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold uppercase tracking-wider text-[11px] sm:text-xs">
-                Generate Combined PO
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-white text-amber-800 text-[10px] font-black shadow-2xs">
-                {selectedItemIds.size} {selectedItemIds.size === 1 ? 'Item' : 'Items'}
-              </span>
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-amber-100 font-mono mt-0.5 flex items-center gap-1.5">
-              <span>Combined Reorder</span>
-            </div>
-          </div>
-          <span className="material-symbols-outlined text-[18px] text-white/90 group-hover:translate-x-1 transition-transform">
-            arrow_forward
-          </span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => {
-            const lowIds = new Set(lowStockItems.map((i) => i.id));
-            setSelectedItemIds(lowIds);
-            setIsBulkReorderModalOpen(true);
-          }}
-          className="group flex items-center gap-3 px-4 sm:px-5 py-3 rounded-2xl bg-[#1e293b]/95 hover:bg-gradient-to-r hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs sm:text-sm shadow-xl hover:shadow-amber-500/25 transition-all duration-200 hover:scale-105 active:scale-95 border border-slate-700 hover:border-amber-400/40 cursor-pointer backdrop-blur-sm"
-          title="Click to select all low-stock items and generate a combined purchase order"
-        >
-          <div className="w-8 h-8 rounded-xl bg-amber-500/20 group-hover:bg-white/20 flex items-center justify-center shrink-0 text-amber-400 group-hover:text-white transition-colors">
-            <span className="material-symbols-outlined text-[20px]">
-              add_shopping_cart
-            </span>
-          </div>
-          <div className="text-left leading-tight">
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-[11px] sm:text-xs">
-                Bulk Reorder PO
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black shadow-2xs">
-                {lowStockItems.length} Low
-              </span>
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-400 group-hover:text-amber-100 mt-0.5">
-              Combined Purchase Order
-            </div>
-          </div>
-        </button>
-      )}
-    </div>
 
     {/* Bulk Combined Purchase Order Modal */}
     <BulkReorderModal

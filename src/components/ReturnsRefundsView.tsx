@@ -104,7 +104,7 @@ export const ReturnsRefundsView: React.FC<ReturnsRefundsViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-5 p-4 lg:p-6 max-w-7xl mx-auto w-full">
+    <div className="flex flex-col gap-5 w-full">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-4 sm:p-5 rounded-xl border border-slate-700/80 shadow-xs">
         <div>

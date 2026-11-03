@@ -61,42 +61,42 @@ export const CreateLabTrayModal: React.FC<CreateLabTrayModalProps> = ({
   if (!isOpen) return null;
 
   const applyScannedPrescription = (decodedText: string) => {
+    const scannedValue = decodedText.trim();
     try {
-      const jsonText = decodedText.startsWith('MEHL-RX:')
-        ? decodedText.slice('MEHL-RX:'.length)
-        : decodedText;
-      const payload = JSON.parse(jsonText);
-      if (payload.type !== 'MEHL-RX') return;
-
-      setPatientName(payload.patientName || '');
-      setPatientPhone(payload.patientPhone || '');
-      setFrameName(payload.frameName || '');
-      setLensName(payload.lensName || '');
-      if (Array.isArray(payload.rxGrid)) {
-        setRxGrid(payload.rxGrid.map((row: { eye?: string; sph?: string; cyl?: string; axis?: string; add?: string; pd?: string }, index: number) => ({
-          eye: row.eye || (index === 0 ? 'OD' : 'OS'),
-          sph: row.sph || '',
-          cyl: row.cyl || '',
-          axis: row.axis || '',
-          add: row.add || '',
-          pd: row.pd || '',
-        })));
+      const jsonText = scannedValue.startsWith('MEHL-RX:')
+        ? scannedValue.slice('MEHL-RX:'.length)
+        : scannedValue;
+      const payload = JSON.parse(jsonText) as Record<string, unknown>;
+      if (payload.type === 'MEHL-RX') {
+        applyPrescriptionPayload(payload);
+        if (typeof payload.invoiceNumber === 'string') {
+          setInvoiceId(payload.invoiceNumber);
+        }
+        setIsQrScannerOpen(false);
+        return;
       }
-      setIsQrScannerOpen(false);
     } catch {
-      alert('Invalid prescription QR code.');
+      // POS invoice barcodes contain the invoice ID rather than the full QR payload.
     }
+
+    if (applyInvoicePrescription(scannedValue)) {
+      setIsQrScannerOpen(false);
+      return;
+    }
+
+    alert('No saved POS prescription was found for this barcode or QR code.');
   };
 
-  const applyInvoicePrescription = (id: string) => {
+  const applyInvoicePrescription = (id: string): boolean => {
     setInvoiceId(id);
     try {
       const saved = JSON.parse(localStorage.getItem('mehl-pos-prescriptions') || '{}') as Record<string, unknown>;
       const payload = saved[id];
-      if (!payload || typeof payload !== 'object') return;
+      if (!payload || typeof payload !== 'object') return false;
       applyPrescriptionPayload(payload as Record<string, unknown>);
+      return true;
     } catch {
-      // Ignore malformed browser storage and keep manual entry available.
+      return false;
     }
   };
 
@@ -216,7 +216,7 @@ export const CreateLabTrayModal: React.FC<CreateLabTrayModalProps> = ({
               className="h-9 px-3 rounded-lg bg-primary-fixed text-on-primary-fixed border border-primary/20 font-bold text-[11px] flex items-center gap-1.5 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
-              Scan POS QR
+              Scan POS QR / Barcode
             </button>
           </div>
 
@@ -328,7 +328,7 @@ export const CreateLabTrayModal: React.FC<CreateLabTrayModalProps> = ({
               className="px-5 py-2 bg-primary text-on-primary hover:bg-primary-container rounded-lg text-label-md font-bold shadow-sm cursor-pointer flex items-center gap-1.5"
             >
               <span className="material-symbols-outlined text-[18px]">print</span>
-              <span>Create Tray &amp; Print Barcode</span>
+              <span>Create Tray</span>
             </button>
           </div>
         </form>

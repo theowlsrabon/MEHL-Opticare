@@ -122,14 +122,6 @@ export const QuickScannerModal: React.FC<QuickScannerModalProps> = ({
   // 3. Check if user scanned an encrypted cost cipher directly (e.g. INS, MONS, KNS)
   const decodedCipherCost = decodeAdminCostCipher(trimmedCode);
 
-  const STAGE_NAMES = [
-    'Lens Pulling',
-    'Surface Blocking',
-    'CNC Edging',
-    'Assembly & Tinting',
-    'Final QC & Handover',
-  ];
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs">
       <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -301,127 +293,13 @@ export const QuickScannerModal: React.FC<QuickScannerModalProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* SECTION 1: MATCHED OPTICAL JOB (CONVEYOR TRAY) DETAILS                     */}
-          {/* ========================================================================= */}
-          {matchedJob && (
-            <div className="p-4 bg-primary-fixed/20 border-2 border-primary/40 rounded-2xl flex flex-col gap-3 shadow-xs animate-in fade-in slide-in-from-bottom-2 duration-150">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center font-bold shadow-2xs">
-                    <span className="material-symbols-outlined text-[22px]">inbox</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <span className="text-[14px] font-bold text-on-surface font-data-rx">
-                        {matchedJob.trayNumber}
-                      </span>
-                      <span className="text-[11px] font-semibold bg-surface-container text-on-surface px-2 py-0.5 rounded font-mono">
-                        {matchedJob.jobCode}
-                      </span>
-                      {matchedJob.isRush ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500 text-white uppercase tracking-wider flex items-center gap-0.5">
-                          <span className="material-symbols-outlined text-[12px]">bolt</span>
-                          RUSH TRAY
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-surface-container text-outline">
-                          Standard Conveyor
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="text-[15px] font-bold text-on-surface">{matchedJob.patientName}</h3>
-                    <p className="text-[11px] text-outline">
-                      Target Delivery: <strong>{matchedJob.deliveryTime}</strong> • Lead Tech: <strong>{matchedJob.leadTechnician}</strong>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectJob(matchedJob);
-                      onClose();
-                    }}
-                    className="px-4 py-2 bg-primary text-on-primary hover:bg-primary-container rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">visibility</span>
-                    <span>Inspect Conveyor Tray</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Glazing Pipeline Stage Progress Bar */}
-              <div className="p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/70 flex flex-col gap-2">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-semibold text-outline">
-                    Current Lab Stage: <strong className="text-primary">{STAGE_NAMES[matchedJob.stage - 1] || 'Processing'}</strong>
-                  </span>
-                  <span className="font-mono font-bold text-outline">
-                    Stage {matchedJob.stage} of 5
-                  </span>
-                </div>
-                {/* 5-step progress pill */}
-                <div className="grid grid-cols-5 gap-1.5">
-                  {[1, 2, 3, 4, 5].map((stg) => (
-                    <div
-                      key={stg}
-                      className={`h-2 rounded-full transition-all ${
-                        stg <= matchedJob.stage
-                          ? 'bg-primary'
-                          : 'bg-surface-container-high'
-                      }`}
-                      title={STAGE_NAMES[stg - 1]}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-outline pt-0.5">
-                  <span>1. Lens Pulling</span>
-                  <span>3. CNC Edging</span>
-                  <span>5. Handover</span>
-                </div>
-              </div>
-
-              {/* Optical Specifications Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant flex flex-col gap-1">
-                  <div className="text-[10px] uppercase font-bold text-outline">Frame Specifications:</div>
-                  <div className="font-bold text-on-surface">{matchedJob.frameName}</div>
-                  <div className="text-[10px] text-outline font-mono">Frame SKU: {matchedJob.frameSku}</div>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant flex flex-col gap-1">
-                  <div className="text-[10px] uppercase font-bold text-outline">Glazed Lens Specification:</div>
-                  <div className="font-bold text-on-surface">{matchedJob.lensName}</div>
-                  <div className="text-[10px] text-outline font-mono">Lens SKU: {matchedJob.lensSku}</div>
-                </div>
-              </div>
-
-              {/* Prescription Quick Matrix */}
-              <div className="p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant text-[11px]">
-                <div className="text-[10px] uppercase font-bold text-outline mb-1">Optical Prescription Link (Rx):</div>
-                <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
-                  <div className="flex items-center justify-between bg-surface-container-low px-2 py-1 rounded">
-                    <span className="font-bold text-primary">OD (Right):</span>
-                    <span>Sph {matchedJob.rx.od.sph} | Cyl {matchedJob.rx.od.cyl} | Ax {matchedJob.rx.od.axis}° | PD {matchedJob.rx.od.pd}</span>
-                  </div>
-                  <div className="flex items-center justify-between bg-surface-container-low px-2 py-1 rounded">
-                    <span className="font-bold text-secondary">OS (Left):</span>
-                    <span>Sph {matchedJob.rx.os.sph} | Cyl {matchedJob.rx.os.cyl} | Ax {matchedJob.rx.os.axis}° | PD {matchedJob.rx.os.pd}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
           {/* SECTION 2: MATCHED INVENTORY ITEM DETAILS                                  */}
           {/* ========================================================================= */}
           {matchedItem && (
             <div className="p-4 bg-secondary-fixed/20 border-2 border-secondary/40 rounded-2xl flex flex-col gap-3 shadow-xs animate-in fade-in slide-in-from-bottom-2 duration-150">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-secondary text-on-secondary flex items-center justify-center font-bold shadow-2xs">
+                  <div className="w-10 h-10 rounded-xl bg-slate-900 dark:bg-teal-600 text-white flex items-center justify-center font-bold shadow-2xs">
                     <span className="material-symbols-outlined text-[22px]">eyeglasses</span>
                   </div>
                   <div>
@@ -429,7 +307,7 @@ export const QuickScannerModal: React.FC<QuickScannerModalProps> = ({
                       <span className="text-[14px] font-bold text-secondary font-data-rx">
                         {matchedItem.sku}
                       </span>
-                      <span className="text-[10px] bg-secondary text-on-secondary px-1.5 py-0.5 rounded font-bold">
+                      <span className="text-[10px] bg-slate-900 dark:bg-teal-600 text-white px-1.5 py-0.5 rounded font-bold">
                         BIN: {matchedItem.storageBin}
                       </span>
                       <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-1.5 py-0.5 rounded font-mono font-bold border border-outline-variant">
@@ -444,31 +322,15 @@ export const QuickScannerModal: React.FC<QuickScannerModalProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {onPrintBarcode && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onPrintBarcode(matchedItem);
-                        onClose();
-                      }}
-                      className="px-3 py-2 bg-surface-container hover:bg-surface-container-high border border-outline-variant text-on-surface rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                      title="Print 35x15mm jewelry/eyewear tail tag"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">print</span>
-                      <span>Print 35x15mm Tag</span>
-                    </button>
-                  )}
-
                   <button
                     type="button"
                     onClick={() => {
                       onSelectInventory(matchedItem);
                       onClose();
                     }}
-                    className="px-4 py-2 bg-secondary text-on-secondary hover:bg-secondary/90 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                    className="px-3 py-1 bg-slate-900 dark:bg-teal-600 text-white hover:bg-slate-800 dark:hover:bg-teal-500 rounded-lg font-bold text-xs shadow-xs transition-all cursor-pointer"
                   >
-                    <span className="material-symbols-outlined text-[16px]">inventory_2</span>
-                    <span>View in Stock Master</span>
+                    Add
                   </button>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   UserAccount,
   ViewMode,
@@ -47,7 +47,7 @@ import { KpiSummaryCards } from './components/KpiSummaryCards';
 import { LabPipelineBoard } from './components/LabPipelineBoard';
 import { ExtejDashboardHero } from './components/ExtejDashboardHero';
 import { InventoryRegistryTable } from './components/InventoryRegistryTable';
-import { DueCollectionsView } from './components/DueCollectionsView';
+import { DueCollectionsView, DueCollectionRecord } from './components/DueCollectionsView';
 import { ReportsView } from './components/ReportsView';
 import { SalesmanManagementView } from './components/SalesmanManagementView';
 import { ExecutiveDashboardView } from './components/ExecutiveDashboardView';
@@ -141,6 +141,7 @@ export default function App() {
     }
     return initialSalesRecords;
   });
+  const [saleSyncWarning, setSaleSyncWarning] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Enterprise ERP State
@@ -170,7 +171,26 @@ export default function App() {
     }
     return initialExpenses;
   });
-  const [financialSummary, setFinancialSummary] = useState<FinancialSummary>(initialFinancialSummary);
+  const [financialSummary, setFinancialSummary] = useState<FinancialSummary>(() => {
+    try {
+      const saved = localStorage.getItem('madina_financial_summary');
+      return saved
+        ? { ...initialFinancialSummary, ...JSON.parse(saved) }
+        : initialFinancialSummary;
+    } catch {
+      return initialFinancialSummary;
+    }
+  });
+  const postedDueCollectionIds = useRef<Set<string>>(new Set());
+  if (postedDueCollectionIds.current.size === 0) {
+    try {
+      postedDueCollectionIds.current = new Set(
+        JSON.parse(localStorage.getItem('madina_due_collection_ids') || '[]') as string[]
+      );
+    } catch {
+      postedDueCollectionIds.current = new Set();
+    }
+  }
   const [salesReturns, setSalesReturns] = useState<SalesReturn[]>(() => {
     const saved = localStorage.getItem('madina_sales_returns');
     if (saved) {
@@ -289,6 +309,23 @@ export default function App() {
     }));
   };
 
+  const handleDueCollectionRecorded = (collection: DueCollectionRecord) => {
+    if (postedDueCollectionIds.current.has(collection.id)) return;
+
+    postedDueCollectionIds.current.add(collection.id);
+    localStorage.setItem(
+      'madina_due_collection_ids',
+      JSON.stringify([...postedDueCollectionIds.current])
+    );
+    setFinancialSummary((prev) => ({
+      ...prev,
+      grossOpticalRevenue: prev.grossOpticalRevenue + collection.amountBDT,
+      dueCollectionsBDT: prev.dueCollectionsBDT + collection.amountBDT,
+      cashCollectedBDT: prev.cashCollectedBDT + (collection.tenderMode === 'Cash' ? collection.amountBDT : 0),
+      digitalPaymentsBDT: prev.digitalPaymentsBDT + (collection.tenderMode === 'Cash' ? 0 : collection.amountBDT),
+    }));
+  };
+
   const handleAddSalesReturn = (ret: SalesReturn) => {
     setSalesReturns((prev) => [ret, ...prev]);
     setAuditLogs((prev) => [
@@ -325,7 +362,7 @@ export default function App() {
     ]);
   };
 
-  // Initial hydration from XAMPP MySQL database 'mehl'
+  // Initial hydration from the application database
   useEffect(() => {
     fetchInitialDataFromDb().then((dbData) => {
       if (dbData.jobs && dbData.jobs.length > 0) {
@@ -342,13 +379,33 @@ export default function App() {
         bulkSyncInventoryToDb(inventory);
       }
 
-      if (dbData.sales && dbData.sales.length > 0) {
-        setSalesRecords(dbData.sales);
-      }
+      const localSales = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('madina_sales_records') || '[]') as SaleRecord[];
+        } catch (error) {
+          console.warn('[Sales Sync] Could not read locally saved sales records:', error);
+          return [];
+        }
+      })();
+      const databaseSales = dbData.sales || [];
+      const databaseSaleIds = new Set(databaseSales.map((sale) => sale.id));
+      localSales
+        .filter((sale) => !databaseSaleIds.has(sale.id))
+        .forEach((sale) => {
+          void syncSaleToDb(sale).then((synced) => setSaleSyncWarning(!synced));
+        });
+
+      setSalesRecords((currentSales) => {
+        const mergedSales = new Map<string, SaleRecord>();
+        [...localSales, ...currentSales, ...databaseSales].forEach((sale) => mergedSales.set(sale.id, sale));
+        return [...mergedSales.values()].sort((a, b) =>
+          (b.timestamp || b.date).localeCompare(a.timestamp || a.date)
+        );
+      });
     });
   }, []);
 
-  // Persist state to localStorage and XAMPP MySQL database
+  // Persist state to localStorage and the application database
   useEffect(() => {
     localStorage.setItem('madina_jobs', JSON.stringify(jobs));
     const timer = setTimeout(() => {
@@ -364,6 +421,10 @@ export default function App() {
     }, 2000);
     return () => clearTimeout(timer);
   }, [inventory]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_financial_summary', JSON.stringify(financialSummary));
+  }, [financialSummary]);
 
   useEffect(() => {
     localStorage.setItem('madina_salesmen', JSON.stringify(salesmen));
@@ -465,6 +526,7 @@ export default function App() {
 
   // Camera QR/Barcode Scanner state
   const [cameraScannedCode, setCameraScannedCode] = useState<string>('');
+  const [posScannedBarcode, setPosScannedBarcode] = useState<string>('');
   const [isFloatingCameraActive, setIsFloatingCameraActive] = useState<boolean>(false);
   const [cameraToast, setCameraToast] = useState<{ message: string; code: string } | null>(null);
 
@@ -680,6 +742,25 @@ export default function App() {
     setJobs((prev) => [jobWithAudit, ...prev]);
   };
 
+  const handleRecordSale = (sale: SaleRecord) => {
+    setSalesRecords((prev) => {
+      if (prev.some((existingSale) => existingSale.id === sale.id)) return prev;
+      return [sale, ...prev];
+    });
+    void syncSaleToDb(sale).then((synced) => setSaleSyncWarning(!synced));
+    setSalesmen((prev) =>
+      prev.map((salesman) =>
+        salesman.id === sale.salesmanId
+          ? {
+              ...salesman,
+              totalSalesCount: (salesman.totalSalesCount || 0) + 1,
+              totalSalesVolumeBDT: (salesman.totalSalesVolumeBDT || 0) + sale.totalAmount,
+            }
+          : salesman
+      )
+    );
+  };
+
   const handleAddSalesman = (newSm: Salesman) => {
     setSalesmen((prev) => [...prev, newSm]);
   };
@@ -778,20 +859,7 @@ export default function App() {
     };
 
     setJobs((prev) => [newJob, ...prev]);
-    setSalesRecords((prev) => [newSaleRecord, ...prev]);
-
-    // Update salesman stats
-    setSalesmen((prev) =>
-      prev.map((s) =>
-        s.id === newSaleRecord.salesmanId
-          ? {
-              ...s,
-              totalSalesCount: (s.totalSalesCount || 0) + 1,
-              totalSalesVolumeBDT: (s.totalSalesVolumeBDT || 0) + invoice.total,
-            }
-          : s
-      )
-    );
+    handleRecordSale(newSaleRecord);
 
     setCurrentView('lab-pipeline');
     alert(`Invoice ${invoice.invoiceNumber} created! Tray ${newJob.trayNumber} assigned to Intake queue. Salesman ${newSaleRecord.salesmanName} credited with ৳${newSaleRecord.commissionEarned} commission.`);
@@ -829,22 +897,11 @@ export default function App() {
       status: 'completed',
     };
 
-    setSalesRecords((prev) => [newSaleRecord, ...prev]);
-    setSalesmen((prev) =>
-      prev.map((s) =>
-        s.id === assignedSalesman.id
-          ? {
-              ...s,
-              totalSalesCount: (s.totalSalesCount || 0) + 1,
-              totalSalesVolumeBDT: (s.totalSalesVolumeBDT || 0) + totalBDT,
-            }
-          : s
-      )
-    );
+    handleRecordSale(newSaleRecord);
   };
 
   // Restock handler
-  const handleRestock = (item: InventoryItem, qtyToAdd: number = 10) => {
+  const handleRestock = (item: InventoryItem, qtyToAdd: number) => {
     setInventory((prev) =>
       prev.map((i) => {
         if (i.id === item.id) {
@@ -942,6 +999,22 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-surface-container-lowest text-on-surface flex flex-col font-sans antialiased selection:bg-primary-fixed selection:text-on-primary-fixed">
+      {saleSyncWarning && (
+        <div
+          role="status"
+          className="fixed bottom-4 right-4 z-[100] flex max-w-md items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 shadow-lg dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
+          <span>বিক্রির তথ্য এই ডিভাইসে সংরক্ষিত আছে; Neon-এ সিঙ্ক বাকি। সার্ভার সংযোগ ফিরলে আবার চেষ্টা করুন।</span>
+          <button
+            type="button"
+            aria-label="সিঙ্ক সতর্কতা বন্ধ করুন"
+            onClick={() => setSaleSyncWarning(false)}
+            className="shrink-0 font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {/* 1. Fixed Top Application Bar */}
       <TopNavBar
         currentView={currentView}
@@ -998,9 +1071,30 @@ export default function App() {
       />
 
       {/* 3. Main Dashboard Workspace (Pushed comfortably below fixed 64px header with clear gap from 256px sidebar on desktop) */}
-      <main className={`pt-20 sm:pt-24 flex-1 flex flex-col px-4 sm:px-6 lg:px-8 pb-8 gap-6 bg-surface dark:bg-[#111317] min-h-screen overflow-x-hidden transition-[margin,width] duration-300 ease-in-out ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
+      <main className={`${
+        currentView === 'financial-accounting'
+          || currentView === 'returns-refunds'
+          || currentView === 'settings-roles'
+          ? 'pt-16 sm:pt-20'
+          : 'pt-20 sm:pt-24'
+      } flex-1 flex flex-col ${
+        currentView === 'settings-roles'
+          ? 'px-3 sm:px-4 lg:px-6'
+          : 'px-4 sm:px-6 lg:px-8'
+      } pb-8 gap-6 bg-surface dark:bg-[#111317] min-h-screen overflow-x-hidden transition-[margin,width] duration-300 ease-in-out ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
         {/* Workspace Header */}
-        {currentView !== 'executive-dashboard' && (
+        {currentView !== 'executive-dashboard'
+          && currentView !== 'modina-erp'
+          && currentView !== 'stock-master'
+          && currentView !== 'multi-branch-ibt'
+          && currentView !== 'supplier-grn'
+          && currentView !== 'financial-accounting'
+          && currentView !== 'returns-refunds'
+          && currentView !== 'due-collections'
+          && currentView !== 'salesmen'
+          && currentView !== 'reports'
+          && currentView !== 'settings-roles'
+          && (
         <header
           className={`flex flex-col gap-3.5 pb-3.5 border-b ${
             currentView === 'lab-pipeline'
@@ -1009,7 +1103,7 @@ export default function App() {
           }`}
         >
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-            <div>
+            {currentView !== 'stock-master' && <div>
               {currentView === 'lab-pipeline' && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mb-1.5 rounded-full bg-[#00c49f]/15 text-[#00f5b4] border border-[#00c49f]/30 text-[10px] font-bold uppercase tracking-wider">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#00c49f]" />
@@ -1017,7 +1111,7 @@ export default function App() {
                 </span>
               )}
               <div className="flex items-center gap-2.5 flex-wrap justify-center lg:justify-start">
-                {currentView !== 'executive-dashboard' && (
+                {currentView !== 'executive-dashboard' && currentView !== 'stock-master' && (
                   <h1 className={`text-lg sm:text-xl font-bold tracking-tight font-headline-md text-center lg:text-left ${
                     currentView === 'lab-pipeline' ? 'text-white' : 'text-on-surface'
                   }`}>
@@ -1064,7 +1158,6 @@ export default function App() {
                 {language === 'bn' ? (
                   <>
                     {currentView === 'lab-pipeline' && 'এসিলর ডেল্টা ২০০ এজার • লেন্স প্রস্তুতকরণ থেকে আইএসও ২১৯৮৭ পরীক্ষণ পর্যন্ত ৫-ধাপের কনভেয়ার ট্রে সিস্টেম'}
-                    {currentView === 'modina-erp' && 'ইউনিফাইড অপটিক্যাল পিওএস: বারকোড স্ক্যানার, অটো ফ্রেম ডিটেইলস, পাইকারি কস্ট সিফার ও সেলস কমিশন'}
                     {currentView === 'stock-master' && 'ডিজাইনার ফ্রেম, লেন্স ইনভেন্টরি, বিন রেজিস্ট্রি এবং বারকোড প্রিন্টার'}
                     {currentView === 'due-collections' && 'গ্রাহক বকেয়া ব্যবস্থাপনা, এসএমএস নোটিফিকেশন এবং পেমেন্ট নিষ্পত্তিকরণ'}
                     {currentView === 'reports' && 'ল্যাব মেশিনের কার্যক্ষমতা, হুইল স্থায়িত্ব, ক্ষতি হার এবং স্টাফ কমিশন লেজার'}
@@ -1079,8 +1172,6 @@ export default function App() {
                 ) : (
                   <>
                     {currentView === 'lab-pipeline' && 'Essilor Delta 200 Edger • Real-time 5-stage optical tray conveyor from lens pulling to ISO 21987 inspection'}
-                    {currentView === 'modina-erp' && 'Single-Page Optical ERP: Barcode Scanner, Auto-Populated Frame Details, Confidential Wholesale Cost & Rx Grid Matrix'}
-                    {currentView === 'stock-master' && 'Live inventory of designer frames, optical lenses, and barcode generator'}
                     {currentView === 'due-collections' && 'Outstanding customer receivables, SMS delivery alerts, and settlement register'}
                     {currentView === 'reports' && 'Essilor Delta 200 hourly velocity, diamond wheel wear, lens spoilage rate, and commission ledgers'}
                     {currentView === 'salesmen' && 'Active sales executives, performance targets, commission tiers (2.5% - 5.5%), and sales volume'}
@@ -1094,7 +1185,7 @@ export default function App() {
                 )}
                 </p>
               )}
-            </div>
+            </div>}
 
           {/* Context-Specific Action Bar */}
           <div className={`lab-header-actions flex items-center gap-1 justify-center lg:justify-end min-w-0 ${
@@ -1247,17 +1338,6 @@ export default function App() {
               </>
             )}
 
-            {currentView === 'reports' && (
-              <>
-                <button
-                  onClick={() => setCurrentView('salesmen')}
-                  className="px-3.5 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[16px] text-teal-600">badge</span>
-                  <span>Salesmen Profiles</span>
-                </button>
-              </>
-            )}
           </div>
         </div>
       </header>
@@ -1375,25 +1455,15 @@ export default function App() {
         {currentView === 'modina-erp' && (
           <ModinaOpticsErpPos
             salesmenList={salesmen}
+            salesRecords={salesRecords}
             onAddSalesman={handleAddSalesman}
             onManageSalesmen={() => setCurrentView('salesmen')}
-            onRecordSale={(sale) => {
-              setSalesRecords((prev) => [sale, ...prev]);
-              setSalesmen((prev) =>
-                prev.map((s) =>
-                  s.id === sale.salesmanId
-                    ? {
-                        ...s,
-                        totalSalesCount: (s.totalSalesCount || 0) + 1,
-                        totalSalesVolumeBDT: (s.totalSalesVolumeBDT || 0) + sale.totalAmount,
-                      }
-                    : s
-                )
-              );
-            }}
+            onRecordSale={handleRecordSale}
             onOpenQuickScan={() => setIsQuickScanOpen(true)}
             onOpenLiveCamera={() => setIsFloatingCameraActive((prev) => !prev)}
             onOpenNewInvoice={() => setIsNewInvoiceOpen(true)}
+            inventory={inventory}
+            initialScannedBarcode={posScannedBarcode}
           />
         )}
 
@@ -1412,7 +1482,12 @@ export default function App() {
           />
         )}
 
-        {currentView === 'due-collections' && <DueCollectionsView />}
+        {currentView === 'due-collections' && (
+          <DueCollectionsView
+            onCollectionRecorded={handleDueCollectionRecorded}
+            salesRecords={salesRecords}
+          />
+        )}
 
         {currentView === 'reports' && (
           <ReportsView
@@ -1622,8 +1697,9 @@ export default function App() {
           setSelectedJobId(job.id);
           setCurrentView('lab-pipeline');
         }}
-        onSelectInventory={() => {
-          setCurrentView('stock-master');
+        onSelectInventory={(item) => {
+          setPosScannedBarcode(item.sku);
+          setCurrentView('modina-erp');
         }}
         onPrintBarcode={(item) => {
           setBarcodeItemToPrint(item);

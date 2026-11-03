@@ -297,7 +297,7 @@ app.post("/api/sales", async (req, res) => {
     const sale = req.body;
     if (!sale || !sale.id) return res.status(400).json({ success: false, error: "Missing sale object or id" });
     await dbUpsertSale(sale);
-    res.json({ success: true, message: `Sale record ${sale.invoiceNumber || sale.id} saved to MySQL mehl` });
+    res.json({ success: true, message: `Sale record ${sale.invoiceNumber || sale.id} saved to Neon PostgreSQL` });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

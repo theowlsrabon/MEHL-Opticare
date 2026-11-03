@@ -1,9 +1,10 @@
 /**
- * Hybrid Offline-First Sync Utility for XAMPP MySQL database 'mehl'
+ * Hybrid offline-first sync utility for the application database.
  * Provides non-blocking background synchronization with graceful offline resilience.
  */
 
 import { API_BASE } from './apiConfig';
+import type { SaleRecord } from '../types';
 
 export interface DbStatusResponse {
   ok: boolean;
@@ -23,7 +24,7 @@ export async function checkServerDbStatus(): Promise<DbStatusResponse> {
   } catch (err: any) {
     return {
       ok: false,
-      message: `Local XAMPP server offline or unreachable (${err.message})`,
+      message: `API server offline or unreachable (${err.message})`,
     };
   }
 }
@@ -89,15 +90,21 @@ export async function bulkSyncInventoryToDb(inventory: any[]): Promise<void> {
 }
 
 // Sales sync
-export async function syncSaleToDb(sale: any): Promise<void> {
+export async function syncSaleToDb(sale: SaleRecord): Promise<boolean> {
   try {
-    await fetch(`${API_BASE}/api/sales`, {
+    const response = await fetch(`${API_BASE}/api/sales`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sale),
     });
+    const result = await response.json();
+    if (!response.ok || result?.success !== true) {
+      throw new Error(result?.error || `HTTP ${response.status}`);
+    }
+    return true;
   } catch (err) {
-    console.warn('[Sync Warning] Sale buffered locally:', err);
+    console.warn('[Sync Warning] Sale remains saved locally; database sync is pending:', err);
+    return false;
   }
 }
 

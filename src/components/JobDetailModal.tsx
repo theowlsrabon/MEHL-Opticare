@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AuditActionType, OpticalJob } from '../types';
+import { loadLabTechnicians } from '../utils/labTechnicians';
 
 interface JobDetailModalProps {
   job: OpticalJob | null;
@@ -26,6 +27,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
 }) => {
   const [draft, setDraft] = useState<OpticalJob | null>(null);
   const [saved, setSaved] = useState(false);
+  const technicians = loadLabTechnicians().filter((technician) => !technician.onHold);
 
   useEffect(() => {
     setDraft(job ? { ...job } : null);
@@ -105,6 +107,20 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                     <option value="standard">Standard (48H)</option>
                     <option value="rush">Rush</option>
                   </select>
+                </label>
+                <label className="flex flex-col gap-1 text-[11px] font-bold text-outline">Technician Name
+                  <input
+                    className={fieldClass}
+                    list="job-technician-options"
+                    value={draft.assignedTech || ''}
+                    onChange={e => update('assignedTech', e.target.value)}
+                    placeholder="Enter or choose technician"
+                  />
+                  <datalist id="job-technician-options">
+                    {technicians.map((technician) => (
+                      <option key={technician.id} value={technician.name} />
+                    ))}
+                  </datalist>
                 </label>
               </div>
             </section>

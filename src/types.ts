@@ -163,6 +163,8 @@ export interface InventoryItem {
   frameMaterial?: string;
   adminCostCode?: string;
   suggestedAskingPrice?: number;
+  purchaseCostBDT?: number;
+  askingPriceBDT?: number;
 }
 
 export interface PrescriptionRecord {
@@ -467,6 +469,7 @@ export interface FinancialSummary {
   cashCollectedBDT: number;
   digitalPaymentsBDT: number;
   outstandingReceivablesBDT: number;
+  dueCollectionsBDT: number;
 }
 
 // ==========================================

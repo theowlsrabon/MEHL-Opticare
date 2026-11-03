@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { printElementById } from '../utils/printUtils';
+import { SaleRecord } from '../types';
 
 export interface InvoiceItem {
   id: string;
@@ -81,6 +82,12 @@ export interface SettledAuditRecord {
   tenderMode: string;
   handover: string;
   cashier: string;
+}
+
+export interface DueCollectionRecord {
+  id: string;
+  amountBDT: number;
+  tenderMode: string;
 }
 
 const INVOICE_DATABASE: DispensaryInvoice[] = [
@@ -363,7 +370,12 @@ const INITIAL_AUDIT_LOG: SettledAuditRecord[] = [
   },
 ];
 
-export const DueCollectionsView: React.FC = () => {
+interface DueCollectionsViewProps {
+  onCollectionRecorded?: (collection: DueCollectionRecord) => void;
+  salesRecords?: SaleRecord[];
+}
+
+export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollectionRecorded, salesRecords = [] }) => {
   // Active selected invoice
   const [invoices, setInvoices] = useState<DispensaryInvoice[]>(() => {
     const saved = localStorage.getItem('madina_due_invoices');
@@ -377,7 +389,77 @@ export const DueCollectionsView: React.FC = () => {
     localStorage.setItem('madina_due_invoices', JSON.stringify(invoices));
   }, [invoices]);
 
-  const [activeInvoiceId, setActiveInvoiceId] = useState<string>('inv-8842');
+  useEffect(() => {
+    const posInvoices = salesRecords
+      .filter((sale) => sale.dueAmount > 0)
+      .map<DispensaryInvoice>((sale) => {
+        const total = sale.totalAmount / 118;
+        const advance = sale.advancePaid / 118;
+        const due = sale.dueAmount / 118;
+        const bookedDate = new Date(`${sale.date}T00:00:00`).toLocaleDateString('en-GB');
+
+        return {
+          id: `pos-${sale.invoiceNumber}`,
+          invoiceNumber: sale.invoiceNumber,
+          legacyId: sale.id,
+          status: 'due',
+          bookedDate,
+          deliveryDate: 'POS invoice',
+          trayLocation: 'POS Counter',
+          patientName: sale.patientName,
+          patientPhone: sale.patientPhone || '',
+          optometrist: sale.salesmanName || 'POS Sales',
+          optometristReg: sale.employeeId || 'N/A',
+          hospitalFile: sale.id,
+          department: 'Optical POS',
+          refraction: {
+            rxRef: sale.invoiceNumber,
+            lensType: sale.itemsSummary || 'POS sale',
+            frameFit: sale.itemsSummary || 'POS sale',
+            typeBadge: 'POS Invoice',
+            od: { sph: '—', cyl: '—', axis: '—', add: '—', pd: '—', segHeight: '—' },
+            os: { sph: '—', cyl: '—', axis: '—', add: '—', pd: '—', segHeight: '—' },
+          },
+          items: [{
+            id: `${sale.id}-item`,
+            name: sale.itemsSummary || 'POS optical sale',
+            sku: sale.invoiceNumber,
+            category: 'POS Sale',
+            rate: total,
+            discountPct: 0,
+            qty: 1,
+            netTotal: total,
+          }],
+          subtotal: sale.subtotal / 118,
+          discountApplied: -(sale.discountAmount / 118),
+          grossBill: total,
+          prevPaid: advance,
+          initialDue: due,
+          payments: advance > 0 ? [{
+            id: `${sale.id}-advance`,
+            title: 'POS Advance Payment',
+            amount: advance,
+            date: sale.timestamp,
+            tenderMode: sale.paymentMethod,
+            receiptSlip: `${sale.invoiceNumber}-ADV`,
+            receivedBy: sale.salesmanName || 'POS Sales',
+            isInitial: true,
+          }] : [],
+        };
+      });
+
+    if (posInvoices.length === 0) return;
+
+    setInvoices((previous) => {
+      const knownInvoiceNumbers = new Set(previous.map((invoice) => normalizeInvoiceSearchTerm(invoice.invoiceNumber)));
+      const newInvoices = posInvoices.filter(
+        (invoice) => !knownInvoiceNumbers.has(normalizeInvoiceSearchTerm(invoice.invoiceNumber))
+      );
+      return newInvoices.length ? [...newInvoices, ...previous] : previous;
+    });
+  }, [salesRecords]);
+
+  const [activeInvoiceId, setActiveInvoiceId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('partial');
   const [periodFilter, setPeriodFilter] = useState('month');
@@ -388,10 +470,10 @@ export const DueCollectionsView: React.FC = () => {
   // Settlement Form State
   const activeInvoice = invoices.find((inv) => inv.id === activeInvoiceId) || invoices[0];
   const [waiverType, setWaiverType] = useState<'flat' | 'percent'>('flat');
-  const [waiverAmount, setWaiverAmount] = useState<string>('0.00');
+  const [waiverAmount, setWaiverAmount] = useState<string>('');
   const [selectedPayMode, setSelectedPayMode] = useState<'Cash' | 'POS Card' | 'bKash/Nagad' | 'Bank Xfer'>('Cash');
-  const [collectionAmount, setCollectionAmount] = useState<string>(activeInvoice.initialDue.toFixed(2));
-  const [givenAmount, setGivenAmount] = useState<string>('150.00');
+  const [collectionAmount, setCollectionAmount] = useState<string>('');
+  const [givenAmount, setGivenAmount] = useState<string>('');
   const [markDelivered, setMarkDelivered] = useState<boolean>(true);
 
   // KPI States
@@ -433,7 +515,14 @@ export const DueCollectionsView: React.FC = () => {
 
   // Sync collection amount when active invoice changes
   useEffect(() => {
-    setWaiverAmount('0.00');
+    if (!activeInvoiceId) {
+      setWaiverAmount('');
+      setCollectionAmount('');
+      setGivenAmount('');
+      return;
+    }
+
+    setWaiverAmount('');
     setCollectionAmount(activeInvoice.initialDue.toFixed(2));
     if (activeInvoice.initialDue === 142.53) {
       setGivenAmount('150.00');
@@ -441,6 +530,34 @@ export const DueCollectionsView: React.FC = () => {
       setGivenAmount(Math.ceil(activeInvoice.initialDue).toFixed(2));
     }
   }, [activeInvoiceId, activeInvoice.initialDue]);
+
+  const getInvoiceSearchTerms = (value: string): string[] => {
+    const terms = [value.trim()];
+    const payload = value.trim().replace(/^MEHL-RX:/i, '');
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>;
+      for (const key of ['invoiceNumber', 'invoiceId', 'invoice', 'id']) {
+        const candidate = parsed[key];
+        if (typeof candidate === 'string') terms.push(candidate.trim());
+      }
+    } catch {
+      // Scanner input may be a plain invoice number rather than a JSON payload.
+    }
+    return [...new Set(terms.filter(Boolean))];
+  };
+
+  const normalizeInvoiceSearchTerm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const searchTerms = getInvoiceSearchTerms(searchQuery);
+  const normalizedSearchTerms = searchTerms.map(normalizeInvoiceSearchTerm).filter(Boolean);
+  const invoiceSuggestions = normalizedSearchTerms.length
+    ? invoices.filter((invoice) => {
+        const invoiceValues = [invoice.invoiceNumber, invoice.legacyId, invoice.id];
+        const normalizedInvoiceValues = invoiceValues.map(normalizeInvoiceSearchTerm);
+        return normalizedSearchTerms.some((term) =>
+          normalizedInvoiceValues.some((value) => value.includes(term) || term.includes(value))
+        );
+      }).slice(0, 8)
+    : [];
 
   // Compute live calculations
   const parsedWaiver = parseFloat(waiverAmount) || 0;
@@ -478,7 +595,24 @@ export const DueCollectionsView: React.FC = () => {
   // Actions
   const handleSelectInvoice = (inv: DispensaryInvoice) => {
     setActiveInvoiceId(inv.id);
-    setSearchQuery(inv.legacyId);
+    setSearchQuery('');
+    showToast(`ইনভয়েস ${inv.invoiceNumber} (${inv.patientName}) লোড হয়েছে`);
+  };
+
+  const handleInvoiceSearch = () => {
+    const exactInvoice = invoices.find((invoice) => {
+      const values = [invoice.invoiceNumber, invoice.legacyId, invoice.id].map(normalizeInvoiceSearchTerm);
+      return normalizedSearchTerms.some((term) => values.includes(term));
+    });
+    const foundInvoice = exactInvoice || (invoiceSuggestions.length === 1 ? invoiceSuggestions[0] : null);
+
+    if (foundInvoice) {
+      handleSelectInvoice(foundInvoice);
+    } else if (invoiceSuggestions.length > 1) {
+      showToast('একাধিক মিল পাওয়া গেছে। তালিকা থেকে সঠিক ইনভয়েসটি বেছে নিন।');
+    } else {
+      showToast('ইনভয়েস পাওয়া যায়নি। নম্বর বা POS বারকোডটি আবার পরীক্ষা করুন।');
+    }
   };
 
   const handleApplyRoundOff = () => {
@@ -502,6 +636,7 @@ export const DueCollectionsView: React.FC = () => {
   const [fefoAllocationData, setFefoAllocationData] = useState<any>(null);
 
   const processPayment = (slipOnly: boolean, collAmt: number, remaining: number, receiptSlipNo: string) => {
+    const paymentId = `pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     // Update invoice state
     setInvoices((prev) =>
       prev.map((inv) => {
@@ -509,7 +644,7 @@ export const DueCollectionsView: React.FC = () => {
           const updatedPayments = [
             ...inv.payments,
             {
-              id: `pay-${Date.now()}`,
+              id: paymentId,
               title: remaining === 0 ? 'Full Settlement & Handover' : 'Partial Due Collection',
               amount: collAmt,
               date: 'Just now (Today)',
@@ -529,6 +664,11 @@ export const DueCollectionsView: React.FC = () => {
         return inv;
       })
     );
+    onCollectionRecorded?.({
+      id: paymentId,
+      amountBDT: Math.round(collAmt * 118),
+      tenderMode: selectedPayMode,
+    });
 
     // Update KPIs & Audit log
     setTodayCollectedTotal((prev) => prev + collAmt);
@@ -563,6 +703,12 @@ export const DueCollectionsView: React.FC = () => {
   };
 
   const handleCollectAndPrint = (slipOnly: boolean = false) => {
+    if (!activeInvoiceId) {
+      showToast('পেমেন্টের আগে ইনভয়েস নম্বর বা POS বারকোড দিয়ে ইনভয়েস নির্বাচন করুন।');
+      searchInputRef.current?.focus();
+      return;
+    }
+
     const collAmt = parsedCollectionAmt > 0 ? parsedCollectionAmt : netPayableDue;
     const remaining = Math.max(0, netPayableDue - collAmt);
     const receiptSlipNo = `REC-${activeInvoice.invoiceNumber.replace('#INV-2024-', '')}-FINAL`;
@@ -599,6 +745,11 @@ export const DueCollectionsView: React.FC = () => {
   };
 
   const handleSaveAndDeliver = () => {
+    if (!activeInvoiceId) {
+      handleCollectAndPrint(false);
+      return;
+    }
+
     handleCollectAndPrint(false);
     showToast(`Eyeglasses delivered to patient ${activeInvoice.patientName}! Tray ${activeInvoice.trayLocation} archived.`);
   };
@@ -609,7 +760,11 @@ export const DueCollectionsView: React.FC = () => {
 
   const handleResetSearch = () => {
     setSearchQuery('');
-    showToast('Search filters reset to all pending due invoices.');
+    setActiveInvoiceId('');
+    setCollectionAmount('');
+    setGivenAmount('');
+    setWaiverAmount('');
+    showToast('পরবর্তী ইনভয়েস নম্বর বা POS বারকোড স্ক্যান করুন।');
   };
 
   const totalOutstandingDue = invoices.reduce((sum, inv) => sum + inv.initialDue, 0);
@@ -692,61 +847,61 @@ export const DueCollectionsView: React.FC = () => {
         {/* 4 Compact Key Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
           {/* Metric 1 */}
-          <div className="bg-white dark:bg-[#1a1d26] border border-emerald-500/20 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all relative overflow-hidden">
-            <div className="flex items-center justify-between text-outline mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+          <div className="bg-white dark:bg-[#1a1d26] border border-emerald-500/20 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all relative overflow-hidden min-h-[156px] flex flex-col">
+            <div className="flex items-start justify-between gap-2 text-outline mb-2 min-h-8">
+              <span className="text-[10px] leading-snug font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
                 আজকের বকেয়া আদায় (Today Collected)
               </span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                <span className="material-symbols-outlined text-[18px]">payments</span>
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[16px]">payments</span>
               </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-data-pos text-emerald-600 dark:text-emerald-400 font-bold tracking-tight">
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <span className="text-lg leading-tight font-data-pos text-emerald-600 dark:text-emerald-400 font-bold tracking-tight">
                 ৳{(todayCollectedTotal * 118).toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </span>
-              <span className="text-xs text-emerald-700/80 dark:text-emerald-300/80 font-data-rx font-medium">
+              <span className="text-[10px] leading-snug text-emerald-700/80 dark:text-emerald-300/80 font-data-rx font-medium">
                 (কালেকশন সম্পূর্ণ)
               </span>
             </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-emerald-500/15 text-xs text-on-surface-variant">
+            <div className="flex items-center justify-between gap-1 mt-auto pt-2 border-t border-emerald-500/15 text-[10px] leading-snug text-on-surface-variant">
               <span>{todaySlipsCount} টি আংশিক রসিদ ক্লোজড</span>
-              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-full">
+              <span className="text-[9px] whitespace-nowrap font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded-full">
                 +{todaySlipsCount} Slips
               </span>
             </div>
           </div>
 
           {/* Metric 2: সর্বমোট বকেয়া (Total System Due) */}
-          <div className="bg-gradient-to-br from-rose-500/15 via-rose-500/5 to-white dark:to-[#1a1d26] border-2 border-rose-500/30 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all relative overflow-hidden">
+          <div className="bg-gradient-to-br from-rose-500/15 via-rose-500/5 to-white dark:to-[#1a1d26] border-2 border-rose-500/30 rounded-2xl p-3.5 shadow-sm hover:shadow-md transition-all relative overflow-hidden min-h-[156px] flex flex-col">
             <div className="absolute -right-3 -bottom-3 opacity-10 text-rose-500 pointer-events-none">
-              <span className="material-symbols-outlined text-[96px]">account_balance_wallet</span>
+              <span className="material-symbols-outlined text-[72px]">account_balance_wallet</span>
             </div>
-            <div className="flex items-center justify-between text-rose-700 dark:text-rose-400 mb-2 relative z-10">
-              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px]">priority_high</span>
+            <div className="flex items-start justify-between gap-2 text-rose-700 dark:text-rose-400 mb-2 relative z-10 min-h-8">
+              <span className="text-[10px] leading-snug font-bold uppercase tracking-wide flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] shrink-0">priority_high</span>
                 সম্পূর্ণ বকেয়ার পরিমাণ (Total Due)
               </span>
-              <div className="w-8 h-8 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shadow-2xs">
-                <span className="material-symbols-outlined text-[18px]">account_balance_wallet</span>
+              <div className="w-7 h-7 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shadow-2xs shrink-0">
+                <span className="material-symbols-outlined text-[16px]">account_balance_wallet</span>
               </div>
             </div>
-            <div className="flex items-baseline gap-2 relative z-10">
-              <span className="text-2xl font-data-pos text-rose-600 dark:text-rose-400 font-bold tracking-tight">
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 relative z-10">
+              <span className="text-lg leading-tight font-data-pos text-rose-600 dark:text-rose-400 font-bold tracking-tight">
                 ৳{(totalOutstandingDue * 118).toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </span>
-              <span className="text-xs text-rose-700/80 dark:text-rose-300/80 font-data-rx font-medium">
+              <span className="text-[10px] leading-snug text-rose-700/80 dark:text-rose-300/80 font-data-rx font-medium">
                 (অনাদায়ী বকেয়া)
               </span>
             </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-rose-500/20 text-xs relative z-10">
+            <div className="flex items-center justify-between gap-1 mt-auto pt-2 border-t border-rose-500/20 text-[10px] leading-snug relative z-10">
               <span className="text-rose-700/80 dark:text-rose-300/80 font-medium">
                 {invoices.filter(i => i.status === 'due').length} টি ইনভয়েসে বকেয়া অপরিশোধিত
               </span>
               <button
                 type="button"
                 onClick={() => setStatusFilter('partial')}
-                className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 transition-colors cursor-pointer"
+                className="text-[9px] whitespace-nowrap font-bold px-1.5 py-0.5 rounded-md bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 transition-colors cursor-pointer"
               >
                 বকেয়া ফিল্টার
               </button>
@@ -754,45 +909,45 @@ export const DueCollectionsView: React.FC = () => {
           </div>
 
           {/* Metric 3: Ready for Pickup */}
-          <div className="bg-white dark:bg-[#1a1d26] border border-blue-500/20 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all">
-            <div className="flex items-center justify-between text-outline mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-300">
+          <div className="bg-white dark:bg-[#1a1d26] border border-blue-500/20 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all min-h-[156px] flex flex-col">
+            <div className="flex items-start justify-between gap-2 text-outline mb-2 min-h-8">
+              <span className="text-[10px] leading-snug font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300">
                 ডেলিভারির জন্য প্রস্তুত (Ready for Pickup)
               </span>
-              <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                <span className="material-symbols-outlined text-[18px]">eyeglasses</span>
+              <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[16px]">eyeglasses</span>
               </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-data-pos text-blue-600 dark:text-blue-400 font-bold">14 চশমা</span>
-              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-500/15 px-2 py-0.5 rounded-full">
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <span className="text-lg leading-tight font-data-pos text-blue-600 dark:text-blue-400 font-bold">14 চশমা</span>
+              <span className="text-[9px] leading-snug font-bold text-blue-700 dark:text-blue-300 bg-blue-500/15 px-1.5 py-0.5 rounded-full">
                 Lab Verified
               </span>
             </div>
-            <div className="mt-2 pt-2 border-t border-blue-500/15 text-xs text-on-surface-variant flex items-center justify-between">
+            <div className="mt-auto pt-2 border-t border-blue-500/15 text-[10px] leading-snug text-on-surface-variant flex items-center justify-between gap-1">
               <span>ওয়ার্কশপ ট্রে তে সংরক্ষিত</span>
               <span className="font-semibold text-blue-600">রেডি টু হ্যান্ডওভার</span>
             </div>
           </div>
 
           {/* Metric 4: Ready for Handover Trays (Replaced FEFO) */}
-          <div className="bg-gradient-to-br from-teal-500/10 via-teal-500/5 to-white dark:to-[#1a1d26] border border-teal-500/25 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all">
-            <div className="flex items-center justify-between text-teal-800 dark:text-teal-300 mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <span className="material-symbols-outlined text-[16px] text-teal-600">inventory_2</span>
+          <div className="bg-gradient-to-br from-teal-500/10 via-teal-500/5 to-white dark:to-[#1a1d26] border border-teal-500/25 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all min-h-[156px] flex flex-col">
+            <div className="flex items-start justify-between gap-2 text-teal-800 dark:text-teal-300 mb-2 min-h-8">
+              <span className="text-[10px] leading-snug font-bold uppercase tracking-wide flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] text-teal-600 shrink-0">inventory_2</span>
                 ডেলিভারি উপযোগী ট্রে (Ready Trays)
               </span>
-              <div className="w-8 h-8 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center">
-                <span className="material-symbols-outlined text-[18px]">check_circle</span>
+              <div className="w-7 h-7 rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[16px]">check_circle</span>
               </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-data-pos text-teal-700 dark:text-teal-300 font-bold">১২ টি ট্রে</span>
-              <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-500/15 px-2 py-0.5 rounded-full">
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <span className="text-lg leading-tight font-data-pos text-teal-700 dark:text-teal-300 font-bold">১২ টি ট্রে</span>
+              <span className="text-[9px] leading-snug font-bold text-teal-700 dark:text-teal-300 bg-teal-500/15 px-1.5 py-0.5 rounded-full">
                 Ready for Handover
               </span>
             </div>
-            <div className="mt-2 pt-2 border-t border-teal-500/20 text-xs text-teal-800/80 dark:text-teal-300/80 flex items-center justify-between">
+            <div className="mt-auto pt-2 border-t border-teal-500/20 text-[10px] leading-snug text-teal-800/80 dark:text-teal-300/80 flex items-center justify-between gap-1">
               <span>নিকটতম মেয়াদ: Nov 2026</span>
               <span className="font-bold text-teal-700 dark:text-teal-400">FEFO Active</span>
             </div>
@@ -814,7 +969,14 @@ export const DueCollectionsView: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ইনভয়েস নম্বর (e.g. IN_1015, #INV-2024-8842), রোগীর মোবাইল (+880...), নাম বা ট্রে নম্বর দিয়ে খুঁজুন..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleInvoiceSearch();
+                }
+              }}
+              aria-label="ইনভয়েস নম্বর বা POS বারকোড"
+              placeholder="ইনভয়েস নম্বর লিখুন বা POS বারকোড স্ক্যান করুন..."
               className="w-full h-11 pl-11 pr-28 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 dark:border-[#2e3547] focus:border-teal-500 rounded-xl text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all font-body-sm"
             />
             <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center gap-1.5">
@@ -852,21 +1014,7 @@ export const DueCollectionsView: React.FC = () => {
             </select>
 
             <button
-              onClick={() => {
-                const found = invoices.find(
-                  (i) =>
-                    i.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    i.legacyId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    i.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    i.trayLocation.toLowerCase().includes(searchQuery.toLowerCase())
-                );
-                if (found) {
-                  setActiveInvoiceId(found.id);
-                  showToast(`ইনভয়েস ${found.invoiceNumber} (${found.patientName}) লোড হয়েছে`);
-                } else {
-                  showToast('সরাসরি মিল পাওয়া যায়নি। নিকটতম রেকর্ড দেখানো হচ্ছে।');
-                }
-              }}
+              onClick={handleInvoiceSearch}
               className="h-11 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer font-bold"
               type="button"
             >
@@ -885,46 +1033,41 @@ export const DueCollectionsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Matched Invoices Chips */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-outline-variant/60 text-xs">
-          <span className="text-on-surface-variant font-bold text-[11px] uppercase tracking-wider flex items-center gap-1">
-            <span className="material-symbols-outlined text-[15px] text-teal-600">receipt</span>
-            উপলব্ধ ইনভয়েসসমূহ:
-          </span>
-          {invoices.map((inv) => {
-            const isSelected = inv.id === activeInvoice.id;
-            return (
-              <button
-                key={inv.id}
-                onClick={() => handleSelectInvoice(inv)}
-                className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 font-bold transition-all cursor-pointer text-xs ${
-                  isSelected
-                    ? 'bg-teal-500/15 text-teal-800 dark:text-teal-200 border-teal-500/40 ring-2 ring-teal-500/20 shadow-2xs'
-                    : 'bg-[#f8fafc] dark:bg-[#14171f] hover:bg-surface-container text-on-surface-variant border-outline-variant/80'
-                }`}
-                type="button"
-              >
-                <div className="w-5 h-5 rounded-full bg-teal-600 text-white text-[10px] flex items-center justify-center font-bold">
-                  {inv.patientName.charAt(0)}
-                </div>
-                <span>
-                  {inv.invoiceNumber} • {inv.patientName}
-                </span>
-                <span className={`px-1.5 py-0.2 rounded text-[10px] font-extrabold ${
-                  inv.initialDue === 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                }`}>
-                  {inv.initialDue === 0 ? 'PAID' : `Due ৳${(inv.initialDue * 118).toFixed(0)}`}
-                </span>
-              </button>
-            );
-          })}
-          <span className="text-on-surface-variant text-[11px] ml-auto font-medium hidden md:inline">
-            সক্রিয় ইনভয়েস: <strong className="font-data-rx text-teal-700 dark:text-teal-400">{activeInvoice.invoiceNumber}</strong> ({activeInvoice.trayLocation})
-          </span>
-        </div>
+        {searchQuery.trim() && (
+          <div className="pt-3 border-t border-outline-variant/60 space-y-2" role="listbox" aria-label="ইনভয়েস সাজেশন">
+            <span className="text-on-surface-variant font-bold text-[11px] uppercase tracking-wider flex items-center gap-1">
+              <span className="material-symbols-outlined text-[15px] text-teal-600">receipt</span>
+              মিল পাওয়া ইনভয়েস:
+            </span>
+            {invoiceSuggestions.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {invoiceSuggestions.map((inv) => (
+                  <button
+                    key={inv.id}
+                    onClick={() => handleSelectInvoice(inv)}
+                    className="px-3 py-1.5 rounded-xl border flex items-center gap-2 font-bold transition-all cursor-pointer text-xs bg-[#f8fafc] dark:bg-[#14171f] hover:bg-teal-50 dark:hover:bg-teal-950/30 text-on-surface-variant border-outline-variant/80"
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                  >
+                    <span className="w-5 h-5 rounded-full bg-teal-600 text-white text-[10px] flex items-center justify-center font-bold">
+                      {inv.patientName.charAt(0)}
+                    </span>
+                    <span>{inv.invoiceNumber} • {inv.patientName}</span>
+                    <span className="text-[10px] font-extrabold text-rose-700 dark:text-rose-300">
+                      {inv.initialDue === 0 ? 'পরিশোধিত' : `বকেয়া ৳${(inv.initialDue * 118).toFixed(0)}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-on-surface-variant">কোনো ইনভয়েস মেলেনি। ইনভয়েস নম্বর বা POS বারকোডটি পরীক্ষা করুন।</p>
+            )}
+          </div>
+        )}
       </section>
 
-      {/* 3. Main Split Workstation (7 Cols Left / 5 Cols Right) */}
+      {activeInvoiceId ? (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* LEFT & CENTER PANE: Active Invoice Dossier (7 Columns) */}
         <div className="lg:col-span-7 space-y-5">
@@ -1706,6 +1849,15 @@ export const DueCollectionsView: React.FC = () => {
           </div>
         </div>
       </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-teal-500/40 bg-white dark:bg-[#1a1d26] p-8 text-center">
+          <span className="material-symbols-outlined text-4xl text-teal-600">qr_code_scanner</span>
+          <h2 className="mt-2 text-sm font-bold text-on-surface">ইনভয়েস নম্বর লিখুন বা POS বারকোড স্ক্যান করুন</h2>
+          <p className="mt-1 text-xs text-on-surface-variant">
+            মিল পাওয়া ইনভয়েস সাজেশন থেকে নির্বাচন করলে রোগী, বিল ও বকেয়ার তথ্য দেখাবে।
+          </p>
+        </div>
+      )}
 
       {/* 4. BOTTOM SECTION: Recent FEFO Dispensations & Due Collections Settled Today */}
       <section className="mt-4 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xs overflow-hidden">

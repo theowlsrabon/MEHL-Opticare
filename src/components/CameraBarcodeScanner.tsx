@@ -22,6 +22,8 @@ export const CameraBarcodeScanner: React.FC<CameraBarcodeScannerProps> = ({
   const [lastDetected, setLastDetected] = useState<{ text: string; time: string } | null>(null);
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [fileScanError, setFileScanError] = useState<string | null>(null);
 
   const scannerRegionId = useRef(`qr-reader-${Math.random().toString(36).substring(2, 9)}`);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
@@ -217,33 +219,70 @@ export const CameraBarcodeScanner: React.FC<CameraBarcodeScannerProps> = ({
   };
 
   // Image file scan fallback
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
+    setFileScanError(null);
+    setIsProcessingFile(true);
+    await stopScanner();
 
-    // Use jsQR on an image element
     const reader = new FileReader();
+    reader.onerror = () => {
+      setFileScanError('Could not read the selected image.');
+      setIsProcessingFile(false);
+    };
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        const maxDimension = 1600;
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-        const imageData = ctx.getImageData(0, 0, img.width, img.height);
-        const qrCode = jsQR(imageData.data, img.width, img.height);
+        if (!ctx) {
+          setFileScanError('Could not process the selected image.');
+          setIsProcessingFile(false);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const qrCode = jsQR(imageData.data, canvas.width, canvas.height);
         if (qrCode && qrCode.data) {
           handleDecoded(qrCode.data, 'QR_CODE_IMAGE');
-        } else if (html5QrCodeRef.current) {
-          html5QrCodeRef.current
+          setIsProcessingFile(false);
+        } else {
+          const fileScanner = new Html5Qrcode(scannerRegionId.current, {
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.CODE_128,
+              Html5QrcodeSupportedFormats.CODE_39,
+              Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.UPC_A,
+              Html5QrcodeSupportedFormats.UPC_E,
+              Html5QrcodeSupportedFormats.ITF,
+              Html5QrcodeSupportedFormats.QR_CODE,
+            ],
+            verbose: false,
+          });
+          fileScanner
             .scanFile(file, true)
-            .then((res) => handleDecoded(res, 'IMAGE_BARCODE'))
+            .then((res) => {
+              handleDecoded(res, 'IMAGE_BARCODE');
+              return fileScanner.clear();
+            })
             .catch(() => {
-              alert('Could not detect a clear barcode or QR code in this image. Please ensure good lighting and contrast.');
+              setFileScanError('Could not detect a clear barcode. Use a sharp, front-facing photo with no cropping.');
+            })
+            .finally(() => {
+              setIsProcessingFile(false);
             });
         }
+      };
+      img.onerror = () => {
+        setFileScanError('The selected file is not a supported image.');
+        setIsProcessingFile(false);
       };
       img.src = event.target?.result as string;
     };
@@ -413,6 +452,16 @@ export const CameraBarcodeScanner: React.FC<CameraBarcodeScannerProps> = ({
 
       {/* Bottom Controls & Demo Testing Shortcuts */}
       <div className="mt-3 flex flex-col gap-2">
+        {isProcessingFile && (
+          <div className="px-3 py-2 rounded-lg bg-primary/10 text-primary text-[11px] font-bold">
+            Reading barcode image...
+          </div>
+        )}
+        {fileScanError && (
+          <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-medium">
+            {fileScanError}
+          </div>
+        )}
         {/* Last detected readout if any */}
         {lastDetected && (
           <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-[11px]">

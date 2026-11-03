@@ -35,6 +35,11 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
 # Temporary / Scratch scripts
 test_*.ts
 test_*.js

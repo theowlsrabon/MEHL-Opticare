@@ -34,7 +34,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   const pendingIbtCount = ibtOrders.filter(o => o.status === 'requested' || o.status === 'in_transit').length;
 
   return (
-    <div className="flex flex-col gap-4 w-full">
+    <div className="executive-dashboard flex flex-col gap-4 w-full">
       {/* Executive Command Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-4 sm:p-5 rounded-xl shadow-xs border border-slate-700/80">
         <div>
@@ -217,7 +217,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
           <div className="w-full">
             <table className="w-full table-fixed text-left text-[10px] border-collapse">
               <thead>
-                <tr className="bg-surface-container/60 dark:bg-[#1c202a] text-outline uppercase font-extrabold text-[9px] leading-3 tracking-wide border-y border-outline-variant/60 dark:border-[#272d3a]">
+                <tr className="bg-surface-container/60 dark:bg-[#1c202a] text-outline uppercase font-extrabold text-[11px] leading-4 tracking-wide border-y border-outline-variant/60 dark:border-[#272d3a]">
                   <th className="w-[20%] py-2 px-1.5">{isBangla ? 'ব্রাঞ্চ ও লোকেশন' : 'Branch & Location'}</th>
                   <th className="w-[12%] py-2 px-1.5">{isBangla ? 'ধরণ' : 'Type'}</th>
                   <th className="w-[7%] py-2 px-1 text-center">{isBangla ? 'স্টাফ' : 'Staff'}</th>
@@ -232,26 +232,26 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                 {branches.map((b) => (
                   <tr key={b.id} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60 transition-colors">
                     <td className="py-2 px-1.5 align-middle">
-                      <div className="text-[10px] font-bold leading-[13px] text-on-surface break-words">{b.name}</div>
-                      <div className="mt-0.5 text-[9px] leading-[12px] text-outline break-words">{b.location}</div>
+                      <div className="text-[12px] font-bold leading-[15px] text-on-surface break-words">{b.name}</div>
+                      <div className="mt-0.5 text-[11px] leading-[14px] text-outline break-words">{b.location}</div>
                     </td>
                     <td className="py-2 px-1.5 align-middle">
-                      <span className="inline-block text-[8px] leading-3 font-bold text-teal-700 dark:text-teal-300 break-words">
+                      <span className="inline-block text-[10px] leading-4 font-bold text-teal-700 dark:text-teal-300 break-words">
                         {isBangla
                           ? (b.type === 'headquarters' ? 'হেডকোয়ার্টার' : b.type === 'central_lab' ? 'রোবোটিক ল্যাব' : b.type === 'specialty_center' ? 'স্পেশালিটি সেন্টার' : 'আউটপোস্ট')
                           : (b.type === 'headquarters' ? 'Headquarters' : b.type === 'central_lab' ? 'Robotic Lab' : b.type === 'specialty_center' ? 'Specialty Center' : 'Outpost')}
                       </span>
                     </td>
-                    <td className="py-2 px-1 text-center font-bold text-on-surface">{b.activeStaffCount}</td>
+                    <td className="py-2 px-1 text-center text-[11px] font-bold text-on-surface">{b.activeStaffCount}</td>
                     <td className="py-2 px-1 text-center">
-                      <span className="inline-flex min-w-5 justify-center px-1 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 font-bold">
+                      <span className="inline-flex min-w-5 justify-center px-1 py-0.5 rounded-full bg-amber-500/15 text-[11px] text-amber-700 dark:text-amber-400 font-bold">
                         {b.openTraysCount}
                       </span>
                     </td>
-                    <td className="py-2 px-1 text-right font-data-rx font-bold text-on-surface">
+                    <td className="py-2 px-1 text-right text-[11px] font-data-rx font-bold text-on-surface">
                       {b.totalStockUnits?.toLocaleString()}
                     </td>
-                    <td className="py-2 px-1 text-right font-data-rx text-[9px] font-bold text-emerald-600 dark:text-emerald-400 break-words">
+                    <td className="py-2 px-1 text-right font-data-rx text-[11px] font-bold text-emerald-600 dark:text-emerald-400 break-words">
                       ৳{(b.totalStockUnits * 480)?.toLocaleString()}
                     </td>
                     <td className="py-2 px-1 text-center">
@@ -274,7 +274,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
         </div>
 
         {/* Right 1 Col: Urgent Executive Action Feed */}
-        <div className="min-w-0 bg-surface-container-lowest dark:bg-[#15181f] rounded-xl p-3 border border-outline-variant/70 dark:border-[#252a36] shadow-2xs">
+        <div className="min-w-0 w-full max-w-full overflow-hidden bg-surface-container-lowest dark:bg-[#15181f] rounded-xl p-3 border border-outline-variant/70 dark:border-[#252a36] shadow-2xs">
           <div>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold text-xs leading-4">
@@ -290,7 +290,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               {/* Action 1: Optical Lens Stock Alert (Pharmacy FEFO hidden) */}
               <div
                 onClick={() => onNavigate('stock-master')}
-                className="p-2.5 rounded-xl bg-surface-container-low border border-outline-variant hover:border-amber-500 transition-all cursor-pointer group"
+                className="min-w-0 w-full overflow-hidden p-2.5 rounded-xl bg-surface-container-low border border-outline-variant hover:border-amber-500 transition-all cursor-pointer group"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold leading-4 text-on-surface flex items-center gap-1.5">
@@ -309,7 +309,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               {/* Action 2: IBT Gate Pass Approval */}
               <div
                 onClick={() => onNavigate('multi-branch-ibt')}
-                className="p-2.5 rounded-xl bg-surface-container-low border border-outline-variant hover:border-blue-500 transition-all cursor-pointer group"
+                className="min-w-0 w-full overflow-hidden p-2.5 rounded-xl bg-surface-container-low border border-outline-variant hover:border-blue-500 transition-all cursor-pointer group"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold leading-4 text-on-surface flex items-center gap-1.5">
@@ -328,7 +328,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               {/* Action 3: Supplier GRN Receipt */}
               <div
                 onClick={() => onNavigate('supplier-grn')}
-                className="p-2.5 rounded-xl bg-surface-container-low border border-outline-variant hover:border-emerald-500 transition-all cursor-pointer group"
+                className="min-w-0 w-full overflow-hidden p-2.5 rounded-xl bg-surface-container-low border border-outline-variant hover:border-emerald-500 transition-all cursor-pointer group"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold leading-4 text-on-surface flex items-center gap-1.5">
@@ -347,9 +347,9 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
           </div>
 
           {/* Quick Nav Shortcuts */}
-          <div className="mt-4 pt-3 border-t border-outline-variant/50 dark:border-[#272d3a] flex items-center justify-between">
-            <span className="text-[11px] font-bold text-outline">{isBangla ? 'ডিপার্টমেন্টাল জাম্প:' : 'Quick Links:'}</span>
-            <div className="flex items-center gap-1.5">
+          <div className="executive-dashboard-quick-links mt-4 pt-3 border-t border-outline-variant/50 dark:border-[#272d3a] flex flex-wrap items-center justify-between gap-2">
+            <span className="shrink-0 text-[11px] font-bold text-outline whitespace-nowrap leading-5">{isBangla ? 'ডিপার্টমেন্টাল জাম্প:' : 'Quick Links:'}</span>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
               <button
                 onClick={() => onNavigate('financial-accounting')}
                 className="text-[11px] font-bold text-[#169b90] bg-[#169b90]/10 hover:bg-[#169b90]/20 px-2 py-1 rounded-md transition-colors cursor-pointer"

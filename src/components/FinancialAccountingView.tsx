@@ -46,7 +46,7 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   };
 
   return (
-    <div className="flex flex-col gap-5 p-4 lg:p-6 max-w-7xl mx-auto w-full">
+    <div className="flex flex-col gap-5 w-full">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-4 sm:p-5 rounded-xl border border-slate-700/80 shadow-xs">
         <div>
@@ -185,6 +185,10 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <span className="text-on-surface">অপটিক্যাল ফ্রেম ও সানগ্লাস বিক্রয়</span>
                   <span className="font-data-rx font-bold text-on-surface">৳{financialSummary.grossOpticalRevenue?.toLocaleString()}</span>
                 </div>
+                <div className="flex justify-between pl-3 text-teal-700 dark:text-teal-300">
+                  <span>বকেয়া আদায় (ইনভয়েস রাজস্বের অন্তর্ভুক্ত)</span>
+                  <span className="font-data-rx font-bold">৳{financialSummary.dueCollectionsBDT?.toLocaleString()}</span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-on-surface">অপটিক্যাল লেন্স কোটিং ও ফিটিংস সেবা</span>
                   <span className="font-data-rx font-bold text-on-surface">৳{financialSummary.pharmacyRevenue?.toLocaleString()}</span>
@@ -296,11 +300,11 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
               </thead>
               <tbody className="divide-y divide-outline-variant/40 dark:divide-[#242936]">
                 {[
-                  { brand: 'Ray-Ban Italy (Luxottica)', cat: 'Premium Metal Frames', cipher: '*R-B-K*', cost: 4800, sell: 8800, margin: 45.5, tier: 'High Margin' },
-                  { brand: 'Titan Eyeplus (Flex Titan)', cat: 'Memory Metal Eyewear', cipher: '*M-T-P*', cost: 2100, sell: 4200, margin: 50.0, tier: 'High Margin' },
-                  { brand: 'Gucci Eyewear (Kering)', cat: 'Luxury Acetate Sunglasses', cipher: '*G-C-X*', cost: 11000, sell: 21000, margin: 47.6, tier: 'High Margin' },
-                  { brand: 'Zeiss DuraVision Platinum 1.60', cat: 'Premium Anti-Reflective Lens', cipher: '*Z-S-P*', cost: 2400, sell: 4800, margin: 50.0, tier: 'Superior Margin' },
-                  { brand: 'Alcon Total30 Silicone Hydrogel', cat: 'Contact Lens Packs', cipher: '*A-L-C*', cost: 1600, sell: 2600, margin: 38.5, tier: 'Contact Lens' },
+                  { brand: 'Ray-Ban Italy (Luxottica)', cat: 'Premium Metal Frames', cipher: '*R-B-K*', cost: 5200, sell: 8800, margin: 40.9, tier: 'High Margin' },
+                  { brand: 'Titan Eyeplus (Flex Titan)', cat: 'Memory Metal Eyewear', cipher: '*M-T-P*', cost: 2300, sell: 4200, margin: 45.2, tier: 'High Margin' },
+                  { brand: 'Gucci Eyewear (Kering)', cat: 'Luxury Acetate Sunglasses', cipher: '*G-C-X*', cost: 12000, sell: 21000, margin: 42.9, tier: 'High Margin' },
+                  { brand: 'Zeiss DuraVision Platinum 1.60', cat: 'Premium Anti-Reflective Lens', cipher: '*Z-S-P*', cost: 2600, sell: 4800, margin: 45.8, tier: 'Superior Margin' },
+                  { brand: 'Alcon Total30 Silicone Hydrogel', cat: 'Contact Lens Packs', cipher: '*A-L-C*', cost: 1750, sell: 2600, margin: 32.7, tier: 'Contact Lens' },
                 ].map((item, idx) => (
                   <tr key={idx} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60">
                     <td className="py-3 px-4">

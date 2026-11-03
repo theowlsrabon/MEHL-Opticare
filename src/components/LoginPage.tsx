@@ -61,7 +61,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     login: 'সাইন ইন',
     authenticating: 'যাচাই করা হচ্ছে...',
     error: 'ইউজারনেম ও পাসওয়ার্ড লিখুন।',
-    networkError: 'সার্ভারে ক্রেডেনশিয়াল যাচাই করা যায়নি। XAMPP/MySQL চালু আছে কি না নিশ্চিত করুন।',
+    networkError: 'সার্ভারের সাথে সংযোগ করা যায়নি। API সার্ভার চালু ও সংযোগযোগ্য আছে কি না নিশ্চিত করুন।',
     invalid: 'ইউজারনেম বা পাসওয়ার্ড ভুল। আবার চেষ্টা করুন।',
     subtitle: 'হাসপাতাল ও অপটিক্যাল সেবার নিরাপদ প্রবেশদ্বার',
   } : {
@@ -72,7 +72,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     login: 'Sign In',
     authenticating: 'Authenticating...',
     error: 'Please enter both username and password.',
-    networkError: 'Could not verify credentials with server. Ensure MySQL is running on XAMPP.',
+    networkError: 'Could not reach the API server. Ensure the backend is running and reachable.',
     invalid: 'Invalid username or password. Please try again.',
     subtitle: 'Secure access for hospital and optical operations',
   };
@@ -91,7 +91,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
 
     try {
-      // 1. Attempt login against XAMPP MySQL server
+      // Login is verified by the backend, which reads user accounts from Neon.
       const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

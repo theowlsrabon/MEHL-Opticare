@@ -9,6 +9,7 @@ import {
   Sparkles,
   Palette,
 } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 export interface LensConfiguration {
   material: string;
@@ -232,6 +233,8 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
   onSelectDesign,
   onConfigurationChange,
 }) => {
+  const { language } = useLanguage();
+  const label = (item: { bn: string; en: string }) => language === 'bn' ? item.bn : item.en;
   const curMat = MATERIALS.find((m) => m.id === selectedMaterial) || MATERIALS[0];
   const curCoat = COATINGS.find((c) => c.id === selectedCoating) || COATINGS[0];
   const curColor = COLORS.find((c) => c.id === selectedColor) || COLORS[0];
@@ -239,7 +242,9 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
 
   const totalCalculated =
     curMat.basePrice + curCoat.addPrice + curColor.addPrice + curDesign.addPrice;
-  const fullName = `${curMat.bn} (${curMat.en}) — ${curCoat.bn} — ${curColor.bn} — ${curDesign.bn}`;
+  const fullName = language === 'bn'
+    ? `${curMat.bn} — ${curCoat.bn} — ${curColor.bn} — ${curDesign.bn}`
+    : `${curMat.en} — ${curCoat.en} — ${curColor.en} — ${curDesign.en}`;
 
   // Notify parent if config changed
   React.useEffect(() => {
@@ -272,7 +277,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
       <div className="bg-white dark:bg-[#161c27] rounded-2xl border border-sky-100 dark:border-slate-800 p-3.5 shadow-2xs">
         <div className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400 font-bold text-xs uppercase tracking-wide mb-2.5">
           <span className="text-sm">🧪</span>
-          <span>① উপাদান (MATERIAL)</span>
+          <span>{language === 'bn' ? '১. উপাদান' : '1. Material'}</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -298,10 +303,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                         : 'text-slate-700 dark:text-slate-200'
                     }`}
                   >
-                    {m.bn}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-medium truncate">
-                    {m.en}
+                    {label(m)}
                   </div>
                 </div>
               </button>
@@ -314,7 +316,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
       <div className="bg-white dark:bg-[#161c27] rounded-2xl border border-sky-100 dark:border-slate-800 p-3.5 shadow-2xs">
         <div className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400 font-bold text-xs uppercase tracking-wide mb-2.5">
           <span className="text-sm">🧠</span>
-          <span>② কোটিং (COATING)</span>
+          <span>{language === 'bn' ? '২. কোটিং' : '2. Coating'}</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -340,10 +342,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                         : 'text-slate-700 dark:text-slate-200'
                     }`}
                   >
-                    {c.bn}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-medium truncate">
-                    {c.en}
+                    {label(c)}
                   </div>
                 </div>
               </button>
@@ -356,7 +355,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
       <div className="bg-white dark:bg-[#161c27] rounded-2xl border border-sky-100 dark:border-slate-800 p-3.5 shadow-2xs">
         <div className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400 font-bold text-xs uppercase tracking-wide mb-2.5">
           <span className="text-sm">🌈</span>
-          <span>③ রঙ / টিন্ট (COLOR)</span>
+          <span>{language === 'bn' ? '৩. রঙ / টিন্ট' : '3. Color / Tint'}</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -381,10 +380,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                       : 'text-slate-700 dark:text-slate-200'
                   }`}
                 >
-                  {col.bn}
-                </div>
-                <div className="text-[10px] text-slate-400 font-medium truncate w-full">
-                  {col.en}
+                  {label(col)}
                 </div>
               </button>
             );
@@ -396,7 +392,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
       <div className="bg-white dark:bg-[#161c27] rounded-2xl border border-sky-100 dark:border-slate-800 p-3.5 shadow-2xs">
         <div className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400 font-bold text-xs uppercase tracking-wide mb-2.5">
           <span className="text-sm">🔍</span>
-          <span>④ লেন্স ডিজাইন</span>
+          <span>{language === 'bn' ? '৪. লেন্স ডিজাইন' : '4. Lens Design'}</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -420,10 +416,7 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
                       : 'text-slate-700 dark:text-slate-200'
                   }`}
                 >
-                  {d.bn}
-                </div>
-                <div className="text-[10px] text-slate-400 font-medium">
-                  {d.en}
+                  {label(d)}
                 </div>
               </button>
             );
@@ -434,27 +427,27 @@ export const OphthalmicLensSelector: React.FC<OphthalmicLensSelectorProps> = ({
       {/* Bottom Summary Bar (Dark Container) */}
       <div className="bg-[#090d12] text-white rounded-xl p-3 border border-[#1e2d3d] shadow-md flex flex-col items-center justify-center">
         <div className="text-[11px] text-[#00c49f] font-bold mb-1 tracking-wide uppercase">
-          নির্বাচিত লেন্স কনফিগারেশন
+          {language === 'bn' ? 'নির্বাচিত লেন্স কনফিগারেশন' : 'Selected Lens Configuration'}
         </div>
         <div className="text-xs sm:text-sm font-bold flex flex-wrap items-center justify-center gap-2 text-slate-100">
           <span className="flex items-center gap-1.5 bg-[#121c26] px-2 py-0.5 rounded-md border border-[#1e2d3d]">
             <span className="inline-block w-2 h-2 rounded-full bg-purple-400"></span>
-            <span>{curMat.bn}</span>
+            <span>{label(curMat)}</span>
           </span>
           <span className="text-slate-600">•</span>
           <span className="flex items-center gap-1.5 bg-[#121c26] px-2 py-0.5 rounded-md border border-[#1e2d3d]">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>{curCoat.bn}</span>
+            <span>{label(curCoat)}</span>
           </span>
           <span className="text-slate-600">•</span>
           <span className="flex items-center gap-1.5 bg-[#121c26] px-2 py-0.5 rounded-md border border-[#1e2d3d]">
             <span className="inline-block w-2 h-2 rounded-full bg-sky-400"></span>
-            <span>{curColor.bn}</span>
+            <span>{label(curColor)}</span>
           </span>
           <span className="text-slate-600">•</span>
           <span className="flex items-center gap-1.5 bg-[#121c26] px-2 py-0.5 rounded-md border border-[#1e2d3d]">
             <span className="inline-block w-2 h-2 rounded-full bg-[#00f5b4]"></span>
-            {curDesign.bn}
+            {label(curDesign)}
           </span>
         </div>
       </div>

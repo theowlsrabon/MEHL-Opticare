@@ -59,11 +59,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               setClosingInitialDate(undefined);
               setIsDailyClosingOpen(true);
             }}
-            className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-[#169b90] hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-teal-900/15 hover:shadow-teal-900/25 flex items-center gap-2 transition-all cursor-pointer ring-1 ring-white/20 active:scale-95"
+            className="px-3 py-1.5 bg-[#08745f] hover:bg-[#065f4e] text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
             title="Open Daily Closing Summary Modal"
           >
-            <span className="material-symbols-outlined text-[18px]">fact_check</span>
-            <span>দৈনিক ক্লোজিং সামারি (Daily Closing Summary)</span>
+            <span className="material-symbols-outlined text-[18px] !text-white">fact_check</span>
+            <span className="!text-white">দৈনিক ক্লোজিং সামারি (Daily Closing Summary)</span>
           </button>
 
           {/* Tab Switcher */}
@@ -121,12 +121,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
       {/* Tab 1: Salesman Performance & Commission Ledger */}
       {activeTab === 'salesmen' && (
-        <SalesmanReportsSection
-          salesmen={salesmen}
-          salesRecords={salesRecords}
-          onNavigateToSalesmen={onNavigateToSalesmen}
-          currentUserRole={currentUserRole}
-        />
+        <>
+          <div className="flex justify-end -mt-3">
+            <button
+              type="button"
+              onClick={onNavigateToSalesmen}
+              className="px-3.5 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px] text-teal-600">badge</span>
+              <span>Salesmen Profiles</span>
+            </button>
+          </div>
+          <SalesmanReportsSection
+            salesmen={salesmen}
+            salesRecords={salesRecords}
+            onNavigateToSalesmen={onNavigateToSalesmen}
+            currentUserRole={currentUserRole}
+          />
+        </>
       )}
 
       {/* Tab 2: Workshop Production & Machine Telemetry */}
@@ -289,4 +301,3 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     </div>
   );
 };
-

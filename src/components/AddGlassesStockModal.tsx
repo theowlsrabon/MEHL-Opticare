@@ -17,17 +17,17 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
 }) => {
   const isAdmin = currentUser.role === 'admin' || currentUser.permissions.canViewPurchaseCost;
 
-  const [brand, setBrand] = useState('Ray-Ban');
+  const [brand, setBrand] = useState('');
   const [model, setModel] = useState('');
-  const [category, setCategory] = useState<'Optical Frame' | 'Premium Frame'>('Optical Frame');
-  const [frameSize, setFrameSize] = useState('54-18-140');
-  const [color, setColor] = useState('Matte Black');
-  const [material, setMaterial] = useState('Acetate & Titanium');
-  const [stockQty, setStockQty] = useState<number>(5);
-  const [storageBin, setStorageBin] = useState('Frame Rack 2, Drawer B-01');
-  const [purchasePriceBDT, setPurchasePriceBDT] = useState<number>(1200);
-  const [askingPriceBDT, setAskingPriceBDT] = useState<number>(2800);
-  const [printImmediately, setPrintImmediately] = useState<boolean>(true);
+  const [category, setCategory] = useState<'' | 'Optical Frame' | 'Premium Frame'>('');
+  const [frameSize, setFrameSize] = useState('');
+  const [color, setColor] = useState('');
+  const [material, setMaterial] = useState('');
+  const [stockQty, setStockQty] = useState<number | ''>('');
+  const [storageBin, setStorageBin] = useState('');
+  const [purchasePriceBDT, setPurchasePriceBDT] = useState<number | ''>('');
+  const [askingPriceBDT, setAskingPriceBDT] = useState<number | ''>('');
+  const [printImmediately, setPrintImmediately] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -39,23 +39,27 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
     }
 
     const sku = generateEyewearSKU(brand, model);
-    const costUSD = purchasePriceBDT / 120;
-    const sellUSD = askingPriceBDT / 120;
-    const adminCipher = encodeAdminCostCipher(purchasePriceBDT);
+    const purchaseCost = Number(purchasePriceBDT) || 0;
+    const askingPrice = Number(askingPriceBDT) || 0;
+    const costUSD = purchaseCost / 120;
+    const sellUSD = askingPrice / 120;
+    const adminCipher = encodeAdminCostCipher(purchaseCost);
 
     const newItem: InventoryItem = {
       id: `inv-frm-${Date.now()}`,
       sku,
       name: `${brand} ${model}`,
       specs: `${material} • ${color} ${frameSize}`,
-      category,
+      category: category || 'Optical Frame',
       opticalSpecs: `Bridge: ${frameSize.split('-')[1] || '18'}mm • Temple: ${frameSize.split('-')[2] || '140'}mm`,
       opticalDetails: `Size ${frameSize} • ${material}`,
       stockQty: Number(stockQty) || 1,
       minThreshold: 2,
-      costPrice: Number(costUSD.toFixed(1)),
-      sellPrice: Number(sellUSD.toFixed(1)),
-      suggestedAskingPrice: Number(sellUSD.toFixed(1)),
+      costPrice: costUSD,
+      sellPrice: sellUSD,
+      suggestedAskingPrice: sellUSD,
+      purchaseCostBDT: purchaseCost,
+      askingPriceBDT: askingPrice,
       storageBin,
       brand,
       model,
@@ -138,7 +142,7 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
               </label>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value as any)}
+                onChange={(e) => setCategory(e.target.value as '' | 'Optical Frame' | 'Premium Frame')}
                 className="w-full h-9 px-2 text-xs bg-white dark:bg-[#202430] border border-outline-variant/80 dark:border-[#2c3344] rounded-xl text-on-surface outline-hidden"
               >
                 <option value="Optical Frame">Optical Frame (Standard)</option>
@@ -197,7 +201,7 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
                 min="1"
                 required
                 value={stockQty}
-                onChange={(e) => setStockQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                onChange={(e) => setStockQty(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
                 className="w-full h-9 px-3 text-xs bg-white dark:bg-[#202430] border border-outline-variant/80 dark:border-[#2c3344] rounded-xl text-on-surface font-bold outline-hidden"
               />
             </div>
@@ -329,3 +333,4 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
     </div>
   );
 };
+                <option value="" disabled>Select category</option>

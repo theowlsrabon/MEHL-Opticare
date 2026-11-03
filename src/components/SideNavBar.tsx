@@ -6,6 +6,7 @@ import {
   Camera,
   ChevronRight,
   Factory,
+  HandCoins,
   Lock,
   PieChart,
   Pill,
@@ -225,6 +226,13 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               'POS & ERP Suite',
               'পিওএস ও ইআরপি স্যুট',
               { text: 'Unified', variant: 'green' }
+            )}
+
+            {renderNavItem(
+              'due-collections',
+              <HandCoins size={17} />,
+              'Due Collections',
+              'বকেয়া আদায়'
             )}
 
             {renderNavItem(
