@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { InventoryItem, Supplier, PurchaseOrder, UserProfile } from '../types';
 import { printElementById } from '../utils/printUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 
 export interface BulkReorderModalProps {
   isOpen: boolean;
@@ -337,6 +338,7 @@ export const BulkReorderModal: React.FC<BulkReorderModalProps> = ({
                     <span className="font-bold text-slate-800">Head of Procurement &amp; Inventory</span>
                   </div>
                 </div>
+                <PrintFooterQuantum />
               </div>
             </div>
 

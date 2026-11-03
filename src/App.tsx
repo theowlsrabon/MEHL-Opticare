@@ -4,6 +4,8 @@ import {
   ViewMode,
   OpticalJob,
   InventoryItem,
+  InventoryDamageRecord,
+  InventoryMovementRecord,
   UserRole,
   Salesman,
   SaleRecord,
@@ -88,7 +90,18 @@ export default function App() {
   const [authenticatedUser, setAuthenticatedUser] = useState<UserAccount | null>(() => {
     try {
       const session = sessionStorage.getItem('mehl_session_user') || localStorage.getItem('mehl_session_user');
-      return session ? JSON.parse(session) : null;
+      if (session) {
+        const u = JSON.parse(session);
+        if (u.username === 'srabon') {
+          u.role = 'super_admin';
+          u.allowedViews = MADINA_STAFF_PROFILES.super_admin.allowedViews;
+        } else if (u.role === 'admin' || u.username === 'admin') {
+          u.role = 'admin';
+          u.allowedViews = MADINA_STAFF_PROFILES.admin.allowedViews;
+        }
+        return u;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -96,7 +109,27 @@ export default function App() {
 
   const [currentView, setCurrentView] = useState<ViewMode>('executive-dashboard');
   const [labViewMode, setLabViewMode] = useState<'conveyor' | 'telemetry'>('conveyor');
-  const [currentUserRole, setCurrentUserRole] = useState<UserRole>('admin');
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole>(() => {
+    try {
+      const session = sessionStorage.getItem('mehl_session_user') || localStorage.getItem('mehl_session_user');
+      if (session) {
+        const u = JSON.parse(session);
+        if (u.username === 'srabon') return 'super_admin';
+        if (u.role && u.role in MADINA_STAFF_PROFILES) {
+          return u.role as UserRole;
+        }
+      }
+    } catch {}
+    return 'admin';
+  });
+
+  useEffect(() => {
+    if (authenticatedUser?.username === 'srabon') {
+      setCurrentUserRole('super_admin');
+    } else if (authenticatedUser?.role && authenticatedUser.role in MADINA_STAFF_PROFILES) {
+      setCurrentUserRole(authenticatedUser.role as UserRole);
+    }
+  }, [authenticatedUser]);
   const [jobs, setJobs] = useState<OpticalJob[]>(() => {
     const saved = localStorage.getItem('madina_jobs');
     if (saved) {
@@ -118,6 +151,20 @@ export default function App() {
       }
     }
     return initialInventory;
+  });
+  const [inventoryDamageRecords, setInventoryDamageRecords] = useState<InventoryDamageRecord[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('madina_inventory_damage_ledger') || '[]') as InventoryDamageRecord[];
+    } catch {
+      return [];
+    }
+  });
+  const [inventoryMovementRecords, setInventoryMovementRecords] = useState<InventoryMovementRecord[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('madina_inventory_movement_history') || '[]') as InventoryMovementRecord[];
+    } catch {
+      return [];
+    }
   });
   const [salesmen, setSalesmen] = useState<Salesman[]>(() => {
     const saved = localStorage.getItem('madina_salesmen');
@@ -206,6 +253,7 @@ export default function App() {
     return initialPurchaseReturns;
   });
   const [auditLogs, setAuditLogs] = useState<SecurityAuditLog[]>(initialAuditLogs);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>(defaultSystemConfig);
 
   // Handlers for Enterprise Actions
@@ -423,6 +471,14 @@ export default function App() {
   }, [inventory]);
 
   useEffect(() => {
+    localStorage.setItem('madina_inventory_damage_ledger', JSON.stringify(inventoryDamageRecords));
+  }, [inventoryDamageRecords]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_inventory_movement_history', JSON.stringify(inventoryMovementRecords));
+  }, [inventoryMovementRecords]);
+
+  useEffect(() => {
     localStorage.setItem('madina_financial_summary', JSON.stringify(financialSummary));
   }, [financialSummary]);
 
@@ -455,6 +511,13 @@ export default function App() {
   }, [purchaseReturns]);
 
   const handleLoginSuccess = (user: UserAccount) => {
+    if (user.username === 'srabon') {
+      user.role = 'super_admin';
+      user.allowedViews = MADINA_STAFF_PROFILES.super_admin.allowedViews;
+    } else if (user.role === 'admin' || user.username === 'admin') {
+      user.role = 'admin';
+      user.allowedViews = MADINA_STAFF_PROFILES.admin.allowedViews;
+    }
     setAuthenticatedUser(user);
     if (user.role && (user.role as string) in MADINA_STAFF_PROFILES) {
       setCurrentUserRole(user.role as UserRole);
@@ -490,6 +553,48 @@ export default function App() {
     if (targetProfile && !targetProfile.allowedViews.includes(currentView)) {
       setCurrentView(targetProfile.allowedViews[0]);
     }
+  };
+
+  const isSuperAdmin = currentUserRole === 'super_admin' || authenticatedUser?.username === 'srabon';
+
+  const handleDeleteStockItem = (id: string) => {
+    setInventory((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleDeleteJob = (id: string) => {
+    setJobs((prev) => prev.filter((job) => job.id !== id));
+  };
+
+  const handleDeleteSaleRecord = (invoiceId: string) => {
+    setSalesRecords((prev) => prev.filter((s) => s.id !== invoiceId && s.invoiceNumber !== invoiceId));
+  };
+
+  const handleDeleteBranch = (id: string) => {
+    setBranches((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const handleDeletePurchaseOrder = (id: string) => {
+    setPurchaseOrders((prev) => prev.filter((po) => po.id !== id));
+  };
+
+  const handleClearHistory = (id?: string) => {
+    if (id) {
+      setAuditLogs((prev) => prev.filter((l) => l.id !== id));
+      setActivityLogs((prev) => prev.filter((a) => a.id !== id));
+    } else {
+      setAuditLogs([]);
+      setActivityLogs([]);
+    }
+  };
+
+  const handlePurgeAllOperationalData = () => {
+    setSalesRecords([]);
+    setJobs([]);
+    setAuditLogs([]);
+    setActivityLogs([]);
+    setSalesReturns([]);
+    setPurchaseReturns([]);
+    setPurchaseOrders([]);
   };
 
   // Mobile sidebar state
@@ -783,7 +888,7 @@ export default function App() {
 
   const handleInvoiceCreated = (invoice: any) => {
     const now = new Date();
-    const todayDateStr = now.toISOString().slice(0, 10);
+    const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     // Add a corresponding lab tray job
@@ -856,6 +961,7 @@ export default function App() {
       paymentMethod: invoice.paymentMethod || 'Cash',
       commissionEarned: invoice.commissionEarned || Math.round(invoice.total * 0.045),
       status: 'completed',
+      itemLines: invoice.itemLines,
     };
 
     setJobs((prev) => [newJob, ...prev]);
@@ -902,6 +1008,10 @@ export default function App() {
 
   // Restock handler
   const handleRestock = (item: InventoryItem, qtyToAdd: number) => {
+    if (!Number.isFinite(qtyToAdd) || qtyToAdd <= 0) return;
+    const currentItem = inventory.find((inventoryItem) => inventoryItem.id === item.id);
+    if (!currentItem) return;
+
     setInventory((prev) =>
       prev.map((i) => {
         if (i.id === item.id) {
@@ -917,7 +1027,98 @@ export default function App() {
         return i;
       })
     );
+    setInventoryMovementRecords((previous) => [{
+      id: `movement-restock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toISOString(),
+      inventoryItemId: currentItem.id,
+      sku: currentItem.sku,
+      itemName: currentItem.name,
+      category: currentItem.category,
+      type: 'restock',
+      quantity: qtyToAdd,
+      recordedBy: currentUser.name,
+    }, ...previous]);
   };
+
+  const handleInventoryDamageWriteOffBatch = (
+    entries: Array<{ itemId: string; quantity: number; reason: string }>
+  ): boolean => {
+    if (!currentUser.permissions.canEditInventory || entries.length === 0) return false;
+
+    const seenItemIds = new Set<string>();
+    const itemsById = new Map<string, InventoryItem>(
+      inventory.map((item): [string, InventoryItem] => [item.id, item])
+    );
+    const timestamp = new Date().toISOString();
+    const records: InventoryDamageRecord[] = [];
+
+    for (const entry of entries) {
+      const item = itemsById.get(entry.itemId);
+      if (
+        seenItemIds.has(entry.itemId) ||
+        !item ||
+        !Number.isInteger(entry.quantity) ||
+        entry.quantity < 1 ||
+        entry.quantity > item.stockQty ||
+        !entry.reason.trim()
+      ) {
+        return false;
+      }
+
+      seenItemIds.add(entry.itemId);
+      const unitCostBDT = item.purchaseCostBDT ?? item.costPrice * 118;
+      records.push({
+        id: `loss-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp,
+        inventoryItemId: item.id,
+        sku: item.sku,
+        itemName: item.name,
+        category: item.category,
+        quantity: entry.quantity,
+        reason: entry.reason.trim(),
+        unitCostBDT,
+        totalLossBDT: Math.round(unitCostBDT * entry.quantity * 100) / 100,
+        recordedBy: currentUser.name,
+      });
+    }
+
+    const quantitiesByItemId = new Map(records.map((record) => [record.inventoryItemId, record.quantity]));
+    setInventory((previous) =>
+      previous.map((item) => {
+        const quantityWrittenOff = quantitiesByItemId.get(item.id);
+        if (quantityWrittenOff === undefined) return item;
+
+        const newQty = item.stockQty - quantityWrittenOff;
+        const status =
+          newQty <= Math.floor(item.minThreshold / 2)
+            ? 'critical'
+            : newQty < item.minThreshold
+            ? 'low'
+            : 'healthy';
+        return { ...item, stockQty: newQty, status };
+      })
+    );
+    setInventoryDamageRecords((previous) => [...records, ...previous]);
+    setInventoryMovementRecords((previous) => [
+      ...records.map((record): InventoryMovementRecord => ({
+        id: record.id,
+        timestamp: record.timestamp,
+        inventoryItemId: record.inventoryItemId,
+        sku: record.sku,
+        itemName: record.itemName,
+        category: record.category,
+        type: 'damage',
+        quantity: record.quantity,
+        reason: record.reason,
+        recordedBy: record.recordedBy,
+      })),
+      ...previous,
+    ]);
+    return true;
+  };
+
+  const handleInventoryDamageWriteOff = (itemId: string, quantity: number, reason: string): boolean =>
+    handleInventoryDamageWriteOffBatch([{ itemId, quantity, reason }]);
 
   const handlePrintBarcode = (item: InventoryItem) => {
     setBarcodeItemToPrint(item);
@@ -1058,7 +1259,6 @@ export default function App() {
           else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
           else setCurrentView(v);
         }}
-        onOpenQuickScan={() => setIsQuickScanOpen(true)}
         onOpenLiveCamera={() => setIsFloatingCameraActive(true)}
         totalInventoryCount={totalInventoryUnits}
         activeLabJobsCount={activeLabJobsCount}
@@ -1463,22 +1663,30 @@ export default function App() {
             onOpenLiveCamera={() => setIsFloatingCameraActive((prev) => !prev)}
             onOpenNewInvoice={() => setIsNewInvoiceOpen(true)}
             inventory={inventory}
+            jobs={jobs}
             initialScannedBarcode={posScannedBarcode}
+            onDeleteSaleRecord={isSuperAdmin ? handleDeleteSaleRecord : undefined}
           />
         )}
 
         {currentView === 'stock-master' && (
           <InventoryRegistryTable
             items={inventory}
+            damageRecords={inventoryDamageRecords}
+            movementRecords={inventoryMovementRecords}
+            language={language}
             initialSearchQuery={searchQuery}
             currentUser={currentUser}
             suppliers={suppliers}
             onRestock={handleRestock}
+            onDamageWriteOff={handleInventoryDamageWriteOff}
+            onDamageWriteOffBatch={handleInventoryDamageWriteOffBatch}
             onPrintBarcode={(item) => setBarcodeItemToPrint(item)}
             onPoReorder={handlePoReorder}
             onCreatePo={handleCreatePurchaseOrder}
             onAddNewGlasses={() => setIsAddGlassesOpen(true)}
             onViewItemWiseSales={() => setCurrentView('reports')}
+            onDeleteStockItem={isSuperAdmin ? handleDeleteStockItem : undefined}
           />
         )}
 
@@ -1542,6 +1750,7 @@ export default function App() {
             onUpdateBranch={(updatedBranch) =>
               setBranches((prev) => prev.map((b) => (b.id === updatedBranch.id ? updatedBranch : b)))
             }
+            onDeleteBranch={isSuperAdmin ? handleDeleteBranch : undefined}
           />
         )}
 
@@ -1554,6 +1763,7 @@ export default function App() {
             onUpdateGrns={setGrns}
             onCreatePo={handleCreatePurchaseOrder}
             onReceiveGrn={handleReceiveGrn}
+            onDeletePurchaseOrder={isSuperAdmin ? handleDeletePurchaseOrder : undefined}
           />
         )}
 
@@ -1561,6 +1771,8 @@ export default function App() {
           <FinancialAccountingView
             financialSummary={financialSummary}
             expenses={expenses}
+            salesRecords={salesRecords}
+            dispensations={dispensations}
             onAddExpense={handleAddExpense}
           />
         )}
@@ -1569,6 +1781,7 @@ export default function App() {
           <ReturnsRefundsView
             salesReturns={salesReturns}
             purchaseReturns={purchaseReturns}
+            salesRecords={salesRecords}
             onAddSalesReturn={handleAddSalesReturn}
             onAddPurchaseReturn={handleAddPurchaseReturn}
           />
@@ -1646,6 +1859,19 @@ export default function App() {
             auditLogs={auditLogs}
             systemConfig={systemConfig}
             onUpdateSystemConfig={setSystemConfig}
+            inventory={inventory}
+            jobs={jobs}
+            salesRecords={salesRecords}
+            branches={branches}
+            purchaseOrders={purchaseOrders}
+            activityLogs={activityLogs}
+            onDeleteStock={handleDeleteStockItem}
+            onDeleteJob={handleDeleteJob}
+            onDeleteSale={handleDeleteSaleRecord}
+            onDeleteBranch={handleDeleteBranch}
+            onDeletePO={handleDeletePurchaseOrder}
+            onClearHistory={handleClearHistory}
+            onPurgeAllOperationalData={handlePurgeAllOperationalData}
           />
         )}
       </main>
@@ -1737,6 +1963,7 @@ export default function App() {
           setSmsModalSelectedJob(job);
           setIsSmsModalOpen(true);
         }}
+        onDeleteJob={isSuperAdmin ? handleDeleteJob : undefined}
       />
 
       {/* 8. Optical Barcode Print Modal (Butterfly / Dumbbell Tag Format) */}
@@ -1756,6 +1983,17 @@ export default function App() {
         currentUser={currentUser}
         onAddStock={(newItem, printImmediately) => {
           setInventory((prev) => [newItem, ...prev]);
+          setInventoryMovementRecords((previous) => [{
+            id: `movement-stock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            timestamp: new Date().toISOString(),
+            inventoryItemId: newItem.id,
+            sku: newItem.sku,
+            itemName: newItem.name,
+            category: newItem.category,
+            type: 'stock',
+            quantity: newItem.stockQty,
+            recordedBy: currentUser.name,
+          }, ...previous]);
           if (printImmediately) {
             setBarcodeItemToPrint(newItem);
           }

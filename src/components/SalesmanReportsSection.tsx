@@ -5,6 +5,7 @@ import {
   SalesmanPerformanceRow,
 } from '../utils/salesmanExportUtils';
 import { SalesmanPdfReportModal } from './SalesmanPdfReportModal';
+import { useLanguage } from '../context/LanguageContext';
 
 interface SalesmanReportsSectionProps {
   salesmen: Salesman[];
@@ -13,7 +14,14 @@ interface SalesmanReportsSectionProps {
   currentUserRole?: string;
 }
 
-export type DateFilterType = 'day' | 'week' | 'month' | 'custom';
+export type DateFilterType = 'day' | 'week' | 'month' | 'custom' | 'all';
+
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
   salesmen,
@@ -21,38 +29,52 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
   onNavigateToSalesmen,
   currentUserRole = 'Admin',
 }) => {
+  const { language } = useLanguage();
+  const isBangla = language === 'bn';
+  const text = (english: string, bengali: string) => isBangla ? bengali : english;
+  const now = new Date();
+  const todayStr = formatLocalDate(now);
+  const monthStart = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const weekStartStr = formatLocalDate(weekStart);
+  const todayLabel = now.toLocaleDateString();
+  const weekLabel = isBangla
+    ? `এই সপ্তাহ (${weekStart.toLocaleDateString('bn-BD')} - ${now.toLocaleDateString('bn-BD')})`
+    : `This Week (${weekStart.toLocaleDateString()} - ${todayLabel})`;
+  const monthLabel = now.toLocaleDateString(isBangla ? 'bn-BD' : undefined, { month: 'long', year: 'numeric' });
   const [dateFilter, setDateFilter] = useState<DateFilterType>('month');
-  const [customStartDate, setCustomStartDate] = useState('2026-09-01');
-  const [customEndDate, setCustomEndDate] = useState('2026-09-11');
+  const [customStartDate, setCustomStartDate] = useState(monthStart);
+  const [customEndDate, setCustomEndDate] = useState(todayStr);
   const [selectedSalesmanId, setSelectedSalesmanId] = useState<string>('all');
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Fixed anchor date for simulation: 2026-09-11
-  const todayStr = '2026-09-11';
-
   // Calculate filtered sales
   const { filteredSales, periodLabel } = useMemo(() => {
     let list = [...salesRecords];
-    let label = 'This Month (September 2026)';
+    let label = text('This Month', 'এই মাস');
 
     if (dateFilter === 'day') {
       list = list.filter((s) => s.date === todayStr);
-      label = `Today (${todayStr})`;
+      label = isBangla ? `আজ (${now.toLocaleDateString('bn-BD')})` : `Today (${todayLabel})`;
     } else if (dateFilter === 'week') {
-      // 7 days up to 2026-09-11: 2026-09-05 to 2026-09-11
-      list = list.filter((s) => s.date >= '2026-09-05' && s.date <= todayStr);
-      label = 'This Week (Sep 05 - Sep 11, 2026)';
+      list = list.filter((s) => s.date >= weekStartStr && s.date <= todayStr);
+      label = weekLabel;
     } else if (dateFilter === 'month') {
-      list = list.filter((s) => s.date.startsWith('2026-09'));
-      label = 'This Month (September 2026)';
+      list = list.filter((s) => s.date.startsWith(todayStr.slice(0, 7)));
+      label = `${text('This Month', 'এই মাস')} (${monthLabel})`;
     } else if (dateFilter === 'custom') {
       list = list.filter((s) => {
         if (customStartDate && s.date < customStartDate) return false;
         if (customEndDate && s.date > customEndDate) return false;
         return true;
       });
-      label = `Custom (${customStartDate || 'Start'} to ${customEndDate || 'End'})`;
+      label = isBangla
+        ? `নির্বাচিত সময় (${customStartDate || 'শুরু'} থেকে ${customEndDate || 'শেষ'})`
+        : `Custom (${customStartDate || 'Start'} to ${customEndDate || 'End'})`;
+    } else if (dateFilter === 'all') {
+      label = text('All Time', 'সর্বকাল');
     }
 
     // Filter by salesman if not all
@@ -74,7 +96,22 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
     }
 
     return { filteredSales: list, periodLabel: label };
-  }, [salesRecords, dateFilter, customStartDate, customEndDate, selectedSalesmanId, searchQuery, salesmen]);
+  }, [
+    salesRecords,
+    dateFilter,
+    customStartDate,
+    customEndDate,
+    selectedSalesmanId,
+    searchQuery,
+    salesmen,
+    isBangla,
+    now,
+    todayStr,
+    todayLabel,
+    weekStartStr,
+    weekLabel,
+    monthLabel,
+  ]);
 
   // Aggregate performance rows per salesman
   const performanceRows: SalesmanPerformanceRow[] = useMemo(() => {
@@ -140,17 +177,20 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2.5 h-2.5 rounded-full bg-[#169b90] animate-pulse"></span>
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#169b90]">
-              Performance &amp; Commission Tracking
+              {text('Performance & Commission Tracking', 'পারফরম্যান্স ও কমিশন পর্যবেক্ষণ')}
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
-              Real-Time Ledger
+              {text('Real-Time Ledger', 'তাৎক্ষণিক হিসাব')}
             </span>
           </div>
           <h2 className="text-xl font-bold text-on-surface font-headline-md">
-            Salesman Performance &amp; Commission Analytics
+            {text('Salesman Performance & Commission Analytics', 'বিক্রয়কর্মীর পারফরম্যান্স ও কমিশন বিশ্লেষণ')}
           </h2>
           <p className="text-xs text-outline">
-            Audit optical orders, frames/lenses dispensed, and exact commission earned across sales staff
+            {text(
+              'Audit optical orders, frames/lenses dispensed, and exact commission earned across sales staff',
+              'অপটিক্যাল অর্ডার, সরবরাহ করা ফ্রেম/লেন্স এবং কর্মীদের অর্জিত কমিশনের হিসাব দেখুন'
+            )}
           </p>
         </div>
 
@@ -159,19 +199,19 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
           <button
             onClick={handleExportCSV}
             className="px-3.5 py-2 bg-surface-container-low hover:bg-surface-container dark:bg-[#1e2330] dark:hover:bg-[#282f40] border border-outline-variant/80 dark:border-[#2d3546] text-on-surface rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
-            title="Export full summary and invoice rows to Microsoft Excel / CSV"
+            title={text('Export full summary and invoice rows to Microsoft Excel / CSV', 'সম্পূর্ণ সারাংশ ও ইনভয়েস Excel/CSV-তে রপ্তানি করুন')}
           >
             <span className="material-symbols-outlined text-[18px] text-emerald-600 dark:text-emerald-400">table_view</span>
-            <span>Export Excel (.csv)</span>
+            <span>{text('Export Excel (.csv)', 'Excel (.csv) রপ্তানি')}</span>
           </button>
 
           <button
             onClick={() => setIsPdfModalOpen(true)}
             className="px-3.5 py-2 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm shadow-[#169b90]/20"
-            title="Generate print-ready official hospital audit PDF statement"
+            title={text('Generate print-ready official hospital audit PDF statement', 'প্রিন্টযোগ্য হাসপাতাল অডিট PDF তৈরি করুন')}
           >
             <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-            <span>Export PDF Report</span>
+            <span>{text('Export PDF Report', 'PDF রিপোর্ট রপ্তানি')}</span>
           </button>
 
           {onNavigateToSalesmen && (
@@ -180,7 +220,7 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
               className="px-3 py-2 bg-surface-container-low dark:bg-[#1e2330] border border-outline-variant/80 dark:border-[#2d3546] text-on-surface rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:text-[#169b90] transition-colors cursor-pointer"
             >
               <span className="material-symbols-outlined text-[17px]">manage_accounts</span>
-              <span>Manage Staff</span>
+              <span>{text('Manage Staff', 'কর্মী ব্যবস্থাপনা')}</span>
             </button>
           )}
         </div>
@@ -192,8 +232,19 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs font-bold text-outline mr-1 flex items-center gap-1">
             <span className="material-symbols-outlined text-[16px]">calendar_today</span>
-            <span>Range:</span>
+            <span>{text('Range:', 'সময়সীমা:')}</span>
           </span>
+
+          <button
+            onClick={() => setDateFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              dateFilter === 'all'
+                ? 'bg-gradient-to-r from-[#169b90] to-[#295559] text-white shadow-xs'
+                : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            {text('All Time', 'সর্বকাল')}
+          </button>
 
           <button
             onClick={() => setDateFilter('day')}
@@ -203,7 +254,7 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
                 : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            Today (Day)
+            {text('Today', 'আজ')}
           </button>
 
           <button
@@ -214,7 +265,7 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
                 : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            This Week
+            {text('This Week', 'এই সপ্তাহ')}
           </button>
 
           <button
@@ -225,7 +276,7 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
                 : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            This Month
+            {text('This Month', 'এই মাস')}
           </button>
 
           <button
@@ -236,7 +287,7 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
                 : 'bg-surface-container-low dark:bg-[#1c202a] text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            Custom Date
+            {text('Custom Date', 'তারিখ নির্বাচন')}
           </button>
 
           {/* Custom Date Pickers */}
@@ -248,7 +299,7 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
                 onChange={(e) => setCustomStartDate(e.target.value)}
                 className="px-2.5 py-1 bg-surface-container-low dark:bg-[#1c202a] border border-outline-variant rounded-lg text-xs text-on-surface font-mono"
               />
-              <span className="text-xs text-outline">to</span>
+              <span className="text-xs text-outline">{text('to', 'থেকে')}</span>
               <input
                 type="date"
                 value={customEndDate}
@@ -263,13 +314,13 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
         <div className="flex items-center gap-3 flex-wrap">
           {/* Salesman Dropdown */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-outline">Salesman:</span>
+            <span className="text-xs font-bold text-outline">{text('Salesman:', 'বিক্রয়কর্মী:')}</span>
             <select
               value={selectedSalesmanId}
               onChange={(e) => setSelectedSalesmanId(e.target.value)}
               className="px-3 py-1.5 bg-surface-container-low dark:bg-[#1c202a] border border-outline-variant rounded-xl text-xs text-on-surface font-semibold focus:outline-none focus:border-[#169b90] cursor-pointer"
             >
-              <option value="all">All Salesmen ({salesmen.length})</option>
+              <option value="all">{text('All Salesmen', 'সকল বিক্রয়কর্মী')} ({salesmen.length})</option>
               {salesmen.map((sm) => (
                 <option key={sm.id} value={sm.id}>
                   {sm.name} ({sm.employeeId}) - {sm.commissionPct}%
@@ -285,7 +336,7 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
             </span>
             <input
               type="text"
-              placeholder="Search invoice or patient..."
+              placeholder={text('Search invoice or patient...', 'ইনভয়েস বা রোগী খুঁজুন...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-8 pr-3 py-1.5 bg-surface-container-low dark:bg-[#1c202a] border border-outline-variant rounded-xl text-xs text-on-surface placeholder:text-outline/60 focus:outline-none focus:border-[#169b90] w-48"
@@ -301,16 +352,16 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
           <div className="flex items-start justify-between">
             <div>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-outline">
-                Total Net Sales
+                {text('Total Net Sales', 'মোট নিট বিক্রয়')}
               </span>
               <div className="text-2xl font-black text-on-surface mt-1 font-data-rx">
                 ৳{totals.net?.toLocaleString()}
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 text-xs text-outline">
-                <span>Gross: ৳{totals.gross?.toLocaleString()}</span>
+                <span>{text('Gross', 'মোট')} : ৳{totals.gross?.toLocaleString()}</span>
                 <span>•</span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                  {totals.invoicesCount} Invoices
+                  {totals.invoicesCount} {text('Invoices', 'ইনভয়েস')}
                 </span>
               </div>
             </div>
@@ -328,13 +379,13 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
           <div className="flex items-start justify-between">
             <div>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-outline">
-                Frames Sold
+                {text('Frames Sold', 'বিক্রিত ফ্রেম')}
               </span>
               <div className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1 font-data-rx">
-                {totals.frames} <span className="text-sm font-semibold text-outline">Pcs</span>
+                {totals.frames} <span className="text-sm font-semibold text-outline">{text('Pcs', 'টি')}</span>
               </div>
               <p className="text-xs text-outline mt-1.5">
-                Designer frames, rimless &amp; aviators
+                {text('Designer frames, rimless & aviators', 'ডিজাইনার, রিমলেস ও এভিয়েটর ফ্রেম')}
               </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
@@ -351,13 +402,13 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
           <div className="flex items-start justify-between">
             <div>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-outline">
-                Lenses Dispensed
+                {text('Lenses Dispensed', 'সরবরাহকৃত লেন্স')}
               </span>
               <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1 font-data-rx">
-                {totals.lenses} <span className="text-sm font-semibold text-outline">Pairs</span>
+                {totals.lenses} <span className="text-sm font-semibold text-outline">{text('Pairs', 'জোড়া')}</span>
               </div>
               <p className="text-xs text-outline mt-1.5">
-                BlueCut, progressive &amp; high-index
+                {text('BlueCut, progressive & high-index', 'ব্লুকাট, প্রগ্রেসিভ ও হাই-ইনডেক্স')}
               </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
@@ -374,13 +425,13 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
           <div className="flex items-start justify-between">
             <div>
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                Total Commission Earned
+                {text('Total Commission Earned', 'মোট অর্জিত কমিশন')}
               </span>
               <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 font-data-rx">
                 ৳{totals.commission?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <p className="text-xs text-outline mt-1.5">
-                Staff incentive calculated on net sales
+                {text('Staff incentive calculated on net sales', 'নিট বিক্রয়ের ভিত্তিতে কর্মীদের প্রণোদনা')}
               </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
@@ -402,15 +453,16 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-on-surface">
-                Salesman Sales &amp; Commission Calculation Matrix
+                {text('Salesman Sales & Commission Calculation Matrix', 'বিক্রয় ও কমিশন হিসাবের তালিকা')}
               </h3>
               <p className="text-[11px] text-outline">
-                Individual employee sales revenue, product breakdown, and commission payout for {periodLabel}
+                {text('Individual employee sales revenue, product breakdown, and commission payout for', 'নির্বাচিত সময়ে কর্মীভিত্তিক বিক্রয়, পণ্যের বিবরণ ও কমিশন')}
+                {' '}{periodLabel}
               </p>
             </div>
           </div>
           <span className="text-xs font-semibold text-outline">
-            {performanceRows.length} Salesmen tracked
+            {performanceRows.length} {text('Salesmen tracked', 'জন বিক্রয়কর্মী')}
           </span>
         </div>
 
@@ -418,18 +470,18 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-surface-container-low dark:bg-[#191e2b] text-outline font-bold border-b border-outline-variant/60 dark:border-[#242936]">
-                <th className="py-3 px-4">Salesman</th>
-                <th className="py-3 px-3">Employee ID</th>
-                <th className="py-3 px-3 text-center">Status</th>
-                <th className="py-3 px-3 text-center">Commission %</th>
-                <th className="py-3 px-3 text-center">Invoices</th>
-                <th className="py-3 px-3 text-center">Frames Sold</th>
-                <th className="py-3 px-3 text-center">Lenses Sold</th>
-                <th className="py-3 px-4 text-right">Net Sales (BDT)</th>
+                <th className="py-3 px-4">{text('Salesman', 'বিক্রয়কর্মী')}</th>
+                <th className="py-3 px-3">{text('Employee ID', 'কর্মী আইডি')}</th>
+                <th className="py-3 px-3 text-center">{text('Status', 'অবস্থা')}</th>
+                <th className="py-3 px-3 text-center">{text('Commission %', 'কমিশন %')}</th>
+                <th className="py-3 px-3 text-center">{text('Invoices', 'ইনভয়েস')}</th>
+                <th className="py-3 px-3 text-center">{text('Frames Sold', 'বিক্রিত ফ্রেম')}</th>
+                <th className="py-3 px-3 text-center">{text('Lenses Sold', 'বিক্রিত লেন্স')}</th>
+                <th className="py-3 px-4 text-right">{text('Net Sales (BDT)', 'নিট বিক্রয় (টাকা)')}</th>
                 <th className="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400 font-bold">
-                  Commission Earned
+                  {text('Commission Earned', 'অর্জিত কমিশন')}
                 </th>
-                <th className="py-3 px-4 text-center">Relative Share</th>
+                <th className="py-3 px-4 text-center">{text('Relative Share', 'তুলনামূলক অংশ')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/40 dark:divide-[#202534]">
@@ -472,7 +524,9 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
                             : 'bg-surface-container text-outline border border-outline-variant'
                         }`}
                       >
-                        {row.salesman.status}
+                        {row.salesman.status === 'active'
+                          ? text('Active', 'সক্রিয়')
+                          : text('Inactive', 'নিষ্ক্রিয়')}
                       </span>
                     </td>
 
@@ -528,7 +582,7 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
             <tfoot>
               <tr className="bg-surface-container-low dark:bg-[#191e2b] font-bold text-on-surface border-t-2 border-outline-variant">
                 <td colSpan={4} className="py-3.5 px-4 text-xs uppercase tracking-wider text-outline">
-                  Total for Selected Period ({periodLabel})
+                  {text('Total for Selected Period', 'নির্বাচিত সময়ের মোট')} ({periodLabel})
                 </td>
                 <td className="py-3.5 px-3 text-center font-mono">{totals.invoicesCount}</td>
                 <td className="py-3.5 px-3 text-center font-mono text-blue-600 dark:text-blue-400">
@@ -559,10 +613,13 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-on-surface">
-                Detailed Invoices Ledger ({filteredSales.length} Transactions)
+                {text('Detailed Invoices Ledger', 'বিস্তারিত ইনভয়েস হিসাব')} ({filteredSales.length} {text('Transactions', 'টি লেনদেন')})
               </h3>
               <p className="text-[11px] text-outline">
-                Click any invoice row to view exact products, frames, lenses, and commission cut
+                {text(
+                  'Click any invoice row to view exact products, frames, lenses, and commission cut',
+                  'পণ্য, ফ্রেম, লেন্স ও কমিশনের বিস্তারিত দেখতে যেকোনো ইনভয়েসে ক্লিক করুন'
+                )}
               </p>
             </div>
           </div>
@@ -572,17 +629,17 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
           <table className="w-full text-left text-xs border-collapse">
             <thead className="sticky top-0 bg-surface-container-low dark:bg-[#191e2b] text-outline font-bold border-b border-outline-variant/60">
               <tr>
-                <th className="py-2.5 px-4">Invoice #</th>
-                <th className="py-2.5 px-3">Date &amp; Time</th>
-                <th className="py-2.5 px-3">Salesman</th>
-                <th className="py-2.5 px-3">Patient</th>
-                <th className="py-2.5 px-2 text-center">Frames</th>
-                <th className="py-2.5 px-2 text-center">Lenses</th>
-                <th className="py-2.5 px-3">Items Dispensed</th>
-                <th className="py-2.5 px-3 text-center">Method</th>
-                <th className="py-2.5 px-4 text-right">Net Amount</th>
+                <th className="py-2.5 px-4">{text('Invoice #', 'ইনভয়েস #')}</th>
+                <th className="py-2.5 px-3">{text('Date & Time', 'তারিখ ও সময়')}</th>
+                <th className="py-2.5 px-3">{text('Salesman', 'বিক্রয়কর্মী')}</th>
+                <th className="py-2.5 px-3">{text('Patient', 'রোগী')}</th>
+                <th className="py-2.5 px-2 text-center">{text('Frames', 'ফ্রেম')}</th>
+                <th className="py-2.5 px-2 text-center">{text('Lenses', 'লেন্স')}</th>
+                <th className="py-2.5 px-3">{text('Items Dispensed', 'সরবরাহকৃত পণ্য')}</th>
+                <th className="py-2.5 px-3 text-center">{text('Method', 'পদ্ধতি')}</th>
+                <th className="py-2.5 px-4 text-right">{text('Net Amount', 'নিট পরিমাণ')}</th>
                 <th className="py-2.5 px-4 text-right text-emerald-600 dark:text-emerald-400 font-bold">
-                  Commission
+                  {text('Commission', 'কমিশন')}
                 </th>
               </tr>
             </thead>
@@ -629,7 +686,19 @@ export const SalesmanReportsSection: React.FC<SalesmanReportsSectionProps> = ({
               {filteredSales.length === 0 && (
                 <tr>
                   <td colSpan={10} className="py-8 text-center text-outline">
-                    No transactions found for the selected filters.
+                    <div>
+                      {salesRecords.length === 0
+                        ? text('No sales records have been recorded yet.', 'এখনও কোনো বিক্রির রেকর্ড নেই।')
+                        : text('No invoices match the selected date range or filters.', 'নির্বাচিত তারিখ বা ফিল্টারে কোনো ইনভয়েস মেলেনি।')}
+                    </div>
+                    {salesRecords.length > 0 && dateFilter !== 'all' && (
+                      <button
+                        onClick={() => setDateFilter('all')}
+                        className="mt-2 text-[#169b90] font-semibold hover:underline"
+                      >
+                        {text('Show all dates', 'সব তারিখ দেখুন')}
+                      </button>
+                    )}
                   </td>
                 </tr>
               )}

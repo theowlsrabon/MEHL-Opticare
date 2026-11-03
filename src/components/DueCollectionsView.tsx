@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Barcode from 'react-barcode';
 import { printElementById } from '../utils/printUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { SaleRecord } from '../types';
+import { CameraBarcodeScanner } from './CameraBarcodeScanner';
+import { useLanguage } from '../context/LanguageContext';
 
 export interface InvoiceItem {
   id: string;
@@ -376,6 +380,8 @@ interface DueCollectionsViewProps {
 }
 
 export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollectionRecorded, salesRecords = [] }) => {
+  const { language } = useLanguage();
+  const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
   // Active selected invoice
   const [invoices, setInvoices] = useState<DispensaryInvoice[]>(() => {
     const saved = localStorage.getItem('madina_due_invoices');
@@ -393,9 +399,9 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
     const posInvoices = salesRecords
       .filter((sale) => sale.dueAmount > 0)
       .map<DispensaryInvoice>((sale) => {
-        const total = sale.totalAmount / 118;
-        const advance = sale.advancePaid / 118;
-        const due = sale.dueAmount / 118;
+        const total = sale.totalAmount;
+        const advance = sale.advancePaid;
+        const due = sale.dueAmount;
         const bookedDate = new Date(`${sale.date}T00:00:00`).toLocaleDateString('en-GB');
 
         return {
@@ -430,8 +436,8 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             qty: 1,
             netTotal: total,
           }],
-          subtotal: sale.subtotal / 118,
-          discountApplied: -(sale.discountAmount / 118),
+          subtotal: sale.subtotal,
+          discountApplied: -sale.discountAmount,
           grossBill: total,
           prevPaid: advance,
           initialDue: due,
@@ -448,14 +454,39 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
         };
       });
 
-    if (posInvoices.length === 0) return;
-
     setInvoices((previous) => {
-      const knownInvoiceNumbers = new Set(previous.map((invoice) => normalizeInvoiceSearchTerm(invoice.invoiceNumber)));
-      const newInvoices = posInvoices.filter(
-        (invoice) => !knownInvoiceNumbers.has(normalizeInvoiceSearchTerm(invoice.invoiceNumber))
+      const previousByInvoice = new Map<string, DispensaryInvoice>(
+        previous.map((invoice): [string, DispensaryInvoice] => [
+          normalizeInvoiceSearchTerm(invoice.invoiceNumber),
+          invoice,
+        ])
       );
-      return newInvoices.length ? [...newInvoices, ...previous] : previous;
+      const currentInvoiceNumbers = new Set(
+        posInvoices.map((invoice) => normalizeInvoiceSearchTerm(invoice.invoiceNumber))
+      );
+      const syncedPosInvoices = posInvoices.map((invoice) => {
+        const existing = previousByInvoice.get(normalizeInvoiceSearchTerm(invoice.invoiceNumber));
+        if (!existing) return invoice;
+
+        const amountScale = existing.grossBill > 0 ? invoice.grossBill / existing.grossBill : 1;
+        const collectedPayments = existing.payments
+          .filter((payment) => !payment.isInitial)
+          .map((payment) => ({ ...payment, amount: payment.amount * amountScale }));
+        const collectedAfterAdvance = collectedPayments.reduce((total, payment) => total + payment.amount, 0);
+        const remainingDue = Math.max(0, invoice.initialDue - collectedAfterAdvance);
+
+        return {
+          ...invoice,
+          status: remainingDue === 0 ? 'settled' : 'due',
+          prevPaid: invoice.prevPaid + collectedAfterAdvance,
+          initialDue: remainingDue,
+          payments: [...invoice.payments, ...collectedPayments],
+        };
+      });
+      const otherInvoices = previous.filter(
+        (invoice) => !currentInvoiceNumbers.has(normalizeInvoiceSearchTerm(invoice.invoiceNumber))
+      );
+      return [...syncedPosInvoices, ...otherInvoices];
     });
   }, [salesRecords]);
 
@@ -469,9 +500,8 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
 
   // Settlement Form State
   const activeInvoice = invoices.find((inv) => inv.id === activeInvoiceId) || invoices[0];
-  const [waiverType, setWaiverType] = useState<'flat' | 'percent'>('flat');
   const [waiverAmount, setWaiverAmount] = useState<string>('');
-  const [selectedPayMode, setSelectedPayMode] = useState<'Cash' | 'POS Card' | 'bKash/Nagad' | 'Bank Xfer'>('Cash');
+  const [selectedPayMode, setSelectedPayMode] = useState<'bKash' | 'Nagad' | 'Cash' | 'Card'>('Cash');
   const [collectionAmount, setCollectionAmount] = useState<string>('');
   const [givenAmount, setGivenAmount] = useState<string>('');
   const [markDelivered, setMarkDelivered] = useState<boolean>(true);
@@ -491,6 +521,28 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
     localStorage.setItem('madina_due_audit_log', JSON.stringify(auditLog));
   }, [auditLog]);
 
+  useEffect(() => {
+    if (salesRecords.length === 0) return;
+
+    setAuditLog((previous) => {
+      let changed = false;
+      const syncedAuditLog = previous.map((entry) => {
+        const sale = salesRecords.find((record) => normalizeInvoiceSearchTerm(record.invoiceNumber) === normalizeInvoiceSearchTerm(entry.invoiceNumber));
+        if (!sale || entry.totalBill <= 0 || Math.abs(entry.totalBill - sale.totalAmount) < 0.01) return entry;
+
+        changed = true;
+        const amountScale = sale.totalAmount / entry.totalBill;
+        return {
+          ...entry,
+          totalBill: sale.totalAmount,
+          paidToday: entry.paidToday * amountScale,
+          remainingDue: entry.remainingDue * amountScale,
+        };
+      });
+      return changed ? syncedAuditLog : previous;
+    });
+  }, [salesRecords]);
+
   // Modals
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isDueSlipOnly, setIsDueSlipOnly] = useState(false);
@@ -506,6 +558,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
   const [isBatchSmsModalOpen, setIsBatchSmsModalOpen] = useState(false);
   const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
   const [isOrderDetailsModalOpen, setIsOrderDetailsModalOpen] = useState(false);
+  const [isInvoiceScannerOpen, setIsInvoiceScannerOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -561,10 +614,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
 
   // Compute live calculations
   const parsedWaiver = parseFloat(waiverAmount) || 0;
-  const computedWaiverValue =
-    waiverType === 'percent'
-      ? (activeInvoice.initialDue * parsedWaiver) / 100
-      : parsedWaiver;
+  const computedWaiverValue = parsedWaiver;
 
   const netPayableDue = Math.max(0, activeInvoice.initialDue - computedWaiverValue);
   const parsedCollectionAmt = parseFloat(collectionAmount) || 0;
@@ -581,9 +631,6 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
       } else if (e.key === 'F9') {
         e.preventDefault();
         handleCollectAndPrint();
-      } else if (e.key === 'F8') {
-        e.preventDefault();
-        handleSaveAndDeliver();
       } else if (e.key === 'Escape') {
         searchInputRef.current?.blur();
       }
@@ -596,7 +643,10 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
   const handleSelectInvoice = (inv: DispensaryInvoice) => {
     setActiveInvoiceId(inv.id);
     setSearchQuery('');
-    showToast(`ইনভয়েস ${inv.invoiceNumber} (${inv.patientName}) লোড হয়েছে`);
+    showToast(text(
+      `Invoice ${inv.invoiceNumber} (${inv.patientName}) loaded`,
+      `ইনভয়েস ${inv.invoiceNumber} (${inv.patientName}) লোড হয়েছে`
+    ));
   };
 
   const handleInvoiceSearch = () => {
@@ -609,27 +659,27 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
     if (foundInvoice) {
       handleSelectInvoice(foundInvoice);
     } else if (invoiceSuggestions.length > 1) {
-      showToast('একাধিক মিল পাওয়া গেছে। তালিকা থেকে সঠিক ইনভয়েসটি বেছে নিন।');
+      showToast(text('Multiple matches found. Select the correct invoice from the list.', 'একাধিক মিল পাওয়া গেছে। তালিকা থেকে সঠিক ইনভয়েসটি বেছে নিন।'));
     } else {
-      showToast('ইনভয়েস পাওয়া যায়নি। নম্বর বা POS বারকোডটি আবার পরীক্ষা করুন।');
+      showToast(text('Invoice not found. Check the number or POS barcode and try again.', 'ইনভয়েস পাওয়া যায়নি। নম্বর বা POS বারকোডটি আবার পরীক্ষা করুন।'));
     }
   };
 
-  const handleApplyRoundOff = () => {
-    if (activeInvoice.initialDue === 142.53) {
-      setWaiverType('flat');
-      setWaiverAmount('2.53');
-      setCollectionAmount('140.00');
-      showToast('৳২.৫৩ রাউন্ড-অফ ডিসকাউন্ট প্রয়োগ করা হয়েছে। নিট প্রদেয়: ৳১৪০.০০');
-    } else {
-      const cents = activeInvoice.initialDue - Math.floor(activeInvoice.initialDue);
-      if (cents > 0) {
-        setWaiverType('flat');
-        setWaiverAmount(cents.toFixed(2));
-        setCollectionAmount(Math.floor(activeInvoice.initialDue).toFixed(2));
-        showToast(`৳${cents.toFixed(2)} রাউন্ড-অফ ডিসকাউন্ট প্রয়োগ করা হয়েছে`);
-      }
+  const handleInvoiceBarcodeScan = (decodedText: string) => {
+    const scannedTerms = getInvoiceSearchTerms(decodedText).map(normalizeInvoiceSearchTerm);
+    const foundInvoice = invoices.find((invoice) => {
+      const invoiceValues = [invoice.invoiceNumber, invoice.legacyId, invoice.id].map(normalizeInvoiceSearchTerm);
+      return scannedTerms.some((term) => invoiceValues.includes(term));
+    });
+
+    setIsInvoiceScannerOpen(false);
+    if (foundInvoice) {
+      handleSelectInvoice(foundInvoice);
+      return;
     }
+
+    setSearchQuery(decodedText);
+    showToast(text('Barcode scanned, but no matching invoice was found.', 'বারকোডটি পড়া হয়েছে, কিন্তু এর সাথে কোনো ইনভয়েস মেলেনি।'));
   };
 
   const [isFefoModalOpen, setIsFefoModalOpen] = useState(false);
@@ -666,7 +716,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
     );
     onCollectionRecorded?.({
       id: paymentId,
-      amountBDT: Math.round(collAmt * 118),
+      amountBDT: Math.round(collAmt),
       tenderMode: selectedPayMode,
     });
 
@@ -699,12 +749,12 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
       changeReturned: returnChange,
     });
     setIsReceiptModalOpen(true);
-    showToast(`Payment of $${collAmt.toFixed(2)} received successfully!`);
+    showToast(text(`Payment of ৳${collAmt.toFixed(2)} received successfully!`, `৳${collAmt.toFixed(2)} পেমেন্ট সফলভাবে গ্রহণ করা হয়েছে!`));
   };
 
   const handleCollectAndPrint = (slipOnly: boolean = false) => {
     if (!activeInvoiceId) {
-      showToast('পেমেন্টের আগে ইনভয়েস নম্বর বা POS বারকোড দিয়ে ইনভয়েস নির্বাচন করুন।');
+      showToast(text('Select an invoice using its number or POS barcode before collecting payment.', 'পেমেন্ট নেওয়ার আগে ইনভয়েস নম্বর বা POS বারকোড দিয়ে ইনভয়েস নির্বাচন করুন।'));
       searchInputRef.current?.focus();
       return;
     }
@@ -744,27 +794,13 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
     }
   };
 
-  const handleSaveAndDeliver = () => {
-    if (!activeInvoiceId) {
-      handleCollectAndPrint(false);
-      return;
-    }
-
-    handleCollectAndPrint(false);
-    showToast(`Eyeglasses delivered to patient ${activeInvoice.patientName}! Tray ${activeInvoice.trayLocation} archived.`);
-  };
-
-  const handlePrintDueSlipOnly = () => {
-    handleCollectAndPrint(true);
-  };
-
   const handleResetSearch = () => {
     setSearchQuery('');
     setActiveInvoiceId('');
     setCollectionAmount('');
     setGivenAmount('');
     setWaiverAmount('');
-    showToast('পরবর্তী ইনভয়েস নম্বর বা POS বারকোড স্ক্যান করুন।');
+    showToast(text('Scan the next invoice number or POS barcode.', 'পরবর্তী ইনভয়েস নম্বর বা POS বারকোড স্ক্যান করুন।'));
   };
 
   const totalOutstandingDue = invoices.reduce((sum, inv) => sum + inv.initialDue, 0);
@@ -779,6 +815,17 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
         </div>
       )}
 
+      {isInvoiceScannerOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs">
+          <div className="w-full max-w-2xl">
+            <CameraBarcodeScanner
+              onScanSuccess={handleInvoiceBarcodeScan}
+              onClose={() => setIsInvoiceScannerOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
       {/* 1. Header Bar / Breadcrumb & High-Level KPIs */}
       <section className="mb-4">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white border border-slate-700/80 rounded-xl shadow-xs">
@@ -786,28 +833,28 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             <div className="flex items-center gap-2 text-[11px] text-outline mb-1.5 font-medium">
               <span className="flex items-center gap-1">
                 <span className="material-symbols-outlined text-[14px] text-teal-600">local_hospital</span>
-                Modina Hospital Complex
+                {text('Modina Hospital Complex', 'মদিনা হাসপাতাল কমপ্লেক্স')}
               </span>
               <span>/</span>
-              <span>Central Optical Dispensary</span>
+              <span>              {text('Central Optical Dispensary', 'সেন্ট্রাল অপটিক্যাল ডিসপেনসারি')}</span>
               <span>/</span>
               <span className="text-teal-700 dark:text-teal-400 font-semibold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
-                Optical Handover &amp; Due Recovery
+                {text('Optical Handover & Due Recovery', 'চশমা হস্তান্তর ও বকেয়া আদায়')}
               </span>
             </div>
             <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md flex items-center gap-3 flex-wrap">
-              <span>কাউন্টার বকেয়া আদায় ও চশমা ডেলিভারি</span>
+              <span>{text('Counter Due Collection & Eyeglass Delivery', 'কাউন্টারে বকেয়া আদায় ও চশমা বিতরণ')}</span>
               <span className="px-3 py-1 text-xs font-bold rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30 flex items-center gap-1.5 shadow-2xs">
                 <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
-                Optical Counter &amp; Due Settlement
+                {text('Optical Counter & Due Settlement', 'অপটিক্যাল কাউন্টার ও বকেয়া নিষ্পত্তি')}
               </span>
               <span className="px-2.5 py-0.5 text-[11px] font-semibold rounded-md bg-surface-container text-on-surface-variant border border-outline-variant">
-                Mirpur Optical Lab
+                {text('Mirpur Optical Lab', 'মিরপুর অপটিক্যাল ল্যাব')}
               </span>
             </h1>
             <p className="text-xs text-slate-400 mt-1.5 max-w-3xl leading-relaxed">
-              চশমা ও অপটিক্যাল লেন্স হ্যান্ডওভার, কাউন্টার বকেয়া আদায় সমন্বয় ও গ্রাহক রিসিট জেনারেশন।
+              {text('Manage eyeglass handover, collect balances, and issue customer receipts.', 'চশমা হস্তান্তর, বকেয়া আদায় এবং গ্রাহকের রসিদ তৈরি করুন।')}
             </p>
           </div>
 
@@ -817,13 +864,13 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               onClick={() => {
                 searchInputRef.current?.focus();
                 searchInputRef.current?.select();
-                showToast('F4 বারকোড / কিউআর কোড স্ক্যানার সক্রিয়');
+                showToast(text('F4 barcode / QR scanner ready', 'F4 বারকোড / কিউআর স্ক্যানার চালু হয়েছে'));
               }}
               className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#1a1d26] border border-teal-500/30 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-50 dark:hover:bg-teal-950/30 flex items-center gap-2 shadow-xs transition-all cursor-pointer"
               type="button"
             >
               <span className="material-symbols-outlined text-[18px] text-teal-600">qr_code_scanner</span>
-              <span>স্ক্যানার (F4)</span>
+              <span>{text('Scanner (F4)', 'স্ক্যানার (F4)')}</span>
             </button>
             <button
               onClick={() => setIsBatchSmsModalOpen(true)}
@@ -831,7 +878,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               type="button"
             >
               <span className="material-symbols-outlined text-[18px] text-amber-600">sms</span>
-              <span>বকেয়া SMS নোটিশ (14)</span>
+              <span>{text('Due SMS Notices (14)', 'বকেয়া SMS নোটিশ (১৪)')}</span>
             </button>
             <button
               onClick={() => setIsLedgerModalOpen(true)}
@@ -839,7 +886,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               type="button"
             >
               <span className="material-symbols-outlined text-[18px]">table_view</span>
-              <span>দৈনিক কালেকশন লেজার</span>
+              <span>{text('Daily Collection Ledger', 'দৈনিক আদায়ের হিসাব')}</span>
             </button>
           </div>
         </div>
@@ -850,7 +897,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
           <div className="bg-white dark:bg-[#1a1d26] border border-emerald-500/20 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all relative overflow-hidden min-h-[156px] flex flex-col">
             <div className="flex items-start justify-between gap-2 text-outline mb-2 min-h-8">
               <span className="text-[10px] leading-snug font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
-                আজকের বকেয়া আদায় (Today Collected)
+                {text('Collected Today', 'আজকের আদায়')}
               </span>
               <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                 <span className="material-symbols-outlined text-[16px]">payments</span>
@@ -858,16 +905,16 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             </div>
             <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
               <span className="text-lg leading-tight font-data-pos text-emerald-600 dark:text-emerald-400 font-bold tracking-tight">
-                ৳{(todayCollectedTotal * 118).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                ৳{todayCollectedTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </span>
               <span className="text-[10px] leading-snug text-emerald-700/80 dark:text-emerald-300/80 font-data-rx font-medium">
-                (কালেকশন সম্পূর্ণ)
+                {text('(Collection complete)', '(আদায় সম্পন্ন)')}
               </span>
             </div>
             <div className="flex items-center justify-between gap-1 mt-auto pt-2 border-t border-emerald-500/15 text-[10px] leading-snug text-on-surface-variant">
-              <span>{todaySlipsCount} টি আংশিক রসিদ ক্লোজড</span>
+              <span>{text(`${todaySlipsCount} partial receipts closed`, `${todaySlipsCount}টি আংশিক রসিদ বন্ধ`)}</span>
               <span className="text-[9px] whitespace-nowrap font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded-full">
-                +{todaySlipsCount} Slips
+                +{todaySlipsCount} {text('Slips', 'টি রসিদ')}
               </span>
             </div>
           </div>
@@ -880,7 +927,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             <div className="flex items-start justify-between gap-2 text-rose-700 dark:text-rose-400 mb-2 relative z-10 min-h-8">
               <span className="text-[10px] leading-snug font-bold uppercase tracking-wide flex items-center gap-1">
                 <span className="material-symbols-outlined text-[14px] shrink-0">priority_high</span>
-                সম্পূর্ণ বকেয়ার পরিমাণ (Total Due)
+                {text('Total Outstanding Due', 'মোট বকেয়া')}
               </span>
               <div className="w-7 h-7 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shadow-2xs shrink-0">
                 <span className="material-symbols-outlined text-[16px]">account_balance_wallet</span>
@@ -888,22 +935,25 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             </div>
             <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 relative z-10">
               <span className="text-lg leading-tight font-data-pos text-rose-600 dark:text-rose-400 font-bold tracking-tight">
-                ৳{(totalOutstandingDue * 118).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                ৳{totalOutstandingDue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </span>
               <span className="text-[10px] leading-snug text-rose-700/80 dark:text-rose-300/80 font-data-rx font-medium">
-                (অনাদায়ী বকেয়া)
+                {text('(Unpaid balance)', '(অনাদায়ী বকেয়া)')}
               </span>
             </div>
             <div className="flex items-center justify-between gap-1 mt-auto pt-2 border-t border-rose-500/20 text-[10px] leading-snug relative z-10">
               <span className="text-rose-700/80 dark:text-rose-300/80 font-medium">
-                {invoices.filter(i => i.status === 'due').length} টি ইনভয়েসে বকেয়া অপরিশোধিত
+                {text(
+                  `${invoices.filter(i => i.status === 'due').length} invoices have unpaid balances`,
+                  `${invoices.filter(i => i.status === 'due').length}টি ইনভয়েসে বকেয়া অপরিশোধিত`
+                )}
               </span>
               <button
                 type="button"
                 onClick={() => setStatusFilter('partial')}
                 className="text-[9px] whitespace-nowrap font-bold px-1.5 py-0.5 rounded-md bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 transition-colors cursor-pointer"
               >
-                বকেয়া ফিল্টার
+                {text('Filter Due', 'বকেয়া ফিল্টার')}
               </button>
             </div>
           </div>
@@ -912,21 +962,21 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
           <div className="bg-white dark:bg-[#1a1d26] border border-blue-500/20 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all min-h-[156px] flex flex-col">
             <div className="flex items-start justify-between gap-2 text-outline mb-2 min-h-8">
               <span className="text-[10px] leading-snug font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300">
-                ডেলিভারির জন্য প্রস্তুত (Ready for Pickup)
+                {text('Ready for Pickup', 'ডেলিভারির জন্য প্রস্তুত')}
               </span>
               <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                 <span className="material-symbols-outlined text-[16px]">eyeglasses</span>
               </div>
             </div>
             <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-              <span className="text-lg leading-tight font-data-pos text-blue-600 dark:text-blue-400 font-bold">14 চশমা</span>
+              <span className="text-lg leading-tight font-data-pos text-blue-600 dark:text-blue-400 font-bold">{text('14 eyeglasses', '১৪টি চশমা')}</span>
               <span className="text-[9px] leading-snug font-bold text-blue-700 dark:text-blue-300 bg-blue-500/15 px-1.5 py-0.5 rounded-full">
-                Lab Verified
+                {text('Lab Verified', 'ল্যাবে যাচাইকৃত')}
               </span>
             </div>
             <div className="mt-auto pt-2 border-t border-blue-500/15 text-[10px] leading-snug text-on-surface-variant flex items-center justify-between gap-1">
-              <span>ওয়ার্কশপ ট্রে তে সংরক্ষিত</span>
-              <span className="font-semibold text-blue-600">রেডি টু হ্যান্ডওভার</span>
+              <span>{text('Stored in workshop trays', 'ওয়ার্কশপ ট্রেতে সংরক্ষিত')}</span>
+              <span className="font-semibold text-blue-600">{text('Ready to hand over', 'হস্তান্তরের জন্য প্রস্তুত')}</span>
             </div>
           </div>
 
@@ -935,7 +985,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             <div className="flex items-start justify-between gap-2 text-teal-800 dark:text-teal-300 mb-2 min-h-8">
               <span className="text-[10px] leading-snug font-bold uppercase tracking-wide flex items-center gap-1">
                 <span className="material-symbols-outlined text-[14px] text-teal-600 shrink-0">inventory_2</span>
-                ডেলিভারি উপযোগী ট্রে (Ready Trays)
+                {text('Ready for Handover Trays', 'হস্তান্তরের জন্য প্রস্তুত ট্রে')}
               </span>
               <div className="w-7 h-7 rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
                 <span className="material-symbols-outlined text-[16px]">check_circle</span>
@@ -975,15 +1025,20 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                   handleInvoiceSearch();
                 }
               }}
-              aria-label="ইনভয়েস নম্বর বা POS বারকোড"
-              placeholder="ইনভয়েস নম্বর লিখুন বা POS বারকোড স্ক্যান করুন..."
+              aria-label={text('Invoice number or POS barcode', 'ইনভয়েস নম্বর বা POS বারকোড')}
+              placeholder={text('Enter invoice number or scan POS barcode...', 'ইনভয়েস নম্বর লিখুন বা POS বারকোড স্ক্যান করুন...')}
               className="w-full h-11 pl-11 pr-28 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 dark:border-[#2e3547] focus:border-teal-500 rounded-xl text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all font-body-sm"
             />
             <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center gap-1.5">
-              <span className="px-2 py-1 bg-white dark:bg-[#202430] text-teal-700 dark:text-teal-400 font-bold text-[11px] rounded-lg border border-outline-variant/80 dark:border-[#2c3344] flex items-center gap-1 shadow-2xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-ping"></span>
-                F4 Scanner
-              </span>
+              <button
+                type="button"
+                onClick={() => setIsInvoiceScannerOpen(true)}
+                className="w-8 h-8 bg-white dark:bg-[#202430] text-teal-700 dark:text-teal-400 rounded-lg border border-outline-variant/80 dark:border-[#2c3344] flex items-center justify-center shadow-2xs cursor-pointer hover:bg-teal-50 dark:hover:bg-teal-950/30 transition-colors"
+                aria-label={text('Open invoice barcode scanner', 'ইনভয়েস বারকোড স্ক্যানার খুলুন')}
+                title={text('Invoice barcode scanner', 'ইনভয়েস বারকোড স্ক্যানার')}
+              >
+                <span className="material-symbols-outlined text-[18px]">barcode_scanner</span>
+              </button>
             </div>
           </div>
 
@@ -994,12 +1049,12 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               onChange={(e) => setStatusFilter(e.target.value)}
               className="h-11 px-3 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 rounded-xl text-xs font-semibold text-on-surface focus:outline-none focus:border-teal-500 cursor-pointer"
             >
-              <option value="partial">ফিল্টার: বকেয়া অপরিশোধিত (Due / Partial)</option>
-              <option value="all">সকল ইনভয়েস (All Records)</option>
-              <option value="zero-advance">সম্পূর্ণ বকেয়া (Advance ৳0)</option>
-              <option value="ready">ডেলিভারির জন্য প্রস্তুত (Ready for Pickup)</option>
-              <option value="overdue">অধিক বকেয়া (&gt; 30 Days Overdue)</option>
-              <option value="settled">সম্পূর্ণ পরিশোধিত (Settled / Paid)</option>
+              <option value="partial">{text('Unpaid / Partial', 'বকেয়া / আংশিক পরিশোধ')}</option>
+              <option value="all">{text('All Invoices', 'সব ইনভয়েস')}</option>
+              <option value="zero-advance">{text('No Advance Paid', 'কোনো অগ্রিম পরিশোধ নেই')}</option>
+              <option value="ready">{text('Ready for Pickup', 'ডেলিভারির জন্য প্রস্তুত')}</option>
+              <option value="overdue">{text('Overdue (> 30 days)', 'মেয়াদোত্তীর্ণ (> ৩০ দিন)')}</option>
+              <option value="settled">{text('Fully Paid', 'সম্পূর্ণ পরিশোধিত')}</option>
             </select>
 
             <select
@@ -1007,10 +1062,10 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               onChange={(e) => setPeriodFilter(e.target.value)}
               className="h-11 px-3 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 rounded-xl text-xs font-semibold text-on-surface focus:outline-none focus:border-teal-500 cursor-pointer"
             >
-              <option value="month">সময়: চলতি মাস (Oct 2024)</option>
-              <option value="today">আজকের তালিকা (Today)</option>
-              <option value="7days">বিগত ৭ দিন (Last 7 Days)</option>
-              <option value="custom">কাস্টম তারিখ সীমা</option>
+              <option value="month">{text('This Month', 'চলতি মাস')}</option>
+              <option value="today">{text('Today', 'আজ')}</option>
+              <option value="7days">{text('Last 7 Days', 'গত ৭ দিন')}</option>
+              <option value="custom">{text('Custom Date Range', 'নিজস্ব তারিখসীমা')}</option>
             </select>
 
             <button
@@ -1019,13 +1074,13 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               type="button"
             >
               <span className="material-symbols-outlined text-[18px]">search</span>
-              <span>অনুসন্ধান</span>
+              <span>{text('Search', 'অনুসন্ধান')}</span>
             </button>
 
             <button
               onClick={handleResetSearch}
               className="h-11 px-3 bg-white dark:bg-[#1a1d26] hover:bg-surface-container border border-outline-variant text-on-surface-variant rounded-xl text-xs transition-colors cursor-pointer"
-              title="রিসেট করুন"
+              title={text('Reset', 'রিসেট করুন')}
               type="button"
             >
               <span className="material-symbols-outlined text-[18px]">restart_alt</span>
@@ -1034,10 +1089,10 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
         </div>
 
         {searchQuery.trim() && (
-          <div className="pt-3 border-t border-outline-variant/60 space-y-2" role="listbox" aria-label="ইনভয়েস সাজেশন">
+          <div className="pt-3 border-t border-outline-variant/60 space-y-2" role="listbox" aria-label={text('Invoice suggestions', 'ইনভয়েস সাজেশন')}>
             <span className="text-on-surface-variant font-bold text-[11px] uppercase tracking-wider flex items-center gap-1">
               <span className="material-symbols-outlined text-[15px] text-teal-600">receipt</span>
-              মিল পাওয়া ইনভয়েস:
+              {text('Matching invoices:', 'মিলে যাওয়া ইনভয়েস:')}
             </span>
             {invoiceSuggestions.length > 0 ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -1055,305 +1110,138 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                     </span>
                     <span>{inv.invoiceNumber} • {inv.patientName}</span>
                     <span className="text-[10px] font-extrabold text-rose-700 dark:text-rose-300">
-                      {inv.initialDue === 0 ? 'পরিশোধিত' : `বকেয়া ৳${(inv.initialDue * 118).toFixed(0)}`}
+                      {inv.initialDue === 0 ? text('Paid', 'পরিশোধিত') : text(`Due ৳${inv.initialDue.toFixed(0)}`, `বকেয়া ৳${inv.initialDue.toFixed(0)}`)}
                     </span>
                   </button>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-on-surface-variant">কোনো ইনভয়েস মেলেনি। ইনভয়েস নম্বর বা POS বারকোডটি পরীক্ষা করুন।</p>
+              <p className="text-xs text-on-surface-variant">{text('No invoices found. Check the invoice number or POS barcode.', 'কোনো ইনভয়েস মেলেনি। ইনভয়েস নম্বর বা POS বারকোডটি পরীক্ষা করুন।')}</p>
             )}
           </div>
         )}
       </section>
 
       {activeInvoiceId ? (
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT & CENTER PANE: Active Invoice Dossier (7 Columns) */}
-        <div className="lg:col-span-7 space-y-5">
-          {/* Active Invoice Header Banner */}
-          <div className="bg-white dark:bg-[#1a1d26] border border-outline-variant/80 dark:border-[#262c3b] rounded-2xl p-5 shadow-xs relative overflow-hidden">
-            <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-teal-600 via-emerald-500 to-teal-400"></div>
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-4 pt-1">
-              <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-xl font-extrabold text-on-surface tracking-tight">
-                    ইনভয়েস {activeInvoice.invoiceNumber}
-                  </span>
-                  <span className="text-xs font-mono px-2.5 py-0.5 bg-[#f8fafc] dark:bg-[#14171f] text-on-surface-variant rounded-lg border border-outline-variant font-bold">
-                    Legacy ID: {activeInvoice.legacyId}
-                  </span>
-                  <span
-                    className={`px-3 py-0.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                      activeInvoice.initialDue === 0
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
-                        : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30'
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-current animate-pulse"></span>
-                    {activeInvoice.initialDue === 0 ? 'পরিশোধিত (Paid in Full)' : 'বকেয়া অপরিশোধিত (Due Pending)'}
-                  </span>
-                </div>
-                <div className="text-xs text-on-surface-variant mt-1.5 flex items-center gap-3 flex-wrap">
-                  <span className="flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[15px] text-outline">calendar_today</span>
-                    বুকিং: {activeInvoice.bookedDate}
-                  </span>
-                  <span>•</span>
-                  <span className="text-teal-700 dark:text-teal-400 font-bold flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[15px]">event_available</span>
-                    ডেলিভারির তারিখ: {activeInvoice.deliveryDate}
-                  </span>
-                </div>
-              </div>
-
-              {/* Frame Pickup Status Pill */}
-              <div className="text-right">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-500/10 border border-teal-500/30 text-teal-800 dark:text-teal-300 rounded-xl text-xs font-bold shadow-2xs">
-                  <span className="material-symbols-outlined text-[17px] text-teal-600">shelves</span>
-                  চশমা রেডি: {activeInvoice.trayLocation}
-                </span>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Compact invoice preview on the right */}
+        <div className="order-2 lg:order-none lg:col-span-4 lg:col-start-9 lg:row-start-1 bg-white dark:bg-[#1a1d26] border border-outline-variant/80 dark:border-[#262c3b] rounded-lg p-3 sm:p-4 shadow-xs">
+          <div className="text-center border-b border-outline-variant pb-2">
+            <h2 className="text-sm font-black uppercase tracking-wide text-on-surface">Modina Eye Hospital &amp; Optics</h2>
+            <p className="text-[10px] text-on-surface-variant">{text('Optical Dispensary & Automated Edging Lab • Hotline:', 'অপটিক্যাল ডিসপেনসারি ও স্বয়ংক্রিয় লেন্স কাটিং ল্যাব • হটলাইন:')} +880 1897621199</p>
+            <div className="flex justify-center mt-2">
+              <Barcode
+                value={activeInvoice.invoiceNumber}
+                width={1.1}
+                height={30}
+                displayValue={false}
+                margin={0}
+                background="transparent"
+                lineColor="#0f172a"
+              />
             </div>
-
-            {/* Patient & Prescriber Quick Profile Strip */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 p-4 bg-[#f8fafc] dark:bg-[#14171f] rounded-xl border border-outline-variant/70">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-teal-600/15 text-teal-700 dark:text-teal-300 font-bold text-sm flex items-center justify-center shrink-0 border border-teal-500/25">
-                  {activeInvoice.patientName.split(' ').map(n => n[0]).slice(0, 2).join('')}
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-outline block font-bold">
-                    রোগী / গ্রাহক
-                  </span>
-                  <p className="text-xs font-bold text-on-surface mt-0.5">{activeInvoice.patientName}</p>
-                  <p className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5 font-mono">
-                    <span className="material-symbols-outlined text-[14px] text-teal-600">call</span>
-                    {activeInvoice.patientPhone}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold text-sm flex items-center justify-center shrink-0 border border-blue-500/25">
-                  <span className="material-symbols-outlined text-[20px]">medical_services</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-outline block font-bold">
-                    দায়িত্বরত অপ্টোমেট্রিস্ট
-                  </span>
-                  <p className="text-xs font-bold text-on-surface mt-0.5">{activeInvoice.optometrist}</p>
-                  <p className="text-[11px] text-on-surface-variant font-mono">Reg #{activeInvoice.optometristReg}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold text-sm flex items-center justify-center shrink-0 border border-purple-500/25">
-                  <span className="material-symbols-outlined text-[20px]">folder_shared</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-outline block font-bold">
-                    হসপিটাল ফাইল / রেজি নং
-                  </span>
-                  <p className="text-xs font-mono font-bold text-on-surface mt-0.5">{activeInvoice.hospitalFile}</p>
-                  <p className="text-[11px] text-teal-700 dark:text-teal-300 font-medium">{activeInvoice.department}</p>
-                </div>
-              </div>
+            <div className="flex items-center justify-center gap-3 mt-1 font-mono text-[10px] text-teal-700 dark:text-teal-400">
+              <span>{text('Invoice:', 'ইনভয়েস:')} {activeInvoice.invoiceNumber}</span>
+              <span>•</span>
+              <span>{text('Date:', 'তারিখ:')} {activeInvoice.bookedDate}</span>
             </div>
           </div>
 
-
-          {/* Modernized Itemized Bill Table with FEFO Badges */}
-          <div className="bg-white dark:bg-[#1a1d26] border border-outline-variant/80 dark:border-[#262c3b] rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-outline-variant/70 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[22px] text-teal-600">format_list_bulleted</span>
-                <div>
-                  <h2 className="text-sm font-bold text-on-surface">অর্ডার আইটেম বিবরণী ও এফইএফও বরাদ্দ</h2>
-                  <span className="text-[11px] text-on-surface-variant">
-                    ({activeInvoice.items.length} টি আইটেম অন্তর্ভুক্ত)
-                  </span>
-                </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 p-2.5 rounded-lg border border-outline-variant text-[11px]">
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase text-outline block">{text('Patient Name', 'রোগীর নাম')}</span>
+              <span className="font-bold text-on-surface block">{activeInvoice.patientName}</span>
+              <span className="text-on-surface-variant block font-mono">{activeInvoice.patientPhone}</span>
+              <div className="mt-1 pt-1 border-t border-outline-variant/70">
+                <span className="text-[10px] text-on-surface-variant block">
+                  {activeInvoice.deliveryDate === 'POS invoice'
+                    ? text('Booking Date', 'বুকিংয়ের তারিখ')
+                    : text('Expected Handover Date', 'সম্ভাব্য হস্তান্তরের তারিখ')}
+                </span>
+                <span className="font-semibold text-teal-700 dark:text-teal-400">
+                  {activeInvoice.deliveryDate === 'POS invoice' ? activeInvoice.bookedDate : activeInvoice.deliveryDate}
+                </span>
               </div>
-              <button
-                onClick={() => setIsOrderDetailsModalOpen(true)}
-                className="text-xs font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1 cursor-pointer bg-teal-50 dark:bg-teal-950/40 px-3 py-1.5 rounded-lg border border-teal-500/20"
-                type="button"
-              >
-                <span className="material-symbols-outlined text-[15px]">open_in_new</span>
-                সম্পূর্ণ অর্ডার ভিউ
-              </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#f8fafc] dark:bg-[#14171f] text-on-surface-variant text-[11px] uppercase tracking-wider font-bold border-b border-outline-variant/70">
-                    <th className="py-3 px-4 w-12 text-center">#</th>
-                    <th className="py-3 px-4">আইটেম নাম ও স্পেসিফিকেশন</th>
-                    <th className="py-3 px-3">ক্যাটেগরি</th>
-                    <th className="py-3 px-3 text-right">মূল্য ($)</th>
-                    <th className="py-3 px-3 text-center">ছাড় %</th>
-                    <th className="py-3 px-3 text-center">পরিমাণ</th>
-                    <th className="py-3 px-4 text-right">মোট ($ / ৳)</th>
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase text-outline block">{text('Sale Attributed To', 'বিক্রয়কারী')}</span>
+              <span className="font-bold text-on-surface block">{activeInvoice.optometrist}</span>
+              <span className="text-on-surface-variant block">{text('ID:', 'আইডি:')} {activeInvoice.optometristReg}</span>
+              <span className="text-[10px] text-on-surface-variant block mt-1">
+                {text('Tray:', 'ট্রে:')} {activeInvoice.trayLocation}
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto mt-3 rounded-lg border border-outline-variant/80">
+            <table className="w-full text-left border-collapse text-[10px]">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-slate-800 text-on-surface-variant font-bold uppercase tracking-wide">
+                  <th className="p-2 border-b border-outline-variant">{text('Item Description', 'পণ্যের বিবরণ')}</th>
+                  <th className="p-2 border-b border-outline-variant text-center">{text('Specs', 'বৈশিষ্ট্য')}</th>
+                  <th className="p-2 border-b border-outline-variant text-right">{text('Amount', 'পরিমাণ')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/60">
+                {activeInvoice.items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="p-2">
+                      <span className="font-bold block text-on-surface break-words">{item.name}</span>
+                      {item.sku !== activeInvoice.invoiceNumber && (
+                        <span className="text-[10px] text-on-surface-variant">{item.sku}</span>
+                      )}
+                    </td>
+                    <td className="p-2 text-center text-on-surface-variant">
+                      {item.category === 'POS Sale' ? '—' : item.category}
+                    </td>
+                    <td className="p-2 text-right font-mono font-bold text-on-surface">
+                      ৳{item.netTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/60 text-xs">
-                  {activeInvoice.items.map((it, idx) => (
-                    <tr key={it.id} className="hover:bg-[#f8fafc]/60 dark:hover:bg-[#14171f]/60 transition-colors">
-                      <td className="py-3 px-4 font-mono text-center text-outline font-bold">
-                        {String(idx + 1).padStart(2, '0')}
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="font-bold text-on-surface text-xs flex items-center gap-2 flex-wrap">
-                          <span>{it.name}</span>
-                          {/* FEFO badge hidden temporarily */ false && (it.category === 'Pharmacy' || it.category === 'Consumables') && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-teal-500/15 text-teal-800 dark:text-teal-200 border border-teal-500/30 text-[10px] font-bold shadow-2xs">
-                              <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse"></span>
-                              স্বয়ংক্রিয় FEFO ব্যাচ BX-{800 + idx * 12} (মেয়াদ: Nov 2026)
-                            </span>
-                          )}
-                        </p>
-                        <span className="text-[11px] text-outline font-mono">{it.sku}</span>
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className="px-2.5 py-1 rounded-md bg-[#f8fafc] dark:bg-[#14171f] text-on-surface-variant text-[11px] font-bold border border-outline-variant">
-                          {it.category}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono text-xs">${it.rate.toFixed(2)}</td>
-                      <td className="py-3 px-3 text-center font-mono text-xs text-teal-600 font-bold">
-                        {it.discountPct > 0 ? `${it.discountPct}%` : '—'}
-                      </td>
-                      <td className="py-3 px-3 text-center font-mono text-xs font-bold">{it.qty}</td>
-                      <td className="py-3 px-4 text-right">
-                        <span className="font-mono text-xs font-bold text-on-surface block">
-                          ${it.netTotal.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-outline font-mono">
-                          ৳{(it.netTotal * 118).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Bottom Summary Bar inside Table */}
-            <div className="bg-[#f8fafc] dark:bg-[#14171f] p-4 border-t border-outline-variant/70 flex flex-wrap items-center justify-between text-xs gap-3">
-              <span className="text-on-surface-variant font-medium">
-                আইটেম সাবটোটাল ({activeInvoice.items.length} আইটেম):{' '}
-                <strong className="text-on-surface font-mono font-bold">${activeInvoice.subtotal.toFixed(2)}</strong>
-                <span className="text-outline text-[11px] ml-1.5">
-                  (৳{(activeInvoice.subtotal * 118).toLocaleString('en-US', { maximumFractionDigits: 0 })})
-                </span>
-              </span>
-              <div className="flex items-center gap-6">
-                <span className="text-on-surface-variant font-medium">
-                  প্রদত্ত ছাড়:{' '}
-                  <strong className="text-teal-600 font-mono font-bold">
-                    {activeInvoice.discountApplied < 0
-                      ? `-$${Math.abs(activeInvoice.discountApplied).toFixed(2)}`
-                      : '$0.00'}
-                  </strong>
-                </span>
-                <span className="text-sm font-extrabold text-on-surface flex items-baseline gap-1.5">
-                  <span>গ্রস বিল (Gross):</span>
-                  <span className="font-mono text-teal-700 dark:text-teal-400 font-extrabold text-base">
-                    ৳{(activeInvoice.grossBill * 118).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                  </span>
-                  <span className="text-xs text-outline font-mono font-normal">
-                    (${activeInvoice.grossBill.toFixed(2)})
-                  </span>
-                </span>
-              </div>
-            </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex justify-end mt-1">
+            <button
+              onClick={() => setIsOrderDetailsModalOpen(true)}
+              className="text-[11px] font-medium text-teal-700 dark:text-teal-300 hover:underline cursor-pointer"
+              type="button"
+            >
+              সম্পূর্ণ অর্ডার ভিউ
+            </button>
           </div>
 
-          {/* Payment History & Ledger Timeline */}
-          <div className="bg-white dark:bg-[#1a1d26] border border-outline-variant/80 dark:border-[#262c3b] rounded-2xl p-4 shadow-xs">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-outline-variant/70">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[22px] text-teal-600">history_edu</span>
-                <h2 className="text-sm font-bold text-on-surface">
-                  পেমেন্ট লেজার ও পূর্ববর্তী অগ্রিম হিস্ট্রি (Payment Timeline)
-                </h2>
+          <div className="flex justify-end mt-3">
+            <div className="w-full max-w-56 space-y-1 text-[11px]">
+              <div className="flex justify-between text-on-surface-variant">
+                <span>Gross Total:</span>
+                <span className="font-mono">৳{activeInvoice.subtotal.toLocaleString('en-US')}</span>
               </div>
-              <span className="text-xs text-outline font-mono font-medium">
-                বুকিং আইডি: {activeInvoice.legacyId}
-              </span>
-            </div>
-            <div className="space-y-3">
-              {activeInvoice.payments.map((p) => (
-                <div key={p.id} className="flex items-start gap-3.5 p-3.5 bg-[#f8fafc] dark:bg-[#14171f] rounded-xl border border-outline-variant/70">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 border border-emerald-500/30">
-                    <span className="material-symbols-outlined text-[18px]">check</span>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-xs font-bold text-on-surface">{p.title}</span>
-                      <div className="text-right">
-                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
-                          +৳{(p.amount * 118).toLocaleString('en-US')}
-                        </span>
-                        <span className="text-[10px] text-outline font-mono block">
-                          (+${p.amount.toFixed(2)})
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-on-surface-variant mt-1">
-                      <span>তারিখ: {p.date}</span>
-                      <span>•</span>
-                      <span>
-                        মেথড: <strong className="text-on-surface font-semibold">{p.tenderMode}</strong>
-                      </span>
-                      <span>•</span>
-                      <span>
-                        রসিদ নং: <strong className="font-mono text-on-surface">{p.receiptSlip}</strong>
-                      </span>
-                      <span>•</span>
-                      <span>
-                        গ্রহণকারী: <strong className="text-on-surface">{p.receivedBy}</strong>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Pending Settlement Step */}
-              {activeInvoice.initialDue > 0 && (
-                <div className="flex items-start gap-3.5 p-3.5 bg-rose-500/10 rounded-xl border border-rose-500/30">
-                  <div className="w-8 h-8 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 mt-0.5 border border-rose-500/30">
-                    <span className="material-symbols-outlined text-[18px]">hourglass_top</span>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-xs font-bold text-rose-700 dark:text-rose-300">
-                        বর্তমান অপরিশোধিত বকেয়া (Awaiting Collection)
-                      </span>
-                      <div className="text-right">
-                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400 text-sm">
-                          ৳{(activeInvoice.initialDue * 118).toLocaleString('en-US')}
-                        </span>
-                        <span className="text-[10px] text-rose-500/80 font-mono block">
-                          (${activeInvoice.initialDue.toFixed(2)})
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-rose-700/80 dark:text-rose-300/80 mt-1">
-                      <span>স্ট্যাটাস: ডেলিভারি ও ফাইনাল সেটলমেন্টের অপেক্ষায়</span>
-                      <span>•</span>
-                      <span className="font-semibold">বকেয়া পরিশোধ সাপেক্ষে চশমা হস্তান্তর করুন</span>
-                    </div>
-                  </div>
+              {activeInvoice.discountApplied !== 0 && (
+                <div className="flex justify-between text-rose-600 dark:text-rose-400">
+                  <span>Special Discount:</span>
+                  <span className="font-mono">-৳{Math.abs(activeInvoice.discountApplied).toLocaleString('en-US')}</span>
                 </div>
               )}
+              <div className="flex justify-between font-bold text-on-surface pt-1 border-t border-outline-variant text-sm">
+                <span>Net Payable:</span>
+                <span className="font-mono">৳{activeInvoice.grossBill.toLocaleString('en-US')}</span>
+              </div>
+              <div className="flex justify-between text-emerald-700 dark:text-emerald-400 font-semibold">
+                <span>Paid ({activeInvoice.payments.length > 0 ? activeInvoice.payments[activeInvoice.payments.length - 1].tenderMode : 'Advance'}):</span>
+                <span className="font-mono">৳{activeInvoice.prevPaid.toLocaleString('en-US')}</span>
+              </div>
+              <div className="flex justify-between text-rose-600 dark:text-rose-400 font-bold">
+                <span>Balance Due:</span>
+                <span className="font-mono">৳{activeInvoice.initialDue.toLocaleString('en-US')}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* RIGHT PANE: Due Settlement & Cash Register Terminal (5 Columns) */}
-        <div className="lg:col-span-5 space-y-5">
+        {/* Larger due settlement form on the left */}
+        <div className="order-1 lg:order-none lg:col-span-8 lg:col-start-1 lg:row-start-1 space-y-5">
           {/* Due Payment Terminal Card */}
           <div className="bg-white dark:bg-[#1a1d26] border-2 border-teal-500/30 rounded-2xl p-5 shadow-sm relative">
             <div className="flex items-center justify-between pb-3.5 border-b border-outline-variant/70">
@@ -1363,9 +1251,9 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 </div>
                 <div>
                   <h2 className="text-base font-extrabold text-on-surface leading-tight">
-                    বকেয়া আদায় কাউন্টার (Settlement Desk)
+                    {text('Due Collection Counter', 'বকেয়া আদায় কাউন্টার')}
                   </h2>
-                  <span className="text-[11px] text-on-surface-variant font-medium">কাউন্টার ০২ • মিরপুর সেন্ট্রাল অপটিক্যাল ল্যাব</span>
+                  <span className="text-[11px] text-on-surface-variant font-medium">{text('Counter 02 • Mirpur Central Optical Lab', 'কাউন্টার ০২ • মিরপুর সেন্ট্রাল অপটিক্যাল ল্যাব')}</span>
                 </div>
               </div>
               <span className="text-xs bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-500/30 px-2.5 py-1 rounded-lg font-mono font-extrabold shadow-2xs">
@@ -1378,47 +1266,41 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               <div className="flex items-center justify-between">
                 <span className="text-xs uppercase tracking-wider font-extrabold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[18px]">account_balance_wallet</span>
-                  সম্পূর্ণ Due এর পরিমাণ (Full Outstanding Due)
+                  {text('Total Outstanding Due', 'মোট বকেয়া')}
                 </span>
                 <span
                   className={`px-3 py-0.5 rounded-full text-xs font-extrabold shadow-2xs ${
                     activeInvoice.initialDue === 0 ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white animate-pulse'
                   }`}
                 >
-                  {activeInvoice.initialDue === 0 ? 'পরিশোধিত (Paid in Full)' : 'বকেয়া অপরিশোধিত (Due)'}
+                  {activeInvoice.initialDue === 0 ? text('Paid in Full', 'সম্পূর্ণ পরিশোধিত') : text('Due', 'বকেয়া')}
                 </span>
               </div>
               <div className="mt-2.5 flex items-baseline justify-between">
                 <span className="text-3xl font-mono text-rose-600 dark:text-rose-400 font-extrabold tracking-tight">
-                  ৳{(netPayableDue * 118)?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                </span>
-                <span className="text-xs font-bold text-outline font-mono">
-                  (${netPayableDue.toFixed(2)} USD)
+                  ৳{netPayableDue?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                 </span>
               </div>
 
               {/* Mathematical Summary Mini-Grid */}
               <div className="mt-3.5 pt-3 border-t border-rose-500/20 grid grid-cols-3 gap-2 text-center text-xs">
                 <div className="p-2.5 bg-white dark:bg-[#1a1d26] rounded-xl border border-outline-variant/60 shadow-2xs">
-                  <span className="text-outline block text-[10px] uppercase font-bold">মোট বিল (Gross)</span>
+                  <span className="text-outline block text-[10px] uppercase font-bold">{text('Gross Bill', 'মোট বিল')}</span>
                   <span className="font-mono font-bold text-on-surface text-xs block mt-0.5">
-                    ৳{(activeInvoice.grossBill * 118).toLocaleString('en-US')}
+                    ৳{activeInvoice.grossBill.toLocaleString('en-US')}
                   </span>
-                  <span className="text-[10px] text-outline block font-mono">${activeInvoice.grossBill.toFixed(2)}</span>
                 </div>
                 <div className="p-2.5 bg-white dark:bg-[#1a1d26] rounded-xl border border-outline-variant/60 shadow-2xs">
-                  <span className="text-outline block text-[10px] uppercase font-bold">অগ্রিম জমা (Advance)</span>
+                  <span className="text-outline block text-[10px] uppercase font-bold">{text('Advance Paid', 'অগ্রিম জমা')}</span>
                   <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs block mt-0.5">
-                    ৳{(activeInvoice.prevPaid * 118).toLocaleString('en-US')}
+                    ৳{activeInvoice.prevPaid.toLocaleString('en-US')}
                   </span>
-                  <span className="text-[10px] text-outline block font-mono">${activeInvoice.prevPaid.toFixed(2)}</span>
                 </div>
                 <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-300 dark:border-rose-800/50 shadow-2xs">
-                  <span className="text-rose-700 dark:text-rose-400 block text-[10px] uppercase font-extrabold">বকেয়া Due</span>
+                  <span className="text-rose-700 dark:text-rose-400 block text-[10px] uppercase font-extrabold">{text('Remaining Due', 'অবশিষ্ট বকেয়া')}</span>
                   <span className="font-mono font-extrabold text-rose-600 dark:text-rose-400 text-xs block mt-0.5">
-                    ৳{(netPayableDue * 118).toLocaleString('en-US')}
+                    ৳{netPayableDue.toLocaleString('en-US')}
                   </span>
-                  <span className="text-[10px] text-rose-500/80 block font-mono">${netPayableDue.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -1481,7 +1363,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                               <span>মেয়াদ: <strong>{expStr}</strong> (নিকটতম মেয়াদ)</span>
                             </span>
                             <span className="font-bold text-teal-700 dark:text-teal-300 bg-teal-500/10 px-2 py-0.5 rounded font-mono">
-                              FEFO ক্রেডিট: ৳{(item.netTotal * 118).toFixed(0)} (${item.netTotal.toFixed(2)})
+                              FEFO ক্রেডিট: ৳{item.netTotal.toFixed(0)}
                             </span>
                           </div>
 
@@ -1516,10 +1398,10 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 <div className="p-3 bg-white dark:bg-[#1a1d26] rounded-xl border border-outline-variant/60 text-xs space-y-2">
                   <div className="flex items-center gap-2 text-teal-700 dark:text-teal-300 font-bold text-xs">
                     <span className="material-symbols-outlined text-[16px]">inventory_2</span>
-                    <span>অপ্টিক্যাল প্যাকেজ অর্ডার (Frame &amp; Custom Glazing Lens)</span>
+                    <span>{text('Optical Package Order (Frame & Custom Glazing Lens)', 'অপটিক্যাল প্যাকেজ অর্ডার (ফ্রেম ও বিশেষভাবে তৈরি লেন্স)')}</span>
                   </div>
                   <p className="text-on-surface-variant text-[11px] leading-relaxed">
-                    এই অর্ডারে ড্রপ/সলিউশন জাতীয় ফার্মেসি পণ্য যুক্ত থাকলে তা স্বয়ংক্রিয়ভাবে <strong>FEFO (First Expired First Out)</strong> নীতিতে নিকটতম মেয়াদী লট থেকে ইস্যু হয়।
+                    {text('If eye drops or pharmacy solutions are included, they are issued from the nearest-expiry batch under the FEFO policy.', 'এই অর্ডারে আই ড্রপ বা ফার্মেসি সলিউশন থাকলে FEFO নীতিতে নিকটতম মেয়াদের ব্যাচ থেকে ইস্যু করা হয়।')}
                   </p>
                   <button
                     type="button"
@@ -1553,7 +1435,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                       
                       setInvoices(prev => prev.map(inv => inv.id === activeInvoice.id ? updatedInvoice : inv));
                       setCollectionAmount(newDue.toFixed(2));
-                      showToast('আই ড্রপ যুক্ত করা হয়েছে এবং FEFO ব্যাচ BX-890 বরাদ্দ হয়েছে');
+                      showToast(text('Eye drops added and FEFO batch BX-890 allocated', 'আই ড্রপ যোগ করা হয়েছে এবং FEFO ব্যাচ BX-890 বরাদ্দ হয়েছে'));
                     }}
                     className="w-full py-1.5 px-3 bg-teal-50 dark:bg-teal-950/50 hover:bg-teal-100 text-teal-800 dark:text-teal-200 border border-teal-500/30 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
@@ -1567,38 +1449,16 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
 
             {/* Additional Waiver / Counter Discount Field */}
             <div className="mb-4 p-3.5 bg-[#f8fafc] dark:bg-[#14171f] rounded-xl border border-outline-variant/70">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold text-on-surface flex items-center gap-1">
+              <label className="text-xs font-bold text-on-surface flex items-center gap-1 mb-2">
                   <span>কাউন্টার ছাড় / অ্যাডজাস্টমেন্ট (Special Waiver)</span>
                   <span className="material-symbols-outlined text-[14px] text-outline" title="রাউন্ড অফ ডিসকাউন্ট বা অনুমোদিত ছাড়">
                     info
                   </span>
-                </label>
-                <div className="flex items-center gap-1 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setWaiverType('flat')}
-                    className={`px-2.5 py-0.5 rounded-md font-bold cursor-pointer transition-colors ${
-                      waiverType === 'flat' ? 'bg-teal-600 text-white' : 'bg-white dark:bg-[#1a1d26] border border-outline-variant text-on-surface-variant'
-                    }`}
-                  >
-                    Flat ৳
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWaiverType('percent')}
-                    className={`px-2.5 py-0.5 rounded-md font-bold cursor-pointer transition-colors ${
-                      waiverType === 'percent' ? 'bg-teal-600 text-white' : 'bg-white dark:bg-[#1a1d26] border border-outline-variant text-on-surface-variant'
-                    }`}
-                  >
-                    % Pct
-                  </button>
-                </div>
-              </div>
+              </label>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-on-surface-variant font-mono font-bold text-xs">
-                    {waiverType === 'flat' ? '৳' : '%'}
+                    ৳
                   </span>
                   <input
                     id="waiverInput"
@@ -1611,80 +1471,43 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                       setCollectionAmount(calculatedNet.toFixed(2));
                     }}
                     placeholder="0.00"
+                    aria-label="কাউন্টার ছাড় বা সমন্বয়ের পরিমাণ"
                     className="w-full h-9 pl-7 pr-3 bg-white dark:bg-[#1a1d26] border border-outline-variant/80 rounded-lg font-mono text-xs text-on-surface focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
                   />
                 </div>
-                <button
-                  onClick={handleApplyRoundOff}
-                  type="button"
-                  className="px-3 py-2 bg-white dark:bg-[#1a1d26] border border-outline-variant/80 rounded-lg text-xs font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer shadow-2xs"
-                >
-                  রাউন্ড-অফ (৳2.53)
-                </button>
               </div>
             </div>
 
             {/* Payment Mode / Tender Type Selection */}
             <div className="mb-4">
-              <label className="text-xs font-bold text-on-surface block mb-2">
-                পেমেন্ট মেথড নির্বাচন করুন (Payment Mode)
+              <label className="text-xs font-medium text-on-surface block mb-2">
+                Select Payment Method:
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {/* Mode 1: Cash */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedPayMode('Cash')}
-                  className={`p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                    selectedPayMode === 'Cash'
-                      ? 'border-2 border-teal-600 bg-teal-500/15 text-teal-800 dark:text-teal-200 shadow-xs'
-                      : 'border border-outline-variant/80 bg-white dark:bg-[#1a1d26] hover:bg-surface-container text-on-surface'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[22px]">payments</span>
-                  <span className="text-xs font-bold">নগদ (Cash)</span>
-                </button>
-
-                {/* Mode 2: Card / POS */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedPayMode('POS Card')}
-                  className={`p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                    selectedPayMode === 'POS Card'
-                      ? 'border-2 border-teal-600 bg-teal-500/15 text-teal-800 dark:text-teal-200 shadow-xs'
-                      : 'border border-outline-variant/80 bg-white dark:bg-[#1a1d26] hover:bg-surface-container text-on-surface'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[22px]">credit_card</span>
-                  <span className="text-xs font-bold">POS Card</span>
-                </button>
-
-                {/* Mode 3: bKash / Nagad MFS */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedPayMode('bKash/Nagad')}
-                  className={`p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                    selectedPayMode === 'bKash/Nagad'
-                      ? 'border-2 border-teal-600 bg-teal-500/15 text-teal-800 dark:text-teal-200 shadow-xs'
-                      : 'border border-outline-variant/80 bg-white dark:bg-[#1a1d26] hover:bg-surface-container text-on-surface'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[22px]">phone_iphone</span>
-                  <span className="text-xs font-bold">bKash / বিকাশ</span>
-                </button>
-
-                {/* Mode 4: Bank / Insurance */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedPayMode('Bank Xfer')}
-                  className={`p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                    selectedPayMode === 'Bank Xfer'
-                      ? 'border-2 border-teal-600 bg-teal-500/15 text-teal-800 dark:text-teal-200 shadow-xs'
-                      : 'border border-outline-variant/80 bg-white dark:bg-[#1a1d26] hover:bg-surface-container text-on-surface'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[22px]">account_balance</span>
-                  <span className="text-xs font-bold">ব্যাংক ট্রান্সফার</span>
-                </button>
+              <div className="grid grid-cols-4 gap-2">
+                {([
+                  { value: 'bKash', label: 'bKash', icon: 'phone_iphone' },
+                  { value: 'Nagad', label: 'Nagad', icon: 'bolt' },
+                  { value: 'Cash', label: 'Cash', icon: 'payments' },
+                  { value: 'Card', label: 'Card', icon: 'credit_card' },
+                ] as const).map((method) => {
+                  const isSelected = selectedPayMode === method.value;
+                  return (
+                    <button
+                      key={method.value}
+                      type="button"
+                      onClick={() => setSelectedPayMode(method.value)}
+                      aria-pressed={isSelected}
+                      className={`min-h-[54px] rounded-lg border flex flex-col items-center justify-center gap-0.5 text-xs font-bold transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-pink-600 border-pink-700 text-white shadow-sm'
+                          : 'bg-slate-50 dark:bg-[#14171f] border-slate-200 dark:border-slate-700 text-on-surface hover:bg-pink-50 dark:hover:bg-pink-950/30'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[17px]" aria-hidden="true">{method.icon}</span>
+                      <span>{method.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1693,15 +1516,13 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Amount Paid Now */}
                 <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1">
-                    আদায়কৃত পরিমাণ (Collection $)
-                  </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-teal-600 font-bold font-mono">$</span>
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-teal-600 font-bold font-mono">৳</span>
                     <input
                       id="payAmtInput"
                       type="text"
                       value={collectionAmount}
+                      aria-label="আদায়কৃত পরিমাণ"
                       onChange={(e) => setCollectionAmount(e.target.value)}
                       className="w-full h-10 pl-8 pr-3 bg-white dark:bg-[#1a1d26] border-2 border-teal-600 rounded-xl font-mono font-extrabold text-teal-700 dark:text-teal-300 focus:outline-none shadow-xs text-sm"
                     />
@@ -1711,10 +1532,10 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 {/* Customer Given Amount */}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1">
-                    গ্রাহকের প্রদত্ত টাকা (Given $)
+                    {text('Amount Given by Customer (৳)', 'গ্রাহকের দেওয়া টাকা (৳)')}
                   </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-on-surface font-bold font-mono">$</span>
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-on-surface font-bold font-mono">৳</span>
                     <input
                       id="givenAmtInput"
                       type="text"
@@ -1726,48 +1547,18 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 </div>
               </div>
 
-              {/* Fast Currency Denomination Fillers */}
-              <div className="flex items-center gap-1.5 pt-1 text-xs flex-wrap">
-                <span className="text-on-surface-variant text-[11px] font-bold">কুইক টেন্ডার:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCollectionAmount(netPayableDue.toFixed(2));
-                    setGivenAmount(netPayableDue.toFixed(2));
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#1a1d26] border border-outline-variant hover:bg-surface text-on-surface font-mono font-bold cursor-pointer text-xs"
-                >
-                  সরাসরি ৳{(netPayableDue * 118).toFixed(0)} (${netPayableDue.toFixed(2)})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGivenAmount(((Math.ceil(netPayableDue * 118 / 500) * 500) / 118).toFixed(2))}
-                  className="px-2.5 py-1 rounded-lg bg-teal-500/15 border border-teal-500/30 text-teal-800 dark:text-teal-200 font-mono font-extrabold cursor-pointer text-xs"
-                >
-                  ৳{Math.ceil(netPayableDue * 118 / 500) * 500 || 500}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGivenAmount(((Math.ceil(netPayableDue * 118 / 1000) * 1000) / 118).toFixed(2))}
-                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#1a1d26] border border-outline-variant hover:bg-surface text-on-surface font-mono font-bold cursor-pointer text-xs"
-                >
-                  ৳{Math.ceil(netPayableDue * 118 / 1000) * 1000 || 1000}
-                </button>
-              </div>
-
               {/* Return / Change Calculator Box */}
               <div className="p-3 bg-white dark:bg-[#1a1d26] rounded-xl border border-outline-variant/80 flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold text-on-surface block">রোগীকে ফেরতযোগ্য ক্যাশ (Change Return):</span>
+                  <span className="text-xs font-bold text-on-surface block">{text('Change to Return to Customer:', 'গ্রাহককে ফেরতযোগ্য টাকা:')}</span>
                   <span className="text-[11px] text-teal-700 dark:text-teal-300 font-mono">
-                    প্রদত্ত ৳{(parsedGivenAmt * 118).toFixed(0)} - কর্তন ৳{(parsedCollectionAmt * 118).toFixed(0)}
+                    {text('Given', 'প্রদত্ত')} ৳{parsedGivenAmt.toFixed(0)} - {text('Collected', 'আদায়')} ৳{parsedCollectionAmt.toFixed(0)}
                   </span>
                 </div>
                 <div className="text-right">
                   <span className="text-xl font-mono text-teal-600 dark:text-teal-400 font-extrabold">
-                    +৳{(returnChange * 118).toFixed(0)}
+                    +৳{returnChange.toFixed(0)}
                   </span>
-                  <span className="text-[10px] text-outline font-mono block">(+${returnChange.toFixed(2)})</span>
                 </div>
               </div>
             </div>
@@ -1782,9 +1573,9 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                   className="mt-0.5 h-4.5 w-4.5 rounded border-outline-variant text-teal-600 focus:ring-teal-600 cursor-pointer"
                 />
                 <div className="text-xs text-on-surface">
-                  <strong className="text-teal-900 dark:text-teal-200">চশমা হস্তান্তর ও ডেলিভারি সম্পন্ন চিহ্নিত করুন</strong>
+                  <strong className="text-teal-900 dark:text-teal-200">{text('Mark eyeglasses as handed over and delivered', 'চশমা হস্তান্তর ও ডেলিভারি সম্পন্ন হিসেবে চিহ্নিত করুন')}</strong>
                   <span className="block text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">
-                    পেমেন্ট সম্পন্ন হওয়ার সাথে সাথে ল্যাব ট্রে {activeInvoice.trayLocation} এর স্ট্যাটাস &apos;গ্রাহককে হস্তান্তরকৃত&apos; হিসেবে আপডেট হবে।
+                    {text(`After payment, lab tray ${activeInvoice.trayLocation} will be marked as handed over to the customer.`, `পেমেন্ট সম্পন্ন হলে ল্যাব ট্রে ${activeInvoice.trayLocation}-এর অবস্থা ‘গ্রাহকের কাছে হস্তান্তর’ হিসেবে হালনাগাদ হবে।`)}
                   </span>
                 </div>
               </label>
@@ -1799,40 +1590,20 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 type="button"
               >
                 <span className="material-symbols-outlined text-[20px]">print</span>
-                <span>বকেয়া আদায় ও প্রিন্ট রসিদ (Save &amp; Print F9)</span>
+                <span>{text('Collect Due & Print Receipt (F9)', 'বকেয়া আদায় ও রসিদ প্রিন্ট (F9)')}</span>
               </button>
-
-              {/* Save & Show Modal CTA */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={handleSaveAndDeliver}
-                  className="py-2.5 px-3 bg-[#f8fafc] dark:bg-[#14171f] hover:bg-teal-50 text-teal-800 dark:text-teal-200 border border-teal-500/30 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer font-bold"
-                  type="button"
-                >
-                  <span className="material-symbols-outlined text-[18px] text-teal-600">task_alt</span>
-                  <span>সংরক্ষণ ও হ্যান্ডওভার (F8)</span>
-                </button>
-                <button
-                  onClick={handlePrintDueSlipOnly}
-                  className="py-2.5 px-3 bg-white dark:bg-[#1a1d26] hover:bg-surface-container border border-outline-variant/80 text-on-surface rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer font-bold"
-                  type="button"
-                >
-                  <span className="material-symbols-outlined text-[18px] text-outline">receipt</span>
-                  <span>শুধু ডিউ স্লিপ (80mm)</span>
-                </button>
-              </div>
 
               {/* Reset / Escape */}
               <button
                 onClick={() => {
                   setSearchQuery('');
-                  showToast('সক্রিয় অ্যাকশন বাতিল করা হয়েছে। পরবর্তী রোগী স্ক্যান করুন।');
+                  showToast(text('Active action cancelled. Scan the next patient.', 'চলমান কাজ বাতিল করা হয়েছে। পরবর্তী রোগী স্ক্যান করুন।'));
                 }}
                 className="w-full py-2 text-center text-xs text-on-surface-variant hover:text-rose-600 transition-colors flex items-center justify-center gap-1 cursor-pointer font-medium"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[15px]">close</span>
-                <span>বাতিল / অন্য রোগী খুঁজুন (Esc)</span>
+                <span>{text('Cancel / Find Another Patient (Esc)', 'বাতিল / অন্য রোগী খুঁজুন (Esc)')}</span>
               </button>
             </div>
           </div>
@@ -1841,10 +1612,10 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
           <div className="p-4 bg-white dark:bg-[#1a1d26] rounded-2xl border border-outline-variant/80 text-xs space-y-1.5">
             <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold">
               <span className="material-symbols-outlined text-[18px] text-teal-600">verified_user</span>
-              <span>হাসপাতাল ওয়্যারেন্টি ও লেন্স গ্যারান্টি পলিসি</span>
+              <span>{text('Hospital Warranty & Lens Guarantee Policy', 'হাসপাতালের ওয়ারেন্টি ও লেন্স গ্যারান্টি নীতি')}</span>
             </div>
             <p className="text-on-surface-variant text-[11px] leading-relaxed">
-              সকল Essilor ও প্রিমিয়াম লেন্স কোটিংয়ে ১২ মাসের ডিলামিনেশন ওয়ারেন্টি অন্তর্ভুক্ত। রসিদ #REC-8842 এর সাথে গ্রাহককে ওয়ারেন্টি কার্ড বুঝিয়ে দিন।
+              {text('All Essilor and premium lens coatings include a 12-month delamination warranty. Give the customer the warranty card with receipt #REC-8842.', 'সব Essilor ও প্রিমিয়াম লেন্সের কোটিংয়ে ১২ মাসের স্তর উঠে যাওয়ার ওয়ারেন্টি রয়েছে। রসিদ #REC-8842-এর সাথে গ্রাহককে ওয়ারেন্টি কার্ড দিন।')}
             </p>
           </div>
         </div>
@@ -1852,9 +1623,9 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
       ) : (
         <div className="rounded-2xl border border-dashed border-teal-500/40 bg-white dark:bg-[#1a1d26] p-8 text-center">
           <span className="material-symbols-outlined text-4xl text-teal-600">qr_code_scanner</span>
-          <h2 className="mt-2 text-sm font-bold text-on-surface">ইনভয়েস নম্বর লিখুন বা POS বারকোড স্ক্যান করুন</h2>
+          <h2 className="mt-2 text-sm font-bold text-on-surface">{text('Enter an invoice number or scan a POS barcode', 'ইনভয়েস নম্বর লিখুন বা POS বারকোড স্ক্যান করুন')}</h2>
           <p className="mt-1 text-xs text-on-surface-variant">
-            মিল পাওয়া ইনভয়েস সাজেশন থেকে নির্বাচন করলে রোগী, বিল ও বকেয়ার তথ্য দেখাবে।
+            {text('Select a matching invoice suggestion to view the patient, bill, and outstanding balance.', 'মিলে যাওয়া ইনভয়েস সাজেশন নির্বাচন করলে রোগী, বিল ও বকেয়ার তথ্য দেখা যাবে।')}
           </p>
         </div>
       )}
@@ -1877,7 +1648,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             </span>
             <button
               onClick={() => {
-                showToast('Exported daily collections log to CSV (3 records).');
+                showToast(text('Daily collections log exported to CSV (3 records).', 'দৈনিক আদায়ের তালিকা CSV-তে রপ্তানি করা হয়েছে (৩টি রেকর্ড)।'));
               }}
               className="px-3 py-1 bg-surface-container hover:bg-surface-container-high rounded text-label-sm font-label-sm text-on-surface transition-colors cursor-pointer font-medium"
               type="button"
@@ -1909,19 +1680,19 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                   <td className="py-2.5 px-4 font-data-rx text-[12px] text-on-surface-variant">{row.time}</td>
                   <td className="py-2.5 px-3 font-data-rx text-[12px] font-semibold text-primary">{row.invoiceNumber}</td>
                   <td className="py-2.5 px-4 font-medium text-on-surface">{row.patientName}</td>
-                  <td className="py-2.5 px-3 text-right font-data-rx text-[12px]">${row.totalBill.toFixed(2)}</td>
+                  <td className="py-2.5 px-3 text-right font-data-rx text-[12px]">৳{row.totalBill.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="py-2.5 px-3 text-right font-data-rx text-[12px] font-bold text-primary">
-                    ${row.paidToday.toFixed(2)}
+                    ৳{row.paidToday.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-2.5 px-3 text-right font-data-rx text-[12px] text-on-surface-variant">
-                    ${row.remainingDue.toFixed(2)}
+                    ৳{row.remainingDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-2.5 px-3">
                     <span
                       className={`px-2 py-0.5 rounded text-[11px] font-medium ${
                         row.tenderMode === 'Cash'
                           ? 'bg-primary/10 text-primary'
-                          : row.tenderMode === 'POS Card'
+                          : row.tenderMode === 'Card' || row.tenderMode === 'POS Card'
                           ? 'bg-secondary/10 text-secondary'
                           : 'bg-surface-container text-on-surface-variant'
                       }`}
@@ -1994,26 +1765,26 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
 
               <div className="py-2 border-b border-dashed border-gray-400 text-[11px] space-y-1">
                 <div className="flex justify-between">
-                  <span>Slip: {receiptData.receiptNo}</span>
+                  <span>{text('Receipt:', 'রসিদ:')} {receiptData.receiptNo}</span>
                   <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Invoice: {receiptData.invoice.invoiceNumber}</span>
-                  <span>Legacy: {receiptData.invoice.legacyId}</span>
+                  <span>{text('Invoice:', 'ইনভয়েস:')} {receiptData.invoice.invoiceNumber}</span>
+                  <span>{text('Legacy:', 'পুরোনো নম্বর:')} {receiptData.invoice.legacyId}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Patient: {receiptData.invoice.patientName}</span>
+                  <span>{text('Patient:', 'রোগী:')} {receiptData.invoice.patientName}</span>
                   <span>{receiptData.invoice.patientPhone}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Tray: {receiptData.invoice.trayLocation}</span>
-                  <span>Dr: {receiptData.invoice.optometrist}</span>
+                  <span>{text('Tray:', 'ট্রে:')} {receiptData.invoice.trayLocation}</span>
+                  <span>{text('Dr:', 'ডা.:')} {receiptData.invoice.optometrist}</span>
                 </div>
               </div>
 
               {/* Rx Summary on slip */}
               <div className="py-2 border-b border-dashed border-gray-400 text-[10px] text-gray-700 space-y-0.5">
-                <div className="font-bold text-black">Rx Ref: {receiptData.invoice.refraction.rxRef}</div>
+                <div className="font-bold text-black">{text('Prescription Ref:', 'প্রেসক্রিপশন রেফারেন্স:')} {receiptData.invoice.refraction.rxRef}</div>
                 <div>
                   OD: SPH {receiptData.invoice.refraction.od.sph} / CYL {receiptData.invoice.refraction.od.cyl} x{' '}
                   {receiptData.invoice.refraction.od.axis} (PD: {receiptData.invoice.refraction.od.pd})
@@ -2022,21 +1793,21 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                   OS: SPH {receiptData.invoice.refraction.os.sph} / CYL {receiptData.invoice.refraction.os.cyl} x{' '}
                   {receiptData.invoice.refraction.os.axis} (PD: {receiptData.invoice.refraction.os.pd})
                 </div>
-                <div>Lens: {receiptData.invoice.refraction.lensType}</div>
+                <div>{text('Lens:', 'লেন্স:')} {receiptData.invoice.refraction.lensType}</div>
               </div>
 
               {/* Line Items on slip */}
               <div className="py-2 border-b border-dashed border-gray-400">
                 <div className="flex justify-between font-bold pb-1 text-[11px] border-b border-gray-200">
-                  <span>ITEM</span>
-                  <span>QTY</span>
-                  <span>AMT ($)</span>
+                  <span>{text('ITEM', 'পণ্য')}</span>
+                  <span>{text('QTY', 'পরিমাণ')}</span>
+                  <span>{text('AMOUNT (৳)', 'মূল্য (৳)')}</span>
                 </div>
                 {receiptData.invoice.items.map((item) => (
                   <div key={item.id} className="flex justify-between py-1 text-[11px]">
                     <span className="max-w-[200px] truncate">{item.name}</span>
                     <span>x{item.qty}</span>
-                    <span>${item.netTotal.toFixed(2)}</span>
+                    <span>৳{item.netTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 ))}
               </div>
@@ -2044,27 +1815,29 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               {/* Financial Calculation on slip */}
               <div className="py-2 space-y-1 text-[11px] border-b border-dashed border-gray-400">
                 <div className="flex justify-between">
-                  <span>Gross Invoice Total:</span>
-                  <span>${receiptData.invoice.grossBill.toFixed(2)}</span>
+                  <span>{text('Gross Invoice Total:', 'ইনভয়েসের মোট বিল:')}</span>
+                  <span>৳{receiptData.invoice.grossBill.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
-                  <span>Previously Paid (Advance):</span>
-                  <span>-${receiptData.invoice.prevPaid.toFixed(2)}</span>
+                  <span>{text('Previously Paid (Advance):', 'আগে পরিশোধিত (অগ্রিম):')}</span>
+                  <span>-৳{receiptData.invoice.prevPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between font-bold text-black text-[12px] pt-1 border-t border-gray-200">
-                  <span>PAID NOW ({receiptData.tenderMode}):</span>
-                  <span>${receiptData.collectedNow.toFixed(2)}</span>
+                  <span>{text('PAID NOW', 'এখন পরিশোধিত')} ({receiptData.tenderMode}):</span>
+                  <span>৳{receiptData.collectedNow.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 {receiptData.changeReturned > 0 && (
                   <div className="flex justify-between text-gray-700">
-                    <span>Change Returned:</span>
-                    <span>+${receiptData.changeReturned.toFixed(2)}</span>
+                    <span>{text('Change Returned:', 'ফেরত দেওয়া টাকা:')}</span>
+                    <span>+৳{receiptData.changeReturned.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold pt-1">
-                  <span>REMAINING BALANCE DUE:</span>
+                  <span>{text('REMAINING BALANCE DUE:', 'অবশিষ্ট বকেয়া:')}</span>
                   <span className={receiptData.isFullSettlement ? 'text-emerald-700' : 'text-red-600'}>
-                    {receiptData.isFullSettlement ? '$0.00 (PAID)' : `$${(activeInvoice.initialDue - receiptData.collectedNow).toFixed(2)}`}
+                    {receiptData.isFullSettlement
+                      ? text('৳0.00 (PAID)', '৳০.০০ (পরিশোধিত)')
+                      : `৳${Math.max(0, activeInvoice.initialDue - receiptData.collectedNow).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   </span>
                 </div>
               </div>
@@ -2076,9 +1849,10 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">*{receiptData.invoice.invoiceNumber}*</p>
                 <p className="text-[10px] text-gray-600 mt-2 font-sans font-medium">
-                  12-Month Coating Delamination Warranty Included
+                  {text('12-month coating delamination warranty included', 'কোটিং উঠে যাওয়ার ১২ মাসের ওয়ারেন্টি অন্তর্ভুক্ত')}
                 </p>
-                <p className="text-[9px] text-gray-400">Thank you for choosing Modina Optics &amp; Eye Care!</p>
+                <p className="text-[9px] text-gray-400">{text('Thank you for choosing Modina Optics & Eye Care!', 'মদিনা অপটিক্স ও আই কেয়ার বেছে নেওয়ার জন্য ধন্যবাদ!')}</p>
+                <PrintFooterQuantum className="mt-2 pt-1 border-t border-dashed border-gray-300 text-center text-[9px] font-sans font-medium tracking-wide text-black" />
               </div>
             </div>
 
@@ -2087,7 +1861,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 onClick={() => setIsReceiptModalOpen(false)}
                 className="px-4 py-2 bg-surface hover:bg-surface-container border border-outline-variant text-on-surface rounded-lg text-label-md font-label-md cursor-pointer font-medium"
               >
-                Close
+                {text('Close', 'বন্ধ করুন')}
               </button>
               <button
                 onClick={() => {
@@ -2095,12 +1869,12 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                     title: `Receipt_${receiptData.receiptNo}`,
                     pageMargin: '4mm',
                   });
-                  showToast('Sent receipt to 80mm thermal printer on Station #04.');
+                  showToast(text('Receipt sent to the 80mm thermal printer at Station #04.', 'স্টেশন #০৪-এর ৮০ মিমি থার্মাল প্রিন্টারে রসিদ পাঠানো হয়েছে।'));
                 }}
                 className="px-4 py-2 bg-primary hover:bg-primary-container text-on-primary rounded-lg text-label-md font-label-md font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">print</span>
-                <span>Print Thermal Slip</span>
+                <span>{text('Print Thermal Slip', 'থার্মাল রসিদ প্রিন্ট')}</span>
               </button>
             </div>
           </div>
@@ -2116,7 +1890,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             <div className="px-5 py-3.5 bg-surface-container-low border-b border-outline-variant flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-secondary text-[20px]">sms</span>
-                <span className="font-bold text-on-surface text-[14px]">Dispatch Automated Due Reminders</span>
+                <span className="font-bold text-on-surface text-[14px]">{text('Send Automated Due Reminders', 'স্বয়ংক্রিয় বকেয়া স্মরণবার্তা পাঠান')}</span>
               </div>
               <button
                 onClick={() => setIsBatchSmsModalOpen(false)}
@@ -2130,16 +1904,16 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               <div className="p-3 bg-secondary/10 rounded-xl border border-secondary/20 flex items-center gap-3">
                 <span className="material-symbols-outlined text-secondary text-[28px]">mark_chat_unread</span>
                 <div>
-                  <h4 className="font-bold text-on-surface text-[13px]">14 Verified Patients Pending Pickup</h4>
+                  <h4 className="font-bold text-on-surface text-[13px]">{text('14 verified patients pending pickup', '১৪ জন যাচাইকৃত রোগী চশমা সংগ্রহের অপেক্ষায়')}</h4>
                   <p className="text-[11px] text-on-surface-variant">
-                    Eyeglasses are fully glazed, inspected on focimeter, and stored in workshop trays.
+                    {text('Eyeglasses are glazed, inspected, and stored in workshop trays.', 'চশমা তৈরি ও পরীক্ষা শেষে ওয়ার্কশপের ট্রেতে রাখা হয়েছে।')}
                   </p>
                 </div>
               </div>
 
               <div>
                 <label className="text-[12px] font-semibold text-on-surface block mb-1">
-                  SMS Message Template (Bangla / English)
+                  {text('SMS Message Template', 'SMS বার্তার নমুনা')}
                 </label>
                 <textarea
                   readOnly
@@ -2150,8 +1924,8 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               </div>
 
               <div className="flex items-center justify-between text-[11px] text-on-surface-variant border-t border-outline-variant/60 pt-3">
-                <span>Sender ID: <strong>MODINA-OPT</strong></span>
-                <span>Gateway: <strong>Onnorokom SMS API (Active)</strong></span>
+                <span>{text('Sender ID:', 'প্রেরক আইডি:')} <strong>MODINA-OPT</strong></span>
+                <span>{text('Gateway:', 'গেটওয়ে:')} <strong>Onnorokom SMS API ({text('Active', 'সক্রিয়')})</strong></span>
               </div>
             </div>
 
@@ -2160,17 +1934,17 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 onClick={() => setIsBatchSmsModalOpen(false)}
                 className="px-4 py-2 bg-surface hover:bg-surface-container border border-outline-variant text-on-surface rounded-lg text-label-md cursor-pointer font-medium"
               >
-                Cancel
+                {text('Cancel', 'বাতিল')}
               </button>
               <button
                 onClick={() => {
                   setIsBatchSmsModalOpen(false);
-                  showToast('14 Due SMS reminders successfully dispatched to patients via SMS Gateway!');
+                  showToast(text('14 due reminders sent to patients via SMS.', '১৪টি বকেয়া স্মরণবার্তা SMS-এর মাধ্যমে পাঠানো হয়েছে।'));
                 }}
                 className="px-4 py-2 bg-secondary hover:bg-secondary-container text-on-secondary rounded-lg text-label-md font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">send</span>
-                <span>Dispatch 14 SMS</span>
+                <span>{text('Send 14 SMS', '১৪টি SMS পাঠান')}</span>
               </button>
             </div>
           </div>
@@ -2200,15 +1974,15 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
                   <span className="text-[11px] text-on-surface-variant block font-medium">Cash Collected</span>
-                  <span className="font-data-pos text-[16px] font-bold text-primary">$890.00</span>
+                  <span className="font-data-pos text-[16px] font-bold text-primary">৳890.00</span>
                 </div>
                 <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
                   <span className="text-[11px] text-on-surface-variant block font-medium">POS Card</span>
-                  <span className="font-data-pos text-[16px] font-bold text-secondary">$310.00</span>
+                  <span className="font-data-pos text-[16px] font-bold text-secondary">৳310.00</span>
                 </div>
                 <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
                   <span className="text-[11px] text-on-surface-variant block font-medium">bKash / Nagad</span>
-                  <span className="font-data-pos text-[16px] font-bold text-on-surface">$220.00</span>
+                  <span className="font-data-pos text-[16px] font-bold text-on-surface">৳220.00</span>
                 </div>
               </div>
 
@@ -2218,13 +1992,14 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                   <p className="text-[12px] text-on-surface-variant">Station #04 • Cashier Dr. Tariq Modina</p>
                 </div>
                 <span className="text-headline-lg font-data-pos font-bold text-primary">
-                  ${todayCollectedTotal?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  ৳{todayCollectedTotal?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </span>
               </div>
 
               <p className="text-[11px] text-on-surface-variant leading-relaxed">
                 All receipts have been synchronized to the hospital ERP database and the cash drawer balance is reconciled.
               </p>
+              <PrintFooterQuantum />
             </div>
 
             <div className="no-print p-4 bg-surface-container-low border-t border-outline-variant flex items-center justify-end gap-2">
@@ -2240,7 +2015,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                     title: 'Daily_Shift_Collection_Ledger',
                     pageMargin: '6mm',
                   });
-                  showToast('Printing Daily Collection Summary Sheet.');
+                  showToast(text('Printing daily collection summary.', 'দৈনিক আদায়ের সারসংক্ষেপ প্রিন্ট করা হচ্ছে।'));
                 }}
                 className="px-4 py-2 bg-primary hover:bg-primary-container text-on-primary rounded-lg text-label-md font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
@@ -2298,28 +2073,22 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 </div>
                 <div className="flex items-baseline justify-between">
                   <span className="text-3xl font-mono text-rose-600 dark:text-rose-400 font-extrabold tracking-tight">
-                    ৳{(activeInvoice.initialDue * 118).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                  </span>
-                  <span className="text-xs text-outline font-mono font-bold">
-                    (${activeInvoice.initialDue.toFixed(2)} USD)
+                    ৳{activeInvoice.initialDue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                   </span>
                 </div>
 
                 <div className="mt-3.5 pt-3 border-t border-rose-500/20 grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="p-2 bg-white dark:bg-[#1a1d26] rounded-xl border border-outline-variant/60 shadow-2xs">
                     <span className="text-[10px] text-outline block uppercase font-bold">মোট বিল</span>
-                    <span className="font-bold text-on-surface font-mono text-xs block mt-0.5">৳{(activeInvoice.grossBill * 118).toLocaleString('en-US')}</span>
-                    <span className="text-[10px] text-outline block font-mono">${activeInvoice.grossBill.toFixed(2)}</span>
+                    <span className="font-bold text-on-surface font-mono text-xs block mt-0.5">৳{activeInvoice.grossBill.toLocaleString('en-US')}</span>
                   </div>
                   <div className="p-2 bg-white dark:bg-[#1a1d26] rounded-xl border border-outline-variant/60 shadow-2xs">
                     <span className="text-[10px] text-outline block uppercase font-bold">পূর্বে প্রদত্ত</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-xs block mt-0.5">৳{(activeInvoice.prevPaid * 118).toLocaleString('en-US')}</span>
-                    <span className="text-[10px] text-outline block font-mono">${activeInvoice.prevPaid.toFixed(2)}</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-xs block mt-0.5">৳{activeInvoice.prevPaid.toLocaleString('en-US')}</span>
                   </div>
                   <div className="p-2 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-300 dark:border-rose-800/50 shadow-2xs">
                     <span className="text-[10px] text-rose-700 dark:text-rose-400 block uppercase font-extrabold">বকেয়া Due</span>
-                    <span className="font-extrabold text-rose-600 dark:text-rose-400 font-mono text-xs block mt-0.5">৳{(activeInvoice.initialDue * 118).toLocaleString('en-US')}</span>
-                    <span className="text-[10px] text-rose-500/80 block font-mono">${activeInvoice.initialDue.toFixed(2)}</span>
+                    <span className="font-extrabold text-rose-600 dark:text-rose-400 font-mono text-xs block mt-0.5">৳{activeInvoice.initialDue.toLocaleString('en-US')}</span>
                   </div>
                 </div>
               </div>
@@ -2381,9 +2150,8 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                         <div className="p-2.5 bg-[#f8fafc] dark:bg-[#14171f] rounded-xl border border-outline-variant/60 text-right">
                           <span className="text-[10px] text-outline uppercase font-bold block">বকেয়া থেকে ক্রেডিট</span>
                           <span className="font-mono font-extrabold text-teal-600 dark:text-teal-400 block text-xs mt-0.5">
-                            ৳{(itemAllocatedPayment * 118).toFixed(0)}
+                            ৳{itemAllocatedPayment.toFixed(0)}
                           </span>
-                          <span className="text-[10px] text-outline font-mono block">(${itemAllocatedPayment.toFixed(2)} USD)</span>
                         </div>
                       </div>
 
@@ -2419,7 +2187,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-extrabold text-xs shadow-md flex items-center gap-2 cursor-pointer transition-all active:scale-98"
               >
                 <span className="material-symbols-outlined text-[18px]">verified</span>
-                <span>FEFO বরাদ্দ অনুমোদন ও পেমেন্ট নিশ্চিত করুন</span>
+                <span>{text('Approve FEFO Allocation & Confirm Payment', 'FEFO বরাদ্দ অনুমোদন ও পেমেন্ট নিশ্চিত করুন')}</span>
               </button>
             </div>
           </div>
@@ -2436,7 +2204,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-[20px]">description</span>
                 <span className="font-bold text-on-surface text-[14px]">
-                  Order Dossier — {activeInvoice.invoiceNumber}
+                  {text('Order Details', 'অর্ডারের বিবরণ')} — {activeInvoice.invoiceNumber}
                 </span>
               </div>
               <button
@@ -2450,38 +2218,38 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             <div className="p-6 space-y-4 text-[13px]">
               <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Patient Name:</span>
+                  <span className="text-on-surface-variant">{text('Patient Name:', 'রোগীর নাম:')}</span>
                   <strong>{activeInvoice.patientName}</strong>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Phone:</span>
+                  <span className="text-on-surface-variant">{text('Phone:', 'ফোন:')}</span>
                   <span className="font-data-rx">{activeInvoice.patientPhone}</span>
                 </div>
                 <div className="flex justify-between border-t border-outline-variant/60 pt-1 mt-1">
-                  <span className="text-on-surface-variant font-bold">সম্ভাব্য হ্যান্ডওভার তারিখ:</span>
+                  <span className="text-on-surface-variant font-bold">{text('Expected Handover Date:', 'সম্ভাব্য হস্তান্তরের তারিখ:')}</span>
                   <strong className="text-primary">{activeInvoice.deliveryDate}</strong>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Hospital File:</span>
+                  <span className="text-on-surface-variant">{text('Hospital File:', 'হাসপাতালের ফাইল:')}</span>
                   <span className="font-data-rx">{activeInvoice.hospitalFile}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Attending Optometrist:</span>
+                  <span className="text-on-surface-variant">{text('Attending Optometrist:', 'দায়িত্বরত অপ্টোমেট্রিস্ট:')}</span>
                   <span>{activeInvoice.optometrist}</span>
                 </div>
               </div>
 
               <div>
-                <h4 className="font-bold text-on-surface text-[12px] uppercase tracking-wider mb-2">Prescribed Lenses &amp; Frame</h4>
+                <h4 className="font-bold text-on-surface text-[12px] uppercase tracking-wider mb-2">{text('Prescribed Lenses & Frame', 'প্রেসক্রাইব করা লেন্স ও ফ্রেম')}</h4>
                 <p className="p-2.5 bg-surface-container-low rounded-lg border border-outline-variant text-[12px]">
-                  <strong>Frame:</strong> {activeInvoice.refraction.frameFit}
+                  <strong>{text('Frame:', 'ফ্রেম:')}</strong> {activeInvoice.refraction.frameFit}
                   <br />
-                  <strong>Lenses:</strong> {activeInvoice.refraction.lensType} ({activeInvoice.refraction.typeBadge})
+                  <strong>{text('Lenses:', 'লেন্স:')}</strong> {activeInvoice.refraction.lensType} ({activeInvoice.refraction.typeBadge})
                 </p>
               </div>
 
               <div>
-                <h4 className="font-bold text-on-surface text-[12px] uppercase tracking-wider mb-2">Item Breakdown</h4>
+                <h4 className="font-bold text-on-surface text-[12px] uppercase tracking-wider mb-2">{text('Item Breakdown', 'পণ্যের বিবরণ')}</h4>
                 <div className="divide-y divide-outline-variant/60 border rounded-lg overflow-hidden">
                   {activeInvoice.items.map((i) => (
                     <div key={i.id} className="p-2.5 flex justify-between bg-surface-container-lowest">
@@ -2489,7 +2257,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                         <span className="font-medium text-on-surface block">{i.name}</span>
                         <span className="text-[11px] text-on-surface-variant">{i.sku}</span>
                       </div>
-                      <span className="font-data-rx font-bold text-primary">${i.netTotal.toFixed(2)}</span>
+                      <span className="font-data-rx font-bold text-primary">৳{i.netTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   ))}
                 </div>
@@ -2501,7 +2269,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 onClick={() => setIsOrderDetailsModalOpen(false)}
                 className="px-4 py-2 bg-primary text-on-primary rounded-lg text-label-md font-bold cursor-pointer"
               >
-                Close Dossier
+                {text('Close Details', 'বিবরণ বন্ধ করুন')}
               </button>
             </div>
           </div>

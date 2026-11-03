@@ -399,11 +399,11 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
               </div>
 
               {/* Action Buttons */}
-              {canManage && <div className="flex items-center justify-between pt-3 border-t border-outline-variant/60 dark:border-[#202534] gap-2">
+              {canManage && <div className="grid grid-cols-2 gap-2 pt-3 border-t border-outline-variant/60 dark:border-[#202534]">
                 <button
                   type="button"
                   onClick={() => toggleStatus?.(sm.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                  className={`col-span-2 w-full justify-center px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
                     sm.status === 'active'
                       ? 'text-red-600 hover:bg-red-500/10'
                       : 'text-emerald-600 hover:bg-emerald-500/10'
@@ -416,11 +416,11 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
                   <span>{sm.status === 'active' ? 'Deactivate' : 'Activate'}</span>
                 </button>
 
-                <div className="flex items-center gap-1.5">
+                <>
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(sm)}
-                    className="px-3 py-1.5 bg-surface-container-low hover:bg-surface-container dark:bg-[#1e2330] dark:hover:bg-[#282f40] border border-outline-variant/60 text-on-surface rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                    className="w-full justify-center px-2 py-1.5 bg-surface-container-low hover:bg-surface-container dark:bg-[#1e2330] dark:hover:bg-[#282f40] border border-outline-variant/60 text-on-surface rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[15px]">edit</span>
                     <span>Edit</span>
@@ -431,13 +431,13 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
                       onClick={() => {
                         if (window.confirm(`Remove ${sm.name} permanently?`)) onRemoveSalesman(sm.id);
                       }}
-                      className="px-3 py-1.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      className="w-full justify-center px-2 py-1.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[15px]">person_remove</span>
                       <span>Remove</span>
                     </button>
                   )}
-                </div>
+                </>
               </div>}
             </div>
           );

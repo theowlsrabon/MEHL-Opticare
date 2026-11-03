@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import Barcode from 'react-barcode';
 import { InventoryItem, UserProfile } from '../types';
 import { printElementById } from '../utils/printUtils';
+import { OpticalBarcodeLabel } from './OpticalBarcodeLabel';
 
 interface OpticalBarcodePrintModalProps {
   isOpen: boolean;
@@ -58,43 +58,7 @@ export const OpticalBarcodePrintModal: React.FC<OpticalBarcodePrintModalProps> =
 
         <div className="flex items-center gap-5 p-5 print:p-0">
           <div id="optical-barcode-printable" className="printable-area flex items-center justify-center print:p-0">
-            <div className="w-[185px] h-[115px] bg-white p-2.5 rounded-xl border border-slate-300 shadow-xs flex flex-col justify-between font-sans text-slate-900 print:border-black print:shadow-none">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-1">
-                <span className="text-[8px] font-black tracking-wider text-[#169b90] uppercase">
-                  MADINA EYE HOSPITAL
-                </span>
-                <span className="text-[8px] font-bold bg-slate-100 text-slate-700 px-1 py-0.2 rounded font-mono">
-                  OPTICAL
-                </span>
-              </div>
-
-              <div className="my-0.5">
-                <div className="text-[12px] font-black tracking-tight truncate" title={brandName}>
-                  {brandName}
-                </div>
-                <div className="text-[10px] font-bold text-slate-700 truncate" title={modelName}>
-                  {modelName}
-                </div>
-              </div>
-
-              <div className="flex flex-col items-center justify-center pt-0.5 border-t border-slate-200">
-                <div className="flex items-center justify-center gap-[1.5px] h-6 w-full px-1">
-                  <Barcode
-                    value={activeItem.sku}
-                    format="CODE128"
-                    width={1}
-                    height={24}
-                    displayValue={false}
-                    margin={0}
-                    background="transparent"
-                    lineColor="#000000"
-                  />
-                </div>
-                <span className="text-[8px] font-mono font-bold tracking-widest text-slate-800 text-center mt-0.5 truncate max-w-full">
-                  {activeItem.sku}
-                </span>
-              </div>
-            </div>
+            <OpticalBarcodeLabel item={activeItem} />
 
             <div className="w-64 rounded-xl border border-outline-variant/60 bg-surface-container-low dark:bg-[#202430] p-4 print:hidden">
               <p className="text-sm font-bold text-on-surface mb-3">Barcode Summary</p>

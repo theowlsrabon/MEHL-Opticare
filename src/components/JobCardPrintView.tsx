@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { OpticalJob, StageAuditEntry } from '../types';
 import { STAGE_CONFIG, formatAuditTimestamp, classifyAuditAction } from '../utils/auditTrailUtils';
 import { generateBarcodeBars } from '../utils/barcodeUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 
 interface JobCardPrintViewProps {
   job: OpticalJob;
@@ -504,6 +505,8 @@ export const JobCardPrintView: React.FC<JobCardPrintViewProps> = ({
           Page 1 of 1 • System Certified Optical Glazing Record
         </div>
       </div>
+
+      <PrintFooterQuantum />
 
     </div>
   );

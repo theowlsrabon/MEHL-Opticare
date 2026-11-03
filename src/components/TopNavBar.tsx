@@ -68,12 +68,14 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const [showAboutUs, setShowAboutUs] = useState(false);
 
   const { language, setLanguage, t } = useLanguage();
   const roleMenuRef = useRef<HTMLDivElement>(null);
   const notifMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
+  const isDevSuperAdmin = authenticatedUser?.role === 'super_admin' || authenticatedUser?.username === 'srabon' || currentUserRole === 'super_admin';
   const currentUser = MADINA_STAFF_PROFILES[currentUserRole] || MADINA_STAFF_PROFILES.admin;
 
   const searchDestinations: Array<{
@@ -249,6 +251,31 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#64748b] dark:text-[#7d91a3]">
             HOSPITAL &amp; RETAIL OS
           </span>
+        </div>
+
+        {/* About Quantum Info Popup */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowAboutUs(!showAboutUs)}
+            onMouseEnter={() => setShowAboutUs(true)}
+            onMouseLeave={() => setShowAboutUs(false)}
+            className="w-6 h-6 rounded-full border border-teal-500/50 text-[#008f76] dark:text-[#37d9ae] flex items-center justify-center font-serif text-xs font-bold hover:bg-[#00c49f]/10 transition-colors cursor-pointer shrink-0"
+            title="About Quantum"
+            aria-label="About Quantum"
+          >
+            i
+          </button>
+          {showAboutUs && (
+            <div className="absolute left-0 top-8 z-[80] w-64 bg-white dark:bg-[#0d141b] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3.5 animate-in fade-in zoom-in-95 duration-150">
+              <div className="text-[11px] font-black uppercase tracking-wider text-[#008f76] dark:text-[#37d9ae] mb-1">
+                ABOUT US
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-snug">
+                QUANTUM is a specialized industrial software lab.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Hamburger Menu Toggle */}
@@ -522,6 +549,22 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           </button>
         </div>
 
+        {/* Developer / Super Admin Purge Console Direct Access */}
+        {isDevSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => {
+              sessionStorage.setItem('settingsInitialTab', 'superadmin');
+              onSelectView('settings-roles');
+            }}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+            title="Super Admin Purge Console (Developer)"
+          >
+            <span className="material-symbols-outlined text-[16px] text-rose-500">terminal</span>
+            <span>Purge Console</span>
+          </button>
+        )}
+
         {/* User Profile Widget (Circular Avatar + Name & Role) */}
         <div
           className="relative pl-1 sm:pl-2 border-l border-[#e2e8f0] dark:border-[#182531]"
@@ -574,7 +617,11 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                     {authenticatedUser?.name || 'TASFIQUR RAHMAN'}
                   </div>
                   <div className="text-[10px] text-[#00c49f] font-bold">
-                    {authenticatedUser?.role === 'admin' ? 'Primary Administrator' : 'Staff Account'}
+                    {authenticatedUser?.role === 'super_admin'
+                      ? 'Root Developer & Super Admin'
+                      : authenticatedUser?.role === 'admin'
+                      ? 'Primary Administrator'
+                      : 'Staff Account'}
                   </div>
                   <div className="text-[10px] text-[#64748b] dark:text-[#7d91a3] font-mono">
                     @{authenticatedUser?.username || 'admin'}
@@ -586,15 +633,50 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                 <div className="flex items-start justify-between gap-3 text-[11px] text-[#64748b] dark:text-[#7d91a3]">
                   <span>System Permissions</span>
                   <span className="font-bold text-[#00c49f] text-right">
-                    {authenticatedUser?.role === 'admin' ? 'Full Authority (All Modules)' : 'Custom Access'}
+                    {authenticatedUser?.role === 'super_admin'
+                      ? 'Root Developer (Global Delete Access)'
+                      : authenticatedUser?.role === 'admin'
+                      ? 'Full Authority (All Modules)'
+                      : 'Custom Access'}
                   </span>
                 </div>
-                {authenticatedUser?.role === 'admin' && (
+                {authenticatedUser?.role === 'super_admin' ? (
+                  <p className="text-[10px] text-rose-400 mt-1">
+                    Srabon Hassan (Developer) has root authority to delete any stock, invoices, lab jobs, branches, and requisitions.
+                  </p>
+                ) : authenticatedUser?.role === 'admin' ? (
                   <p className="text-[10px] text-slate-400 mt-1">
                     Only TASFIQUR RAHMAN (Admin) can create staff accounts and assign menu access in Settings &gt; User Accounts.
                   </p>
-                )}
+                ) : null}
               </div>
+
+              {isDevSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    sessionStorage.setItem('settingsInitialTab', 'superadmin');
+                    setShowRoleMenu(false);
+                    onSelectView('settings-roles');
+                  }}
+                  className="w-full mt-2 h-9 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-rose-500/30"
+                >
+                  <span className="material-symbols-outlined text-[16px]">terminal</span>
+                  <span>Open Purge Console (Developer)</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRoleMenu(false);
+                  onSelectView('settings-roles');
+                }}
+                className="w-full mt-2 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">settings</span>
+                <span>Settings &amp; Role Permissions</span>
+              </button>
 
               {onLogout && (
                 <button

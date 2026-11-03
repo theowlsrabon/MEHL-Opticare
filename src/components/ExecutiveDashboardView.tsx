@@ -347,7 +347,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
           </div>
 
           {/* Quick Nav Shortcuts */}
-          <div className="executive-dashboard-quick-links mt-4 pt-3 border-t border-outline-variant/50 dark:border-[#272d3a] flex flex-wrap items-center justify-between gap-2">
+          <div className="executive-dashboard-quick-links mt-6 pt-3 border-t border-outline-variant/50 dark:border-[#272d3a] flex flex-wrap items-center justify-between gap-2">
             <span className="shrink-0 text-[11px] font-bold text-outline whitespace-nowrap leading-5">{isBangla ? 'ডিপার্টমেন্টাল জাম্প:' : 'Quick Links:'}</span>
             <div className="flex flex-wrap items-center justify-end gap-1.5">
               <button

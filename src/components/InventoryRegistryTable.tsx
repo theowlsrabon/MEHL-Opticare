@@ -1,37 +1,50 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { InventoryItem, UserProfile, Supplier, PurchaseOrder } from '../types';
+import { InventoryItem, InventoryDamageRecord, InventoryMovementRecord, UserProfile, Supplier, PurchaseOrder } from '../types';
 import { initialSuppliers } from '../data/enterpriseData';
 import { BatchBarcodePrintModal } from './BatchBarcodePrintModal';
 import { BulkReorderModal } from './BulkReorderModal';
+import { InventoryMovementHistoryView } from './InventoryMovementHistoryView';
 
 interface InventoryRegistryTableProps {
   items: InventoryItem[];
+  damageRecords: InventoryDamageRecord[];
+  movementRecords: InventoryMovementRecord[];
+  language: 'bn' | 'en';
   initialSearchQuery?: string;
   currentUser?: UserProfile;
   suppliers?: Supplier[];
-  onRestock: (item: InventoryItem) => void;
+  onRestock: (item: InventoryItem, qtyToAdd: number) => void;
+  onDamageWriteOff: (itemId: string, quantity: number, reason: string) => boolean;
+  onDamageWriteOffBatch: (entries: Array<{ itemId: string; quantity: number; reason: string }>) => boolean;
   onPrintBarcode: (item: InventoryItem) => void;
   onPoReorder: (item: InventoryItem) => void;
   onCreatePo?: (po: PurchaseOrder) => void;
   onAddNewGlasses?: () => void;
   onViewItemWiseSales?: () => void;
   onBatchPrint?: (items: InventoryItem[]) => void;
+  onDeleteStockItem?: (id: string) => void;
 }
 
 export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   items,
+  damageRecords,
+  movementRecords,
+  language,
   initialSearchQuery = '',
   currentUser,
   suppliers = initialSuppliers,
   onRestock,
+  onDamageWriteOff,
+  onDamageWriteOffBatch,
   onPrintBarcode,
   onPoReorder,
   onCreatePo,
   onAddNewGlasses,
   onViewItemWiseSales,
   onBatchPrint,
+  onDeleteStockItem,
 }) => {
-  const [filterChip, setFilterChip] = useState<'all' | 'frames' | 'low'>('all');
+  const [filterChip, setFilterChip] = useState<'all' | 'low'>('all');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
   const [searchFilter, setSearchFilter] = useState(initialSearchQuery);
   const [showCostValuation, setShowCostValuation] = useState(false);
@@ -41,10 +54,25 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   const [bulkReorderSuccessToast, setBulkReorderSuccessToast] = useState<string | null>(null);
   const [restockItem, setRestockItem] = useState<InventoryItem | null>(null);
   const [restockQuantity, setRestockQuantity] = useState('');
+  const [damageItem, setDamageItem] = useState<InventoryItem | null>(null);
+  const [damageQuantity, setDamageQuantity] = useState('1');
+  const [damageReason, setDamageReason] = useState('');
+  const [damageError, setDamageError] = useState('');
+  const [isBulkDamageModalOpen, setIsBulkDamageModalOpen] = useState(false);
+  const [bulkDamageEntries, setBulkDamageEntries] = useState<Record<string, { quantity: string; reason: string }>>({});
+  const [bulkDamageError, setBulkDamageError] = useState('');
+  const [bulkDamageSuccessToast, setBulkDamageSuccessToast] = useState<string | null>(null);
+  const [isLossLedgerOpen, setIsLossLedgerOpen] = useState(false);
+  const [isInventoryHistoryOpen, setIsInventoryHistoryOpen] = useState(false);
+  const [openActionMenuItemId, setOpenActionMenuItemId] = useState<string | null>(null);
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+  const actionMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.canViewPurchaseCost;
+  const canWriteOffDamage = currentUser?.permissions?.canEditInventory === true;
   const BDT_RATE = 118;
+  const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
 
   // Dynamic Brands extracted from current items
   const uniqueBrands = useMemo(() => {
@@ -78,7 +106,6 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
 
   const filteredItems = items.filter((item) => {
     // Quick filter chip
-    if (filterChip === 'frames' && !item.category.includes('Frame')) return false;
     if (filterChip === 'low' && item.stockQty > item.minThreshold) return false;
 
     // Dynamic brand filter
@@ -143,6 +170,54 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
     setIsBulkReorderModalOpen(true);
   };
 
+  const handleOpenBulkDamage = () => {
+    setBulkDamageEntries(
+      Object.fromEntries(selectedItems.map((item) => [item.id, { quantity: '0', reason: '' }]))
+    );
+    setBulkDamageError('');
+    setIsBulkDamageModalOpen(true);
+  };
+
+  const handleSubmitBulkDamage = () => {
+    const entries: Array<{ itemId: string; quantity: number; reason: string }> = [];
+    for (const item of selectedItems) {
+      const entry = bulkDamageEntries[item.id] ?? { quantity: '0', reason: '' };
+      const quantity = Number(entry.quantity);
+      if (entry.quantity.trim() === '' || quantity === 0) continue;
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > item.stockQty) {
+        setBulkDamageError(`${item.name}: ক্ষতিগ্রস্ত পরিমাণ ১ থেকে বর্তমান মজুদের মধ্যে হতে হবে।`);
+        return;
+      }
+      if (!entry.reason.trim()) {
+        setBulkDamageError(`${item.name}: ক্ষতির কারণ লিখুন।`);
+        return;
+      }
+      entries.push({ itemId: item.id, quantity, reason: entry.reason.trim() });
+    }
+
+    if (entries.length === 0) {
+      setBulkDamageError('অন্তত একটি পণ্যের ক্ষতিগ্রস্ত পরিমাণ লিখুন।');
+      return;
+    }
+
+    if (!onDamageWriteOffBatch(entries)) {
+      setBulkDamageError('স্টক পরিবর্তিত হয়েছে বা অনুমতি নেই। কিছুই লেখা হয়নি; আবার যাচাই করে চেষ্টা করুন।');
+      return;
+    }
+
+    const damagedItemIds = new Set(entries.map((entry) => entry.itemId));
+    const totalQuantity = entries.reduce((sum, entry) => sum + entry.quantity, 0);
+    setSelectedItemIds((previous) => {
+      const next = new Set(previous);
+      damagedItemIds.forEach((itemId) => next.delete(itemId));
+      return next;
+    });
+    setIsBulkDamageModalOpen(false);
+    setIsLossLedgerOpen(true);
+    setBulkDamageSuccessToast(`${entries.length}টি পণ্যের ${totalQuantity} ইউনিট ক্ষতির খাতায় যোগ হয়েছে।`);
+    setTimeout(() => setBulkDamageSuccessToast(null), 5000);
+  };
+
   const handlePoCreatedSuccess = (po: PurchaseOrder) => {
     if (onCreatePo) {
       onCreatePo(po);
@@ -166,6 +241,29 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
       setSearchFilter(initialSearchQuery);
     }
   }, [initialSearchQuery]);
+
+  useEffect(() => {
+    if (!openActionMenuItemId) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !actionMenuRef.current?.contains(event.target)) {
+        setOpenActionMenuItemId(null);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenActionMenuItemId(null);
+        actionMenuTriggerRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openActionMenuItemId]);
 
   const toggleSelectItem = (id: string) => {
     setSelectedItemIds((prev) => {
@@ -207,6 +305,17 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
     setIsBatchModalOpen(true);
   };
 
+  if (isInventoryHistoryOpen) {
+    return (
+      <InventoryMovementHistoryView
+        records={movementRecords}
+        legacyDamageRecords={damageRecords}
+        language={language}
+        onBack={() => setIsInventoryHistoryOpen(false)}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div className="bg-surface-container-lowest dark:bg-[#151923] border border-outline-variant/80 dark:border-[#242936] rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -214,26 +323,36 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           <div className="flex items-center gap-2 mb-1">
             <span className="material-symbols-outlined text-[#169b90] text-[18px]">inventory_2</span>
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#169b90]">
-              Optical Stock Registry
+              {text('Optical Stock Registry', 'অপটিক্যাল স্টক রেজিস্ট্রি')}
             </span>
           </div>
           <h2 className="text-xl font-bold text-on-surface font-headline-md">
-            Stock &amp; Frames Management
+            {text('Stock & Frames Management', 'স্টক ও ফ্রেম ব্যবস্থাপনা')}
           </h2>
           <p className="text-xs text-outline">
-            Manage optical inventory, stock quantity, pricing, storage bins, and frame barcodes
+            {text('Manage optical inventory, quantities, pricing, storage, and frame barcodes.', 'অপটিক্যাল পণ্য, মজুদ, মূল্য, সংরক্ষণ স্থান ও ফ্রেম বারকোড পরিচালনা করুন।')}
           </p>
         </div>
-        {onAddNewGlasses && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={onAddNewGlasses}
-            className="px-4 py-2 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-[#169b90]/20 transition-all cursor-pointer whitespace-nowrap"
+            onClick={() => setIsInventoryHistoryOpen(true)}
+            className="px-4 py-2 bg-white dark:bg-[#1a1d26] border border-outline-variant dark:border-[#343b4d] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-surface-container-high dark:hover:bg-[#202533] transition-colors cursor-pointer whitespace-nowrap"
           >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            <span>Add Frame</span>
+            <span className="material-symbols-outlined text-[18px] text-[#169b90]" aria-hidden="true">history</span>
+            <span>{language === 'bn' ? 'স্টক হিস্ট্রি' : 'Stock History'}</span>
           </button>
-        )}
+          {onAddNewGlasses && (
+            <button
+              type="button"
+              onClick={onAddNewGlasses}
+              className="px-4 py-2 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-[#169b90]/20 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">add</span>
+              <span>{text('Add Frame', 'ফ্রেম যোগ করুন')}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Optical Stock Valuation Summary (কতো টাকার স্টক আছে) */}
@@ -245,11 +364,11 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                 <span className="material-symbols-outlined text-[18px]">account_balance_wallet</span>
               </span>
               <h2 className="text-base font-bold text-slate-900 dark:text-white font-bangla">
-                অপটিক্যাল স্টক ভ্যালুয়েশন ও মোট মজুদ মূল্য (Optical Stock Valuation)
+                {text('Optical Stock Valuation', 'অপটিক্যাল স্টকের মূল্যায়ন')}
               </h2>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-bangla leading-relaxed">
-              বর্তমান শোরুম ও ওয়্যারহাউজে রক্ষিত ফ্রেম, লেন্স ও এক্সেসরিজের মোট বাজারমূল্য ও ক্রয়মূল্য হিসাব।
+              {text('Retail and purchase value of frames, lenses, and accessories in stock.', 'মজুদ ফ্রেম, লেন্স ও আনুষঙ্গিক পণ্যের বিক্রয় ও ক্রয়মূল্য।')}
             </p>
           </div>
 
@@ -261,7 +380,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               <span className="material-symbols-outlined text-[15px]">
                 {showCostValuation ? 'visibility_off' : 'visibility'}
               </span>
-              <span className="font-bangla">{showCostValuation ? 'ক্রয়মূল্য লুকান' : 'ক্রয়মূল্য দেখুন'}</span>
+              <span>{showCostValuation ? text('Hide Purchase Cost', 'ক্রয়মূল্য লুকান') : text('Show Purchase Cost', 'ক্রয়মূল্য দেখুন')}</span>
             </button>
 
             {onViewItemWiseSales && (
@@ -270,7 +389,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                 className="px-3 py-1.5 rounded-lg bg-[#00c49f] hover:bg-[#00b390] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer font-bangla"
               >
                 <span className="material-symbols-outlined text-[15px]">category</span>
-                <span>ITEM WISE SALES দেখুন</span>
+                <span>{text('View Item-wise Sales', 'পণ্যভিত্তিক বিক্রি দেখুন')}</span>
               </button>
             )}
           </div>
@@ -281,7 +400,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           {/* 1. Total Retail Valuation */}
           <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800">
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#00a884] dark:text-[#00f5b4] block font-bangla">
-              মোট স্টক বিক্রয়মূল্য (Retail Value)
+              {text('Total Retail Value', 'মোট স্টকের বিক্রয়মূল্য')}
             </span>
             <div className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-1">
               ৳{totalRetailValuationBDT.toLocaleString('en-US')}
@@ -290,14 +409,14 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               ≈ ${totalRetailValuationUSD.toLocaleString('en-US')} USD
             </div>
             <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1 font-bangla">
-              শোরুম বিক্রয়মূল্য অনুযায়ী সম্পূর্ণ স্টক মান
+              {text('Total stock value at retail prices', 'বিক্রয়মূল্য অনুযায়ী মোট মজুদ')}
             </div>
           </div>
 
           {/* 2. Total Cost Investment */}
           <div className="p-4 rounded-xl bg-gradient-to-br from-blue-500/10 via-[#f8fafc] to-[#f8fafc] dark:from-blue-950/20 dark:via-[#1a1e29] dark:to-[#1a1e29] border border-blue-500/30">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 dark:text-blue-400 block">
-              মোট ইনভেস্টমেন্ট (Purchase Cost)
+              {text('Total Investment (Purchase Cost)', 'মোট বিনিয়োগ (ক্রয়মূল্য)')}
             </span>
             <div className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono mt-1">
               {showCostValuation ? (
@@ -307,48 +426,48 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               )}
             </div>
             <div className="text-[11px] text-outline font-mono mt-0.5">
-              {showCostValuation ? `≈ $${totalCostValuationUSD.toLocaleString('en-US')} USD` : 'গোপনীয় হোলসেল কস্ট'}
+              {showCostValuation ? `≈ $${totalCostValuationUSD.toLocaleString('en-US')} USD` : text('Confidential wholesale cost', 'গোপনীয় পাইকারি ক্রয়মূল্য')}
             </div>
             <div className="text-[10px] text-blue-700 dark:text-blue-300 font-semibold mt-1">
-              পাইকারি ক্রয়মূল্য ভিত্তিক প্রকৃত ইনভেস্টমেন্ট
+              {text('Investment based on wholesale purchase cost', 'পাইকারি ক্রয়মূল্যের ভিত্তিতে বিনিয়োগ')}
             </div>
           </div>
 
           {/* 3. Estimated Profit */}
           <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 via-[#f8fafc] to-[#f8fafc] dark:from-emerald-950/20 dark:via-[#1a1e29] dark:to-[#1a1e29] border border-emerald-500/30">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
-              প্রত্যাশিত গ্রস লাভ (Stock Margin)
+              {text('Estimated Gross Profit (Stock Margin)', 'সম্ভাব্য মোট মুনাফা')}
             </span>
             <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1">
               ৳{potentialProfitBDT.toLocaleString('en-US')}
             </div>
             <div className="text-[11px] text-emerald-700 dark:text-emerald-300 font-semibold mt-0.5">
-              গড় সম্ভাব্য মার্জিন: <strong>{overallMarginPct}%</strong>
+              {text('Estimated margin:', 'সম্ভাব্য মুনাফার হার:')} <strong>{overallMarginPct}%</strong>
             </div>
             <div className="text-[10px] text-outline mt-1">
-              সম্পূর্ণ স্টক বিক্রয়ে সম্ভাব্য মুনাফা
+              {text('Estimated profit if all stock is sold', 'সব পণ্য বিক্রি হলে সম্ভাব্য মুনাফা')}
             </div>
           </div>
 
           {/* 4. Total Stock Units & Breakdown */}
           <div className="p-4 rounded-xl bg-[#f8fafc] dark:bg-[#1a1e29] border border-outline-variant/70">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-outline block">
-              মোট মজুদ আইটেম ও ক্যাটাগরি
+              {text('Total Stock & Categories', 'মোট মজুদ ও ক্যাটাগরি')}
             </span>
             <div className="text-2xl font-black text-on-surface font-mono mt-1">
-              {totalStockUnits} <span className="text-xs font-normal text-outline">ইউনিট</span>
+              {totalStockUnits} <span className="text-xs font-normal text-outline">{text('units', 'টি ইউনিট')}</span>
             </div>
             <div className="mt-1.5 space-y-0.5 text-[11px] text-on-surface-variant font-medium">
               <div className="flex justify-between">
-                <span>• ফ্রেম ({frameUnits} টি):</span>
+                <span>• {text('Frames', 'ফ্রেম')} ({frameUnits}):</span>
                 <strong className="font-mono text-on-surface">৳{frameValueBDT.toLocaleString()}</strong>
               </div>
               <div className="flex justify-between">
-                <span>• লেন্স ({lensUnits} পিস):</span>
+                <span>• {text('Lenses', 'লেন্স')} ({lensUnits}):</span>
                 <strong className="font-mono text-on-surface">৳{lensValueBDT.toLocaleString()}</strong>
               </div>
               <div className="flex justify-between">
-                <span>• সলিউশন/ড্রপস ({otherUnits} টি):</span>
+                <span>• {text('Solutions / Drops', 'সলিউশন / ড্রপ')} ({otherUnits}):</span>
                 <strong className="font-mono text-on-surface">৳{otherValueBDT.toLocaleString()}</strong>
               </div>
             </div>
@@ -365,10 +484,10 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           </div>
           <div>
             <h2 className="text-xs sm:text-sm font-bold text-on-surface whitespace-nowrap">
-              Current Stock
+              {text('Current Stock', 'বর্তমান মজুদ')}
             </h2>
             <p className="text-[10px] text-outline hidden sm:block">
-              Real-time stock across Frame Racks, Lens Blanks &amp; Dispensing Consumables
+              {text('Real-time stock across frames, lenses, and dispensing consumables', 'ফ্রেম, লেন্স ও ডিসপেন্সিং সামগ্রীর হালনাগাদ মজুদ')}
             </p>
           </div>
         </div>
@@ -384,7 +503,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               type="text"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Scan barcode (F4)..."
+              placeholder={text('Scan barcode (F4)...', 'বারকোড স্ক্যান করুন (F4)...')}
               className="w-40 sm:w-52 h-7.5 pl-9 pr-12 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 dark:border-[#2e3547] rounded-lg text-on-surface placeholder:text-outline focus:border-extej-orange focus:ring-1 focus:ring-orange-500/20 transition-all font-data-rx text-[11px] outline-hidden"
             />
             {searchFilter ? (
@@ -392,7 +511,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                 type="button"
                 onClick={() => setSearchFilter('')}
                 className="absolute right-1.5 text-outline hover:text-on-surface cursor-pointer p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                title="Clear search"
+                title={text('Clear search', 'অনুসন্ধান মুছুন')}
               >
                 <span className="material-symbols-outlined text-[13px] block">close</span>
               </button>
@@ -408,9 +527,9 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
             <button
               onClick={onAddNewGlasses}
               className="h-7.5 px-2.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-2xs cursor-pointer whitespace-nowrap"
-              title="Add Frame & Barcode"
+              title={text('Add Frame & Barcode', 'ফ্রেম ও বারকোড যোগ করুন')}
             >
-              <span>Add Frame</span>
+              <span>{text('Add Frame', 'ফ্রেম যোগ করুন')}</span>
             </button>
           )}
         </div>
@@ -420,7 +539,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
       <div className="px-4 py-2.5 bg-[#f8fafc] dark:bg-[#161922] border-b border-outline-variant/40 dark:border-[#262c3b] flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] text-outline font-semibold uppercase tracking-wider mr-1">
-            Quick Views:
+            {text('Quick Views:', 'দ্রুত ফিল্টার:')}
           </span>
           <button
             onClick={() => setFilterChip('all')}
@@ -430,18 +549,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                 : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
             }`}
           >
-            All Items ({items.length})
-          </button>
-
-          <button
-            onClick={() => setFilterChip('frames')}
-            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-              filterChip === 'frames'
-                ? 'bg-[#169b90] text-white shadow-xs'
-                : 'bg-white dark:bg-[#202430] hover:bg-[#f1f4f9] border border-outline-variant/80 dark:border-[#2c3344] text-outline'
-            }`}
-          >
-            Optical Frames ({items.filter((i) => i.category.includes('Frame')).length})
+            {text(`All Items (${items.length})`, `সব পণ্য (${items.length})`)}
           </button>
 
           <button
@@ -453,34 +561,32 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
             }`}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-            Low Stock ({lowStockItems.length})
+            {text(`Low Stock (${lowStockItems.length})`, `স্বল্প মজুদ (${lowStockItems.length})`)}
           </button>
 
-          {/* Bulk Reorder Action Pill Button */}
-          <button
-            type="button"
-            onClick={handleOpenBulkReorder}
-            className="px-3 py-1 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-            title="Bulk Reorder: Generate a single combined purchase order for low-stock items"
-          >
-            <span className="material-symbols-outlined text-[15px] text-amber-600 dark:text-amber-400">
-              add_shopping_cart
-            </span>
-            <span>Bulk Reorder PO ({lowStockItems.length} Low Stock)</span>
-          </button>
         </div>
 
         {/* Dynamic Brand Dropdown */}
         <div className="flex items-center gap-1.5">
+          {(canWriteOffDamage || isAdmin) && (
+            <button
+              type="button"
+              onClick={() => setIsLossLedgerOpen((open) => !open)}
+              aria-expanded={isLossLedgerOpen}
+              className="h-7 px-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs font-bold hover:bg-rose-500/15 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              ক্ষতির খাতা ({damageRecords.length})
+            </button>
+          )}
           <span className="text-[11px] text-outline font-semibold uppercase tracking-wider">
-            Brand:
+            {text('Brand:', 'ব্র্যান্ড:')}
           </span>
           <select
             value={selectedBrand}
             onChange={(e) => setSelectedBrand(e.target.value)}
             className="h-7 px-2.5 bg-white dark:bg-[#202430] border border-outline-variant/80 dark:border-[#2c3344] text-on-surface rounded-lg text-xs font-semibold focus:border-extej-orange outline-hidden cursor-pointer"
           >
-            <option value="all">All Brands ({uniqueBrands.length})</option>
+            <option value="all">{text(`All Brands (${uniqueBrands.length})`, `সব ব্র্যান্ড (${uniqueBrands.length})`)}</option>
             {uniqueBrands.map((b) => (
               <option key={b} value={b}>
                 {b}
@@ -489,6 +595,65 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           </select>
         </div>
       </div>
+
+      {isLossLedgerOpen && (canWriteOffDamage || isAdmin) && (
+        <div className="border-b border-rose-500/20 bg-rose-500/5">
+          <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-on-surface">ক্ষতিগ্রস্ত পণ্যের ক্ষতির খাতা</h3>
+              <p className="text-[11px] text-on-surface-variant">
+                ক্ষতিগ্রস্ত স্টক থেকে বাদ দেওয়া পণ্যের আলাদা রেকর্ড
+              </p>
+            </div>
+            {isAdmin && (
+              <strong className="text-sm font-mono text-rose-700 dark:text-rose-300">
+                মোট ক্ষতি: ৳{damageRecords.reduce((sum, record) => sum + record.totalLossBDT, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </strong>
+            )}
+          </div>
+          {damageRecords.length > 0 ? (
+            <div className="max-h-72 overflow-auto border-t border-rose-500/15">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0 bg-surface-container-low text-on-surface-variant">
+                  <tr>
+                    <th className="px-4 py-2">তারিখ</th>
+                    <th className="px-4 py-2">পণ্য / SKU</th>
+                    <th className="px-4 py-2">পরিমাণ</th>
+                    <th className="px-4 py-2">ক্ষতির কারণ</th>
+                    {isAdmin && <th className="px-4 py-2 text-right">ক্ষতির মূল্য</th>}
+                    <th className="px-4 py-2">রেকর্ড করেছেন</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-rose-500/10">
+                  {damageRecords.map((record) => (
+                    <tr key={record.id} className="text-on-surface">
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {new Date(record.timestamp).toLocaleString('en-GB')}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="font-semibold block">{record.itemName}</span>
+                        <span className="text-[10px] text-on-surface-variant">{record.sku} · {record.category}</span>
+                      </td>
+                      <td className="px-4 py-2 font-mono font-bold">{record.quantity}</td>
+                      <td className="px-4 py-2">{record.reason}</td>
+                      {isAdmin && (
+                        <td className="px-4 py-2 text-right font-mono font-bold text-rose-700 dark:text-rose-300">
+                          ৳{record.totalLossBDT.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      )}
+                      <td className="px-4 py-2">{record.recordedBy}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="px-4 py-4 border-t border-rose-500/15 text-xs text-on-surface-variant">
+              এখনো কোনো ক্ষতির রেকর্ড নেই।
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Data Table */}
       <div className="overflow-x-auto">
@@ -502,30 +667,31 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                   checked={allFilteredSelected}
                   onChange={toggleSelectAllFiltered}
                   className="w-4 h-4 rounded text-[#169b90] focus:ring-[#169b90] cursor-pointer accent-[#169b90]"
-                  title={allFilteredSelected ? 'Deselect all filtered items' : 'Select all filtered items for batch print'}
+                  title={allFilteredSelected
+                    ? text('Deselect all filtered items', 'ফিল্টার করা পণ্যগুলোর নির্বাচন বাতিল করুন')
+                    : text('Select all filtered items for batch print', 'ফিল্টার করা সব পণ্য বারকোড প্রিন্টের জন্য নির্বাচন করুন')}
                 />
               </th>
-              <th className="px-4 py-2">SKU / Barcode</th>
-              <th className="px-4 py-2">Product Name &amp; Specifications</th>
-              <th className="px-4 py-2">Category</th>
-              <th className="px-4 py-2">Optical Specs / Range</th>
-              <th className="px-4 py-2">In-Stock Qty</th>
+              <th className="px-4 py-2">{text('SKU / Barcode', 'SKU / বারকোড')}</th>
+              <th className="px-4 py-2">{text('Product & Specifications', 'পণ্য ও বিবরণ')}</th>
+              <th className="px-4 py-2">{text('Category', 'ক্যাটাগরি')}</th>
+              <th className="px-4 py-2">{text('In Stock', 'মজুদ')}</th>
               <th className="px-4 py-2">
                 <div className="flex items-center gap-1">
-                  <span>Pricing &amp; Cost</span>
+                  <span>{text('Pricing & Cost', 'বিক্রয় ও ক্রয়মূল্য')}</span>
                   {!isAdmin && <span className="material-symbols-outlined text-[12px] text-amber-500">lock</span>}
                 </div>
                 <span className="text-[9px] font-normal text-outline block lowercase first-letter:uppercase">
-                  {isAdmin ? 'Wholesale & Negotiated' : 'Negotiated (Cost Restricted)'}
+                  {isAdmin ? text('Unit and total purchase value', 'একক ও মোট ক্রয়মূল্য') : text('Selling price (purchase cost restricted)', 'বিক্রয়মূল্য (ক্রয়মূল্য গোপন)')}
                 </span>
               </th>
-              <th className="px-4 py-2 text-right">Actions</th>
+              <th className="px-4 py-2 text-right">{text('Actions', 'কার্যক্রম')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-container text-body-sm font-body-sm">
             {filteredItems.map((item) => {
-              const margin = (((item.sellPrice - item.costPrice) / item.costPrice) * 100).toFixed(1);
               const purchaseCostBDT = item.purchaseCostBDT ?? Math.round(item.costPrice * BDT_RATE);
+              const totalPurchaseCostBDT = purchaseCostBDT * item.stockQty;
               const askingPriceBDT = item.askingPriceBDT ?? Math.round(item.sellPrice * BDT_RATE);
               const isLow = item.stockQty <= item.minThreshold;
               const isSelected = selectedItemIds.has(item.id);
@@ -547,7 +713,9 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                       checked={isSelected}
                       onChange={() => toggleSelectItem(item.id)}
                       className="w-4 h-4 rounded text-[#169b90] focus:ring-[#169b90] cursor-pointer accent-[#169b90]"
-                      title={isSelected ? 'Deselect item' : 'Select item for batch barcode print'}
+                      title={isSelected
+                        ? text('Deselect item', 'পণ্যের নির্বাচন বাতিল করুন')
+                        : text('Select item for batch barcode print', 'বারকোড প্রিন্টের জন্য পণ্য নির্বাচন করুন')}
                     />
                   </td>
 
@@ -558,7 +726,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                   </td>
 
                   <td className="px-4 py-2.5">
-                    <div className="font-bold text-on-surface flex items-center gap-2">
+                    <div className="font-bold text-on-surface text-xs flex items-center gap-2">
                       <span>{item.name}</span>
                     </div>
                     <div className="text-[11px] text-outline">{item.specs}</div>
@@ -577,30 +745,25 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                   </td>
 
                   <td className="px-4 py-2.5">
-                    <div className="font-data-rx text-[12px] text-on-surface">
-                      {item.opticalSpecs}
-                    </div>
-                    <div className="text-[10px] text-outline">{item.opticalDetails}</div>
-                  </td>
-
-                  <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
                       <span
                         className={`font-data-rx font-bold text-[13px] ${
                           isLow ? 'text-tertiary' : 'text-on-surface'
                         }`}
                       >
-                        {item.stockQty} {item.category === 'Finished Lens' ? 'Pairs' : 'Pcs'}
+                        {item.stockQty} {item.category === 'Finished Lens'                         ? text('Pairs', 'জোড়া') : text('Pcs', 'টি')}
                       </span>
                       <span
                         className={`w-2 h-2 rounded-full ${
                           isLow ? 'bg-tertiary animate-pulse' : 'bg-emerald-500'
                         }`}
-                        title={isLow ? 'Critical Low Stock' : 'Healthy Stock'}
+                        title={isLow ? text('Critical Low Stock', 'অতি স্বল্প মজুদ') : text('Healthy Stock', 'পর্যাপ্ত মজুদ')}
                       ></span>
                     </div>
                     <div className={`text-[10px] ${isLow ? 'text-tertiary font-medium' : 'text-outline'}`}>
-                      {isLow ? `Below Min (${item.minThreshold})` : `Min reorder: ${item.minThreshold}`}
+                      {isLow
+                        ? text(`Below minimum (${item.minThreshold})`, `সর্বনিম্ন সীমার নিচে (${item.minThreshold})`)
+                        : text(`Reorder at: ${item.minThreshold}`, `পুনরায় অর্ডারের সীমা: ${item.minThreshold}`)}
                     </div>
                   </td>
 
@@ -608,18 +771,13 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                     {isAdmin ? (
                       <div>
                         <div className="flex items-center gap-1">
-                          <span className="text-outline text-[10px]">Buy:</span>
+                          <span className="text-outline text-[10px]">{text('Unit Cost:', 'একক ক্রয়মূল্য:')}</span>
                           <strong className="font-bold text-amber-700 dark:text-amber-400">
                             ৳{purchaseCostBDT.toLocaleString()}
                           </strong>
-                          {item.adminCostCode && (
-                            <span className="text-[9px] font-mono text-outline font-normal">
-                              ({item.adminCostCode})
-                            </span>
-                          )}
                         </div>
-                        <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">
-                          Guide: ৳{askingPriceBDT.toLocaleString()} (+{margin}%)
+                        <div className="text-[11px] text-amber-800 dark:text-amber-300 font-semibold">
+                          {text('Total Cost:', 'মোট ক্রয়মূল্য:')} ৳{totalPurchaseCostBDT.toLocaleString()}
                         </div>
                       </div>
                     ) : (
@@ -627,37 +785,97 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                         <div className="flex items-center gap-1">
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
                             <span className="material-symbols-outlined text-[12px]">lock</span>
-                            <span>Wholesale: Admin Only</span>
+                            <span>{text('Purchase cost: Admin only', 'ক্রয়মূল্য: শুধু অ্যাডমিন')}</span>
                           </span>
                         </div>
                         <div className="text-[11px] text-on-surface font-semibold mt-0.5">
-                          Guide: ৳{askingPriceBDT.toLocaleString()}{' '}
-                          <span className="text-[10px] text-emerald-600 font-medium">(Negotiable)</span>
+                          {text('Retail:', 'বিক্রয়মূল্য:')} ৳{askingPriceBDT.toLocaleString()}{' '}
+                          <span className="text-[10px] text-emerald-600 font-medium">({text('Negotiable', 'আলোচনাসাপেক্ষ')})</span>
                         </div>
                       </div>
                     )}
                   </td>
 
                   <td className="px-4 py-2.5 text-right">
-                    <div className="inline-flex items-center gap-1 opacity-90 group-hover:opacity-100">
+                    <div className="relative inline-flex">
                       <button
-                        onClick={() => {
-                          setRestockItem(item);
-                          setRestockQuantity('');
-                        }}
-                        className="px-2.5 py-1 bg-[#f1f4f9] dark:bg-[#232836] hover:bg-[#e4e9f2] dark:hover:bg-[#2a3040] rounded-lg text-[11px] font-bold text-on-surface transition-all cursor-pointer"
-                        title="Add stock quantity"
+                        type="button"
+                        ref={openActionMenuItemId === item.id ? actionMenuTriggerRef : undefined}
+                        onClick={() =>
+                          setOpenActionMenuItemId((current) => (current === item.id ? null : item.id))
+                        }
+                        aria-label={text(`Actions for ${item.name}`, `${item.name}-এর কার্যক্রম`)}
+                        aria-expanded={openActionMenuItemId === item.id}
+                        aria-controls={`inventory-actions-${item.id}`}
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-on-surface hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#169b90] transition-colors cursor-pointer"
+                        title={text('Actions', 'কার্যক্রম')}
                       >
-                        + Restock
+                        <span className="material-symbols-outlined text-[20px]" aria-hidden="true">more_vert</span>
                       </button>
-                      <button
-                        onClick={() => onPrintBarcode(item)}
-                        className="px-2 py-1 rounded-lg bg-[#169b90]/10 hover:bg-[#169b90]/20 text-[#169b90] transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px]"
-                        title="Print Butterfly Barcode (Sky Routs Roll)"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">qr_code_2</span>
-                        <span className="hidden sm:inline">Barcode</span>
-                      </button>
+                      {openActionMenuItemId === item.id && (
+                        <div
+                          id={`inventory-actions-${item.id}`}
+                          ref={actionMenuRef}
+                          role="group"
+                          aria-label={text(`${item.name} actions`, `${item.name}-এর কার্যক্রম`)}
+                          className="absolute right-0 top-full z-30 mt-1.5 min-w-40 rounded-xl border border-outline-variant bg-white dark:bg-[#1a1d26] p-1.5 shadow-lg text-left"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenActionMenuItemId(null);
+                              setRestockItem(item);
+                              setRestockQuantity('');
+                            }}
+                            className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold text-on-surface hover:bg-surface-container flex items-center gap-2 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#169b90]"
+                          >
+                            <span className="material-symbols-outlined text-[16px]" aria-hidden="true">add_shopping_cart</span>
+                            <span>{text('Restock', 'মজুদ যোগ করুন')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenActionMenuItemId(null);
+                              onPrintBarcode(item);
+                            }}
+                            className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold text-on-surface hover:bg-surface-container flex items-center gap-2 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#169b90]"
+                          >
+                            <span className="material-symbols-outlined text-[16px]" aria-hidden="true">qr_code_2</span>
+                            <span>{text('Barcode', 'বারকোড')}</span>
+                          </button>
+                          {canWriteOffDamage && item.stockQty > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenActionMenuItemId(null);
+                                setDamageItem(item);
+                                setDamageQuantity('1');
+                                setDamageReason('');
+                                setDamageError('');
+                              }}
+                              className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-500/10 flex items-center gap-2 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                            >
+                              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">remove_shopping_cart</span>
+                              <span>{text('Damaged', 'ক্ষতিগ্রস্ত')}</span>
+                            </button>
+                          )}
+                          {onDeleteStockItem && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenActionMenuItemId(null);
+                                if (window.confirm(text(`Are you sure you want to permanently delete "${item.name}"?`, `আপনি কি নিশ্চিতভাবে "${item.name}" স্টক থেকে মুছে ফেলতে চান?`))) {
+                                  onDeleteStockItem(item.id);
+                                }
+                              }}
+                              className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 transition-colors cursor-pointer"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+                              <span>{text('Delete Item (Super Admin)', 'মুছে ফেলুন (সুপার অ্যাডমিন)')}</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -671,27 +889,27 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
       <div className="p-3.5 bg-[#f8fafc] dark:bg-[#161922] border-t border-outline-variant/60 dark:border-[#262c3b] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-outline">
         <div className="flex flex-wrap items-center gap-2">
           <span>
-            Showing <strong className="text-on-surface">{filteredItems.length}</strong> of{' '}
-            <strong className="text-on-surface">{items.length}</strong> inventory items
+            {text('Showing', 'দেখানো হচ্ছে')} <strong className="text-on-surface">{filteredItems.length}</strong> {text('of', 'মোট')} {' '}
+            <strong className="text-on-surface">{items.length}</strong> {text('items', 'টি পণ্য')}
           </span>
           <span className="text-outline/40">|</span>
           <span className="text-[11px] bg-white dark:bg-[#1a1d26] px-2 py-0.5 rounded-md border border-outline-variant/70 dark:border-[#2b3140]">
-            Auto-synced with POS Barcode Scanner
+            {text('Synced with POS barcode scanner', 'POS বারকোড স্ক্যানারের সঙ্গে সিঙ্ক করা')}
           </span>
           {selectedItemIds.size > 0 && (
             <span className="text-[11px] bg-teal-500/10 text-[#169b90] font-bold px-2 py-0.5 rounded-md border border-teal-500/30 flex items-center gap-1">
               <span className="material-symbols-outlined text-[13px]">check_circle</span>
-              <span>{selectedItemIds.size} selected for batch print</span>
+              <span>{text(`${selectedItemIds.size} selected for batch print`, `বারকোড প্রিন্টের জন্য ${selectedItemIds.size}টি নির্বাচিত`)}</span>
             </span>
           )}
 
           {restockItem && (
             <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
               <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1a1d26] border border-outline-variant dark:border-[#2b3140] shadow-2xl p-5">
-                <h3 className="text-base font-bold text-on-surface">Restock {restockItem.name}</h3>
-                <p className="text-xs text-outline mt-1">Current stock: {restockItem.stockQty}</p>
+                <h3 className="text-base font-bold text-on-surface">{text(`Restock ${restockItem.name}`, `${restockItem.name} মজুদে যোগ করুন`)}</h3>
+                <p className="text-xs text-outline mt-1">{text('Current stock:', 'বর্তমান মজুদ:')} {restockItem.stockQty}</p>
                 <label className="block mt-4 text-xs font-bold text-on-surface">
-                  Quantity to add
+                  {text('Quantity to add', 'যোগ করার পরিমাণ')}
                   <input
                     type="number"
                     min="1"
@@ -708,7 +926,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                     onClick={() => setRestockItem(null)}
                     className="px-3 py-2 rounded-lg border border-outline-variant text-xs font-bold text-on-surface cursor-pointer"
                   >
-                    Cancel
+                    {text('Cancel', 'বাতিল')}
                   </button>
                   <button
                     type="button"
@@ -719,7 +937,105 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                     }}
                     className="px-3 py-2 rounded-lg bg-[#169b90] hover:bg-[#128279] disabled:opacity-50 text-white text-xs font-bold cursor-pointer disabled:cursor-not-allowed"
                   >
-                    Restock
+                    {text('Restock', 'মজুদ যোগ করুন')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {damageItem && (
+            <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="damage-writeoff-title"
+                className="w-full max-w-md rounded-2xl bg-white dark:bg-[#1a1d26] border border-rose-500/30 shadow-2xl p-5"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="material-symbols-outlined text-rose-600 text-[22px]">warning</span>
+                  <div>
+                    <h3 id="damage-writeoff-title" className="text-base font-bold text-on-surface">
+                      {text('Write off damaged stock', 'ক্ষতিগ্রস্ত পণ্য মজুদ থেকে বাদ দিন')}
+                    </h3>
+                    <p className="text-xs text-on-surface-variant mt-1">
+                      {damageItem.name} · {damageItem.sku}
+                    </p>
+                    <p className="text-xs text-on-surface-variant mt-1">
+                      {text('Current stock:', 'বর্তমান মজুদ:')} {damageItem.stockQty} {damageItem.category === 'Finished Lens' ? text('Pairs', 'জোড়া') : text('Pcs', 'টি')}
+                    </p>
+                  </div>
+                </div>
+
+                <label className="block mt-4 text-xs font-bold text-on-surface">
+                  {text('Damaged quantity', 'ক্ষতিগ্রস্ত পরিমাণ')}
+                  <input
+                    type="number"
+                    min="1"
+                    max={damageItem.stockQty}
+                    step="1"
+                    value={damageQuantity}
+                    onChange={(event) => {
+                      setDamageQuantity(event.target.value);
+                      setDamageError('');
+                    }}
+                    className="mt-1.5 w-full h-10 px-3 border border-outline-variant dark:border-[#343b4d] rounded-lg bg-white dark:bg-[#11141c] text-on-surface outline-none focus:ring-2 focus:ring-rose-500/30"
+                  />
+                </label>
+
+                <label className="block mt-3 text-xs font-bold text-on-surface">
+                  {text('Damage reason', 'ক্ষতির কারণ')} <span className="text-rose-600">*</span>
+                  <textarea
+                    value={damageReason}
+                    onChange={(event) => {
+                      setDamageReason(event.target.value);
+                      setDamageError('');
+                    }}
+                    rows={3}
+                    maxLength={240}
+                    placeholder={text('e.g. broken during transport, lens scratched', 'যেমন: পরিবহনে ভেঙেছে, লেন্সে দাগ পড়েছে')}
+                    className="mt-1.5 w-full px-3 py-2 border border-outline-variant dark:border-[#343b4d] rounded-lg bg-white dark:bg-[#11141c] text-on-surface outline-none resize-y focus:ring-2 focus:ring-rose-500/30"
+                  />
+                </label>
+
+                {isAdmin && (
+                  <p className="mt-3 p-3 rounded-lg bg-rose-500/10 text-xs text-rose-800 dark:text-rose-200">
+                    {text('Estimated inventory loss:', 'আনুমানিক মজুদ ক্ষতি:')} ৳{((damageItem.purchaseCostBDT ?? damageItem.costPrice * BDT_RATE) * (Number(damageQuantity) || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                )}
+                {damageError && (
+                  <p role="alert" className="mt-3 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                    {damageError}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-2 mt-5">
+                  <button
+                    type="button"
+                    onClick={() => setDamageItem(null)}
+                    className="px-3 py-2 rounded-lg border border-outline-variant text-xs font-bold text-on-surface cursor-pointer"
+                  >
+                    {text('Cancel', 'বাতিল')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !Number.isInteger(Number(damageQuantity)) ||
+                      Number(damageQuantity) < 1 ||
+                      Number(damageQuantity) > damageItem.stockQty ||
+                      !damageReason.trim()
+                    }
+                    onClick={() => {
+                      if (!onDamageWriteOff(damageItem.id, Number(damageQuantity), damageReason)) {
+                        setDamageError(text('Stock changed or permission denied. Verify and try again.', 'স্টক পরিবর্তিত হয়েছে বা অনুমতি নেই। যাচাই করে আবার চেষ্টা করুন।'));
+                        return;
+                      }
+                      setDamageItem(null);
+                      setIsLossLedgerOpen(true);
+                    }}
+                    className="px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    {text('Record damage & write off', 'ক্ষতি নথিভুক্ত করে মজুদ বাদ দিন')}
                   </button>
                 </div>
               </div>
@@ -731,8 +1047,8 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
 
     {/* Floating Batch Selection Bar */}
     {selectedItemIds.size > 0 && (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#161b26] text-white px-5 py-3 rounded-2xl shadow-2xl border border-teal-500/40 flex items-center gap-3 sm:gap-4 animate-in slide-in-from-bottom-5 duration-200">
-        <div className="flex items-center gap-2">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-1rem)] bg-[#161b26] text-white px-3 sm:px-5 py-3 rounded-2xl shadow-2xl border border-teal-500/40 flex flex-wrap justify-center items-center gap-3 sm:gap-4 animate-in slide-in-from-bottom-5 duration-200">
+        <div className="flex flex-wrap justify-center items-center gap-2">
           <span className="w-6 h-6 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-xs">
             ✓
           </span>
@@ -747,33 +1063,159 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               onClick={toggleSelectAllFiltered}
               className="text-[11px] text-teal-300 hover:text-teal-200 underline font-medium cursor-pointer whitespace-nowrap"
             >
-              Select all filtered ({filteredItems.length})
+              {text(`Select all filtered (${filteredItems.length})`, `ফিল্টার করা সব নির্বাচন (${filteredItems.length})`)}
             </button>
           )}
           <button
             onClick={() => setSelectedItemIds(new Set())}
             className="text-[11px] text-slate-300 hover:text-white underline font-medium cursor-pointer whitespace-nowrap"
           >
-            Clear
+            {text('Clear', 'নির্বাচন বাতিল')}
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap justify-center items-center gap-2">
+          {canWriteOffDamage && (
+            <button
+              onClick={handleOpenBulkDamage}
+              className="px-3.5 py-1.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap"
+              title={text('Enter damage quantities for selected products', 'নির্বাচিত পণ্যের ক্ষতিগ্রস্ত পরিমাণ লিখুন')}
+            >
+              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">warning</span>
+              <span>{text('Damaged', 'ক্ষতিগ্রস্ত')}</span>
+            </button>
+          )}
           <button
             onClick={() => setIsBatchModalOpen(true)}
             className="px-3.5 py-1.5 bg-gradient-to-r from-teal-500 to-[#169b90] hover:from-teal-600 hover:to-[#128279] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap"
-            title="Batch print barcodes"
+            title={text('Batch print barcodes', 'একসঙ্গে বারকোড প্রিন্ট করুন')}
           >
             <span className="material-symbols-outlined text-[16px]">print</span>
-            <span>Batch Print</span>
+            <span>{text('Batch Print', 'একসঙ্গে প্রিন্ট')}</span>
           </button>
           <button
             onClick={handleOpenBulkReorder}
             className="px-3.5 py-1.5 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap"
-            title="Generate a combined Purchase Order for all selected items"
+            title={text('Create a purchase order for selected items', 'নির্বাচিত পণ্যগুলোর জন্য ক্রয় আদেশ তৈরি করুন')}
           >
             <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-            <span>Bulk Reorder PO</span>
+            <span>{text('Bulk Reorder PO', 'একসঙ্গে পুনঃঅর্ডার')}</span>
           </button>
+        </div>
+      </div>
+    )}
+
+    {isBulkDamageModalOpen && (
+      <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bulk-damage-title"
+          className="w-full max-w-3xl max-h-[90vh] rounded-2xl bg-white dark:bg-[#1a1d26] border border-rose-500/30 shadow-2xl flex flex-col"
+        >
+          <div className="p-5 border-b border-outline-variant/70 dark:border-[#2b3140]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id="bulk-damage-title" className="text-base font-bold text-on-surface">
+                  {text('Bulk Damage Entry', 'একসঙ্গে ক্ষতিগ্রস্ত পণ্যের হিসাব')}
+                </h3>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  {text(
+                    `Enter damaged quantity and reason for ${selectedItems.length} selected items. Items with quantity 0 are skipped.`,
+                    `নির্বাচিত ${selectedItems.length}টি পণ্যের ক্ষতিগ্রস্ত পরিমাণ ও কারণ লিখুন। ০ পরিমাণের পণ্য বাদ থাকবে।`
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkDamageModalOpen(false)}
+                aria-label={text('Close damage entry', 'ক্ষতির হিসাব বন্ধ করুন')}
+                className="w-8 h-8 rounded-lg text-outline hover:bg-surface-container-high cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5 space-y-3 overflow-y-auto">
+            {selectedItems.map((item) => {
+              const entry = bulkDamageEntries[item.id] ?? { quantity: '0', reason: '' };
+              return (
+                <div
+                  key={item.id}
+                  className="grid grid-cols-1 md:grid-cols-[minmax(150px,1fr)_100px_minmax(140px,1fr)] gap-3 p-3 rounded-xl border border-outline-variant/70 dark:border-[#343b4d]"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-on-surface truncate">{item.name}</p>
+                    <p className="text-[11px] text-on-surface-variant mt-1">
+                      {item.sku} · {text('Stock', 'মজুদ')} {item.stockQty} {item.category === 'Finished Lens' ? text('Pairs', 'জোড়া') : text('Pcs', 'টি')}
+                    </p>
+                  </div>
+                  <label className="block text-[11px] font-bold text-on-surface">
+                    {text('Damaged quantity', 'ক্ষতিগ্রস্ত পরিমাণ')}
+                    <input
+                      type="number"
+                      min="0"
+                      max={item.stockQty}
+                      step="1"
+                      value={entry.quantity}
+                      disabled={item.stockQty < 1}
+                      aria-label={text(`${item.name} damaged quantity`, `${item.name}-এর ক্ষতিগ্রস্ত পরিমাণ`)}
+                      onChange={(event) => {
+                        setBulkDamageEntries((previous) => ({
+                          ...previous,
+                          [item.id]: { ...entry, quantity: event.target.value },
+                        }));
+                        setBulkDamageError('');
+                      }}
+                      className="mt-1 w-full h-9 px-2 border border-outline-variant dark:border-[#343b4d] rounded-lg bg-white dark:bg-[#11141c] text-on-surface outline-none focus:ring-2 focus:ring-rose-500/30 disabled:opacity-50"
+                    />
+                  </label>
+                  <label className="block text-[11px] font-bold text-on-surface">
+                    {text('Damage reason', 'ক্ষতির কারণ')}
+                    <input
+                      type="text"
+                      maxLength={240}
+                      value={entry.reason}
+                      disabled={item.stockQty < 1}
+                      aria-label={text(`${item.name} damage reason`, `${item.name}-এর ক্ষতির কারণ`)}
+                      placeholder={text('e.g. broken during transport', 'যেমন: পরিবহনে ভেঙেছে')}
+                      onChange={(event) => {
+                        setBulkDamageEntries((previous) => ({
+                          ...previous,
+                          [item.id]: { ...entry, reason: event.target.value },
+                        }));
+                        setBulkDamageError('');
+                      }}
+                      className="mt-1 w-full h-9 px-2 border border-outline-variant dark:border-[#343b4d] rounded-lg bg-white dark:bg-[#11141c] text-on-surface outline-none focus:ring-2 focus:ring-rose-500/30 disabled:opacity-50"
+                    />
+                  </label>
+                </div>
+              );
+            })}
+            {bulkDamageError && (
+              <p role="alert" className="text-xs font-semibold text-rose-700 dark:text-rose-300">
+                {bulkDamageError}
+              </p>
+            )}
+          </div>
+
+          <div className="p-4 sm:p-5 border-t border-outline-variant/70 dark:border-[#2b3140] flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsBulkDamageModalOpen(false)}
+              className="px-3 py-2 rounded-lg border border-outline-variant text-xs font-bold text-on-surface cursor-pointer"
+            >
+              {text('Cancel', 'বাতিল')}
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmitBulkDamage}
+              disabled={selectedItems.length === 0 || !canWriteOffDamage}
+              className="px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer disabled:cursor-not-allowed"
+            >
+              ক্ষতি লিখে স্টক বাদ দিন
+            </button>
+          </div>
         </div>
       </div>
     )}
@@ -796,13 +1238,18 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
         <span>{bulkReorderSuccessToast}</span>
       </div>
     )}
+    {bulkDamageSuccessToast && (
+      <div role="status" aria-live="polite" className="fixed top-5 right-5 z-50 bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-top-3">
+        <span className="material-symbols-outlined text-[18px]" aria-hidden="true">check_circle</span>
+        <span>{bulkDamageSuccessToast}</span>
+      </div>
+    )}
 
     {/* Batch Barcode Print Modal */}
     <BatchBarcodePrintModal
       isOpen={isBatchModalOpen}
       onClose={() => setIsBatchModalOpen(false)}
       items={selectedItems.length > 0 ? selectedItems : filteredItems.slice(0, 10)}
-      currentUser={currentUser}
       onRemoveItem={(itemId) => {
         setSelectedItemIds((prev) => {
           const next = new Set(prev);

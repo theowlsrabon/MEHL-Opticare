@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { SaleRecord, Salesman, OpticalJob } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 
 interface DailyClosingSummaryModalProps {
   isOpen: boolean;
@@ -27,6 +29,15 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   initialDate,
   onViewJob,
 }) => {
+  const { language } = useLanguage();
+  const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
+  const paymentMethodLabel = (method?: string) => {
+    if (!method || method === 'Cash') return text('Cash', 'নগদ');
+    if (method === 'bKash') return text('bKash', 'বিকাশ');
+    if (method === 'Card') return text('Card', 'কার্ড');
+    if (method === 'Nagad') return text('Nagad', 'নগদ');
+    return method;
+  };
   // Current real-world date reference (YYYY-MM-DD)
   const todayIso = useMemo(() => {
     const d = new Date();
@@ -105,7 +116,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
         try {
           const [y, m, d] = iso.split('-').map(Number);
           const dt = new Date(y, m - 1, d);
-          displayLabel = dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+          displayLabel = dt.toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
         } catch {
           displayLabel = iso;
         }
@@ -119,7 +130,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
         };
       })
       .sort((a, b) => b.iso.localeCompare(a.iso));
-  }, [salesRecords, todayIso, yesterdayIso]);
+  }, [salesRecords, todayIso, yesterdayIso, language]);
 
   // Filter sales for the selected date
   const selectedSales = useMemo(() => {
@@ -263,7 +274,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
     try {
       const [y, m, d] = selectedDate.split('-').map(Number);
       const dt = new Date(y, m - 1, d);
-      const englishStr = dt.toLocaleDateString('en-US', {
+      const englishStr = dt.toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -273,26 +284,26 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
     } catch {
       return selectedDate;
     }
-  }, [selectedDate]);
+  }, [selectedDate, language]);
 
   // Copy structured text summary to clipboard
   const handleCopySummary = () => {
     const textLines = [
-      `🏥 মদিনা চক্ষু হাসপাতাল লিমিটেড • অপটিক্যাল বিভাগ`,
-      `📅 দৈনিক ক্লোজিং সামারি (Daily Closing Summary) - ${selectedDate}`,
+      `🏥 ${text('Madina Eye Hospital Ltd. • Optical Department', 'মদিনা চক্ষু হাসপাতাল লিমিটেড • অপটিক্যাল বিভাগ')}`,
+      `📅 ${text('Daily Closing Summary', 'দৈনিক ক্লোজিং সারসংক্ষেপ')} - ${selectedDate}`,
       `--------------------------------------------------`,
-      `💰 মোট বিক্রয় (Total Net Sales): ৳${totalSales.toLocaleString('en-IN')}`,
-      `💵 মোট নগদ ও আদায় (Total Cash Collected): ৳${totalCashCollected.toLocaleString('en-IN')}`,
-      `   • ক্যাশ কাউন্টার (Cash in Drawer): ৳${physicalCounterCash.toLocaleString('en-IN')}`,
-      `   • বিকাশ / MFS (bKash): ৳${paymentBreakdown.bKash.total.toLocaleString('en-IN')}`,
-      `   • পিওএস কার্ড (Card): ৳${paymentBreakdown.Card.total.toLocaleString('en-IN')}`,
-      `   • নগদ (Nagad): ৳${paymentBreakdown.Nagad.total.toLocaleString('en-IN')}`,
-      `💳 ক্রেডিট / বাকি বিক্রয় (Total Credit Sales / Due): ৳${totalDueAmounts.toLocaleString('en-IN')} (${dueOrdersCount}টি চালানে বকেয়া)`,
-      `👓 সম্পন্ন গ্লেজিং জব (Completed Glazing Jobs): ${completedGlazingCount}টি পেয়ার`,
-      `📦 পণ্য বিক্রয়: ফ্রেম ${totalFramesSold}টি | লেন্স ${totalLensesSold}টি | এক্সেসরিজ ${totalAccessoriesSold}টি`,
-      `🧾 মোট ইনভয়েস সংখ্যা: ${selectedSales.length}টি`,
+      `💰 ${text('Total Net Sales', 'মোট নিট বিক্রয়')}: ৳${totalSales.toLocaleString('en-IN')}`,
+      `💵 ${text('Total Collected', 'মোট আদায়')}: ৳${totalCashCollected.toLocaleString('en-IN')}`,
+      `   • ${text('Cash in Drawer', 'ক্যাশ ড্রয়ারে নগদ')}: ৳${physicalCounterCash.toLocaleString('en-IN')}`,
+      `   • ${text('bKash', 'বিকাশ')}: ৳${paymentBreakdown.bKash.total.toLocaleString('en-IN')}`,
+      `   • ${text('Card', 'কার্ড')}: ৳${paymentBreakdown.Card.total.toLocaleString('en-IN')}`,
+      `   • ${text('Nagad', 'নগদ')}: ৳${paymentBreakdown.Nagad.total.toLocaleString('en-IN')}`,
+      `💳 ${text('Credit Sales / Due', 'বাকি বিক্রয় / বকেয়া')}: ৳${totalDueAmounts.toLocaleString('en-IN')} (${dueOrdersCount}${text(' invoices due', 'টি চালানে বকেয়া')})`,
+      `👓 ${text('Completed Glazing Jobs', 'সম্পন্ন গ্লেজিং কাজ')}: ${completedGlazingCount}${text(' pairs', 'টি জোড়া')}`,
+      `📦 ${text('Items Sold', 'বিক্রিত পণ্য')}: ${text(`Frames ${totalFramesSold} | Lenses ${totalLensesSold} | Accessories ${totalAccessoriesSold}`, `ফ্রেম ${totalFramesSold} | লেন্স ${totalLensesSold} | সামগ্রী ${totalAccessoriesSold}`)}`,
+      `🧾 ${text('Total Invoices', 'মোট ইনভয়েস')}: ${selectedSales.length}`,
       `--------------------------------------------------`,
-      `রিপোর্ট প্রস্তুতকারক: ${currentUserRole} | সময়: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      `${text('Prepared by', 'প্রস্তুতকারক')}: ${currentUserRole} | ${text('Time', 'সময়')}: ${new Date().toLocaleTimeString(language === 'bn' ? 'bn-BD' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`,
     ];
 
     navigator.clipboard.writeText(textLines.join('\n')).then(() => {
@@ -325,17 +336,17 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#169b90] bg-[#169b90]/10 px-2 py-0.5 rounded-md border border-[#169b90]/20">
-                  মদিনা চক্ষু হাসপাতাল লিমিটেড • অপটিক্যাল বিভাগ
+                  {text('Madina Eye Hospital Ltd. • Optical Department', 'মদিনা চক্ষু হাসপাতাল লিমিটেড • অপটিক্যাল বিভাগ')}
                 </span>
                 <span className="text-[11px] font-semibold text-outline">
-                  দৈনিক রেজিস্টার ও ক্যাশ অডিট
+                  {text('Daily Register & Cash Audit', 'দৈনিক রেজিস্টার ও ক্যাশ নিরীক্ষা')}
                 </span>
               </div>
               <h2 id="closing-modal-title" className="text-xl sm:text-2xl font-bold text-on-surface font-headline-md mt-0.5">
-                দৈনিক ক্লোজিং সামারি <span className="text-sm font-semibold text-outline font-sans">(Daily Closing Summary)</span>
+                {text('Daily Closing Summary', 'দৈনিক ক্লোজিং সারসংক্ষেপ')}
               </h2>
               <p className="text-xs text-outline">
-                {formattedDateTitle} • নির্বাচিত তারিখের মোট বিক্রয়, সংগৃহীত ক্যাশ, বকেয়া এবং গ্লেজিং ল্যাব আউটপুট
+                {formattedDateTitle} • {text('Sales, collections, outstanding balances, and glazing lab output for the selected date', 'নির্বাচিত তারিখের মোট বিক্রয়, আদায়, বকেয়া ও গ্লেজিং ল্যাবের কাজের হিসাব')}
               </p>
             </div>
           </div>
@@ -345,7 +356,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
             <div className="flex items-center gap-1.5 bg-surface-container-lowest dark:bg-[#1b202c] border border-outline-variant/80 dark:border-[#2a3242] rounded-xl px-2.5 py-1.5 shadow-2xs">
               <span className="material-symbols-outlined text-[18px] text-[#169b90]">calendar_month</span>
               <label htmlFor="closing-date-input" className="sr-only">
-                ক্লোজিং তারিখ নির্বাচন করুন
+                {text('Select closing date', 'ক্লোজিং তারিখ নির্বাচন করুন')}
               </label>
               <input
                 id="closing-date-input"
@@ -353,7 +364,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="text-xs font-bold text-on-surface bg-transparent focus:outline-hidden cursor-pointer"
-                title="Select Date for Daily Closing"
+                title={text('Select date for daily closing', 'দৈনিক ক্লোজিংয়ের তারিখ নির্বাচন করুন')}
               />
             </div>
 
@@ -361,10 +372,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               type="button"
               onClick={handlePrint}
               className="px-3 py-1.5 bg-surface-container-low hover:bg-surface-container border border-outline-variant/70 dark:border-[#2a3242] rounded-xl text-xs font-semibold text-on-surface flex items-center gap-1 transition-colors cursor-pointer"
-              title="Print Closing Statement"
+              title={text('Print closing statement', 'ক্লোজিং বিবরণী প্রিন্ট করুন')}
             >
               <span className="material-symbols-outlined text-[16px]">print</span>
-              <span className="hidden sm:inline">প্রিন্ট</span>
+              <span className="hidden sm:inline">{text('Print', 'প্রিন্ট')}</span>
             </button>
 
             <button
@@ -375,19 +386,19 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                   : 'bg-surface-container-low hover:bg-surface-container border-outline-variant/70 dark:border-[#2a3242] text-on-surface'
               }`}
-              title="Copy Summary for WhatsApp/SMS"
+              title={text('Copy summary for WhatsApp or SMS', 'বার্তা পাঠাতে সারসংক্ষেপ কপি করুন')}
             >
               <span className="material-symbols-outlined text-[16px]">
                 {copySuccess ? 'check' : 'content_copy'}
               </span>
-              <span>{copySuccess ? 'কপি হয়েছে!' : 'কপি'}</span>
+              <span>{copySuccess ? text('Copied!', 'কপি হয়েছে!') : text('Copy', 'কপি')}</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
               className="w-8 h-8 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/70 dark:border-[#2a3242] text-outline hover:text-on-surface flex items-center justify-center transition-colors cursor-pointer"
-              aria-label="Close modal"
+              aria-label={text('Close modal', 'মডাল বন্ধ করুন')}
             >
               <span className="material-symbols-outlined text-[18px]">close</span>
             </button>
@@ -398,7 +409,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
         <div className="px-5 sm:px-6 py-2.5 bg-surface-container-low/60 dark:bg-[#181d29] border-b border-outline-variant/60 dark:border-[#252b38] flex items-center gap-1.5 overflow-x-auto text-xs no-scrollbar">
           <span className="text-[11px] font-bold text-outline uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
             <span className="material-symbols-outlined text-[14px]">history</span>
-            <span>দ্রুত তারিখ নির্বাচন:</span>
+            <span>{text('Quick date selection:', 'দ্রুত তারিখ নির্বাচন:')}</span>
           </span>
 
           <button
@@ -410,7 +421,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 : 'bg-surface-container-lowest dark:bg-[#1e2330] text-outline hover:text-on-surface border border-outline-variant/60 dark:border-[#2b3345]'
             }`}
           >
-            <span>আজ (Today)</span>
+            <span>{text('Today', 'আজ')}</span>
             {selectedDate === todayIso && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
           </button>
 
@@ -423,7 +434,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 : 'bg-surface-container-lowest dark:bg-[#1e2330] text-outline hover:text-on-surface border border-outline-variant/60 dark:border-[#2b3345]'
             }`}
           >
-            <span>গতকাল (Yesterday)</span>
+            <span>{text('Yesterday', 'গতকাল')}</span>
           </button>
 
           {availableDates
@@ -441,7 +452,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 }`}
               >
                 <span>{d.displayLabel}</span>
-                <span className="text-[10px] opacity-75 ml-1">({d.salesCount}টি)</span>
+                <span className="text-[10px] opacity-75 ml-1">({d.salesCount} {text('sales', 'টি বিক্রয়')})</span>
               </button>
             ))}
         </div>
@@ -455,10 +466,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[18px] text-teal-600 dark:text-teal-400">trending_up</span>
-                  <span>মোট বিক্রয় (Total Sales)</span>
+                  <span>{text('Total Sales', 'মোট বিক্রয়')}</span>
                 </span>
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300">
-                  {selectedSales.length}টি ইনভয়েস
+                  {selectedSales.length} {text('invoices', 'টি ইনভয়েস')}
                 </span>
               </div>
               <div className="mt-3">
@@ -466,10 +477,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                   ৳{totalSales.toLocaleString('en-IN')}
                 </div>
                 <div className="text-[11px] text-outline mt-1.5 flex items-center justify-between">
-                  <span>গ্রস: ৳{grossSubtotal.toLocaleString('en-IN')}</span>
+                  <span>{text('Gross:', 'মোট:')} ৳{grossSubtotal.toLocaleString('en-IN')}</span>
                   {totalDiscount > 0 && (
                     <span className="text-amber-700 dark:text-amber-400 font-semibold">
-                      ছাড়: -৳{totalDiscount.toLocaleString('en-IN')}
+                      {text('Discount:', 'ছাড়:')} -৳{totalDiscount.toLocaleString('en-IN')}
                     </span>
                   )}
                 </div>
@@ -481,10 +492,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-[#169b90] dark:text-[#7ee0d6] flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[18px]">payments</span>
-                  <span>মোট আদায় (Cash Collected)</span>
+                  <span>{text('Total Collected', 'মোট আদায়')}</span>
                 </span>
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#169b90]/15 text-[#169b90] dark:text-[#7ee0d6]">
-                  {totalSales > 0 ? Math.round((totalCashCollected / totalSales) * 100) : 0}% সংগৃহীত
+                  {totalSales > 0 ? Math.round((totalCashCollected / totalSales) * 100) : 0}% {text('collected', 'আদায়')}
                 </span>
               </div>
               <div className="mt-3">
@@ -492,8 +503,8 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                   ৳{totalCashCollected.toLocaleString('en-IN')}
                 </div>
                 <div className="text-[11px] text-outline mt-1.5 flex items-center justify-between">
-                  <span>ক্যাশ ড্রয়ার: ৳{physicalCounterCash.toLocaleString('en-IN')}</span>
-                  <span>ডিজিটাল/MFS: ৳{digitalMfsCardTotal.toLocaleString('en-IN')}</span>
+                  <span>{text('Cash Drawer:', 'ক্যাশ ড্রয়ার:')} ৳{physicalCounterCash.toLocaleString('en-IN')}</span>
+                  <span>{text('Digital / Mobile Banking:', 'ডিজিটাল / মোবাইল ব্যাংকিং:')} ৳{digitalMfsCardTotal.toLocaleString('en-IN')}</span>
                 </div>
               </div>
             </div>
@@ -503,7 +514,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[18px] text-amber-600 dark:text-amber-400">pending_actions</span>
-                  <span>ক্রেডিট / বাকি বিক্রয় (Credit Sales)</span>
+                  <span>{text('Credit Sales / Due', 'বাকি বিক্রয় / বকেয়া')}</span>
                 </span>
                 <span
                   className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
@@ -512,7 +523,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                       : 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
                   }`}
                 >
-                  {totalDueAmounts > 0 ? `${dueOrdersCount}টি বাকি চালান` : 'সব পরিশোধিত'}
+                  {totalDueAmounts > 0 ? `${dueOrdersCount} ${text('invoices due', 'টি বকেয়া চালান')}` : text('All Paid', 'সব পরিশোধিত')}
                 </span>
               </div>
               <div className="mt-3">
@@ -520,8 +531,8 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                   ৳{totalDueAmounts.toLocaleString('en-IN')}
                 </div>
                 <div className="text-[11px] text-outline mt-1.5 flex items-center justify-between">
-                  <span>মোট বিক্রয়ের {totalSales > 0 ? Math.round((totalDueAmounts / totalSales) * 100) : 0}% বাকি</span>
-                  <span>ডেলিভারির সময় বকেয়া আদায়যোগ্য</span>
+                  <span>{text(`${totalSales > 0 ? Math.round((totalDueAmounts / totalSales) * 100) : 0}% of sales due`, `মোট বিক্রয়ের ${totalSales > 0 ? Math.round((totalDueAmounts / totalSales) * 100) : 0}% বকেয়া`)}</span>
+                  <span>{text('Due payable at delivery', 'ডেলিভারির সময় বকেয়া আদায়যোগ্য')}</span>
                 </div>
               </div>
             </div>
@@ -531,20 +542,20 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-800 dark:text-indigo-300 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[18px] text-indigo-600 dark:text-indigo-400">precision_manufacturing</span>
-                  <span>সম্পন্ন গ্লেজিং (Glazing Done)</span>
+                  <span>{text('Glazing Completed', 'গ্লেজিং সম্পন্ন')}</span>
                 </span>
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-800 dark:text-indigo-300">
-                  QC ভেরিফাইড
+                  {text('QC Verified', 'মান যাচাই সম্পন্ন')}
                 </span>
               </div>
               <div className="mt-3">
                 <div className="text-2xl sm:text-3xl font-extrabold text-indigo-900 dark:text-indigo-100 font-data-rx">
                   {completedGlazingCount}{' '}
-                  <span className="text-sm font-semibold text-outline font-sans">টি পেয়ার (Pairs)</span>
+                  <span className="text-sm font-semibold text-outline font-sans">{text('pairs', 'টি জোড়া')}</span>
                 </div>
                 <div className="text-[11px] text-outline mt-1.5 flex items-center justify-between">
-                  <span>কাটিং ও এজ সম্পন্ন</span>
-                  <span>স্টেজ ৫ ড্রয়ারে প্রস্তুত</span>
+                  <span>{text('Cutting & edging completed', 'কাটিং ও এজিং সম্পন্ন')}</span>
+                  <span>{text('Ready in Stage 5 drawer', 'স্টেজ ৫ ড্রয়ারে প্রস্তুত')}</span>
                 </div>
               </div>
             </div>
@@ -557,10 +568,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-on-surface flex items-center gap-2">
                   <span className="material-symbols-outlined text-[#169b90] text-[18px]">account_balance_wallet</span>
-                  <span>পেমেন্ট মাধ্যম অনুযায়ী সংগৃহীত অর্থ (Payment Method Breakdown)</span>
+                  <span>{text('Collections by Payment Method', 'পেমেন্টের মাধ্যম অনুযায়ী আদায়')}</span>
                 </h3>
                 <span className="text-xs font-semibold text-outline">
-                  মোট: ৳{totalCashCollected.toLocaleString('en-IN')}
+                  {text('Total:', 'মোট:')} ৳{totalCashCollected.toLocaleString('en-IN')}
                 </span>
               </div>
 
@@ -569,13 +580,13 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 <div className="bg-surface-container-lowest dark:bg-[#1f2533] border border-outline-variant/60 dark:border-[#2c3547] rounded-xl p-3 text-center">
                   <div className="flex items-center justify-center gap-1 text-emerald-700 dark:text-emerald-400 text-xs font-bold mb-1">
                     <span className="material-symbols-outlined text-[16px]">point_of_sale</span>
-                    <span>নগদ (Cash)</span>
+                    <span>{text('Cash', 'নগদ')}</span>
                   </div>
                   <div className="text-lg font-extrabold text-on-surface font-data-rx">
                     ৳{paymentBreakdown.Cash.total.toLocaleString('en-IN')}
                   </div>
                   <div className="text-[10px] text-outline mt-0.5">
-                    {paymentBreakdown.Cash.count}টি চালান ({paymentBreakdown.Cash.percentage}%)
+                    {paymentBreakdown.Cash.count} {text('invoices', 'টি চালান')} ({paymentBreakdown.Cash.percentage}%)
                   </div>
                 </div>
 
@@ -583,13 +594,13 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 <div className="bg-surface-container-lowest dark:bg-[#1f2533] border border-outline-variant/60 dark:border-[#2c3547] rounded-xl p-3 text-center">
                   <div className="flex items-center justify-center gap-1 text-pink-700 dark:text-pink-400 text-xs font-bold mb-1">
                     <span className="material-symbols-outlined text-[16px]">phone_android</span>
-                    <span>বিকাশ (bKash)</span>
+                    <span>{text('bKash', 'বিকাশ')}</span>
                   </div>
                   <div className="text-lg font-extrabold text-on-surface font-data-rx">
                     ৳{paymentBreakdown.bKash.total.toLocaleString('en-IN')}
                   </div>
                   <div className="text-[10px] text-outline mt-0.5">
-                    {paymentBreakdown.bKash.count}টি চালান ({paymentBreakdown.bKash.percentage}%)
+                    {paymentBreakdown.bKash.count} {text('invoices', 'টি চালান')} ({paymentBreakdown.bKash.percentage}%)
                   </div>
                 </div>
 
@@ -597,13 +608,13 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 <div className="bg-surface-container-lowest dark:bg-[#1f2533] border border-outline-variant/60 dark:border-[#2c3547] rounded-xl p-3 text-center">
                   <div className="flex items-center justify-center gap-1 text-blue-700 dark:text-blue-400 text-xs font-bold mb-1">
                     <span className="material-symbols-outlined text-[16px]">credit_card</span>
-                    <span>কার্ড (Card/POS)</span>
+                    <span>{text('Card / POS', 'কার্ড / POS')}</span>
                   </div>
                   <div className="text-lg font-extrabold text-on-surface font-data-rx">
                     ৳{paymentBreakdown.Card.total.toLocaleString('en-IN')}
                   </div>
                   <div className="text-[10px] text-outline mt-0.5">
-                    {paymentBreakdown.Card.count}টি চালান ({paymentBreakdown.Card.percentage}%)
+                    {paymentBreakdown.Card.count} {text('invoices', 'টি চালান')} ({paymentBreakdown.Card.percentage}%)
                   </div>
                 </div>
 
@@ -611,26 +622,26 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 <div className="bg-surface-container-lowest dark:bg-[#1f2533] border border-outline-variant/60 dark:border-[#2c3547] rounded-xl p-3 text-center">
                   <div className="flex items-center justify-center gap-1 text-orange-700 dark:text-orange-400 text-xs font-bold mb-1">
                     <span className="material-symbols-outlined text-[16px]">send_to_mobile</span>
-                    <span>নগদ (Nagad)</span>
+                    <span>{text('Nagad', 'নগদ')}</span>
                   </div>
                   <div className="text-lg font-extrabold text-on-surface font-data-rx">
                     ৳{paymentBreakdown.Nagad.total.toLocaleString('en-IN')}
                   </div>
                   <div className="text-[10px] text-outline mt-0.5">
-                    {paymentBreakdown.Nagad.count}টি চালান ({paymentBreakdown.Nagad.percentage}%)
+                    {paymentBreakdown.Nagad.count} {text('invoices', 'টি চালান')} ({paymentBreakdown.Nagad.percentage}%)
                   </div>
                 </div>
               </div>
 
               {/* Category Volume Sub-summary */}
               <div className="mt-3 pt-2.5 border-t border-outline-variant/60 dark:border-[#283042] flex flex-wrap items-center justify-between text-xs text-outline gap-2">
-                <span>বিক্রিত সামগ্রী:</span>
+                <span>{text('Items Sold:', 'বিক্রিত পণ্য:')}</span>
                 <div className="flex items-center gap-3">
-                  <span className="font-semibold text-on-surface">ফ্রেম: {totalFramesSold}টি</span>
+                  <span className="font-semibold text-on-surface">{text('Frames:', 'ফ্রেম:')} {totalFramesSold}</span>
                   <span>•</span>
-                  <span className="font-semibold text-on-surface">লেন্স: {totalLensesSold}টি</span>
+                  <span className="font-semibold text-on-surface">{text('Lenses:', 'লেন্স:')} {totalLensesSold}</span>
                   <span>•</span>
-                  <span className="font-semibold text-on-surface">এক্সেসরিজ: {totalAccessoriesSold}টি</span>
+                  <span className="font-semibold text-on-surface">{text('Accessories:', 'সামগ্রী:')} {totalAccessoriesSold}</span>
                 </div>
               </div>
             </div>
@@ -641,19 +652,19 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-bold text-on-surface flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-emerald-600 text-[18px]">lock_clock</span>
-                    <span>ক্যাশ ড্রয়ার মিলকরণ (Reconciliation)</span>
+                    <span>{text('Cash Drawer Reconciliation', 'ক্যাশ ড্রয়ার মিলকরণ')}</span>
                   </h3>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-outline">
-                    দিন সমাপনী অডিট
+                    {text('Daily Closing Audit', 'দিনশেষের হিসাব নিরীক্ষা')}
                   </span>
                 </div>
                 <p className="text-[11px] text-outline mb-3">
-                  কাউন্টার ক্যাশ ড্রয়ারে থাকা ফিজিক্যাল নোটের হিসাব বসিয়ে অমিল বা ঘাটতি যাচাই করুন।
+                  {text('Enter the physical cash counted in the counter drawer to check for discrepancies or shortages.', 'কাউন্টারের ক্যাশ ড্রয়ারে থাকা নগদ গুনে লিখুন এবং অমিল বা ঘাটতি যাচাই করুন।')}
                 </p>
 
                 <div className="space-y-2 text-xs">
                   <div className="flex items-center justify-between py-1 border-b border-outline-variant/40 dark:border-[#252b38]">
-                    <span className="text-outline">হিসাব অনুযায়ী ড্রয়ার ক্যাশ:</span>
+                    <span className="text-outline">{text('Expected Cash in Drawer:', 'হিসাব অনুযায়ী ড্রয়ারের নগদ:')}</span>
                     <span className="font-bold text-on-surface font-data-rx">
                       ৳{physicalCounterCash.toLocaleString('en-IN')}
                     </span>
@@ -661,7 +672,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
 
                   <div className="flex items-center justify-between py-1">
                     <label htmlFor="drawer-declared-cash" className="text-outline">
-                      গণনাকৃত প্রকৃত ক্যাশ:
+                      {text('Actual Cash Counted:', 'গণনা করা প্রকৃত নগদ:')}
                     </label>
                     <div className="flex items-center gap-1">
                       <span className="text-outline font-bold">৳</span>
@@ -690,10 +701,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                     >
                       <span>
                         {cashDiscrepancy === 0
-                          ? '✓ ক্যাশ সম্পূর্ণ সঠিক (Balanced)'
+                          ? `✓ ${text('Cash Balanced', 'ক্যাশের হিসাব মিলেছে')}`
                           : cashDiscrepancy > 0
-                          ? 'উদ্বৃত্ত ক্যাশ (Surplus)'
-                          : 'ঘাটতি ক্যাশ (Deficit)'}
+                          ? text('Cash Surplus', 'অতিরিক্ত নগদ')
+                          : text('Cash Shortage', 'নগদ ঘাটতি')}
                       </span>
                       <span className="font-data-rx">
                         {cashDiscrepancy >= 0 ? '+' : ''}৳{cashDiscrepancy.toLocaleString('en-IN')}
@@ -704,7 +715,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               </div>
 
               <div className="text-[10px] text-outline italic mt-3 pt-2 border-t border-outline-variant/50 dark:border-[#252b38]">
-                হিসাব মিলিয়ে ক্যাশিয়ার ও ব্রাঞ্চ ম্যানেজারের স্বাক্ষর নিন
+                {text('Reconcile the amount and obtain signatures from the cashier and branch manager.', 'হিসাব মিলিয়ে ক্যাশিয়ার ও শাখা ব্যবস্থাপকের স্বাক্ষর নিন।')}
               </div>
             </div>
           </div>
@@ -724,7 +735,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                   }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-                  <span>ইনভয়েস ও বিক্রয় তালিকা ({selectedSales.length})</span>
+                  <span>{text('Invoices & Sales', 'ইনভয়েস ও বিক্রয় তালিকা')} ({selectedSales.length})</span>
                 </button>
 
                 <button
@@ -737,12 +748,12 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                   }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span>
-                  <span>সম্পন্ন গ্লেজিং জব তালিকা ({completedGlazingCount})</span>
+                  <span>{text('Completed Glazing Jobs', 'সম্পন্ন গ্লেজিং কাজ')} ({completedGlazingCount})</span>
                 </button>
               </div>
 
               <span className="text-[11px] text-outline font-medium">
-                তারিখ: <strong className="text-on-surface font-sans">{selectedDate}</strong>
+                {text('Date:', 'তারিখ:')} <strong className="text-on-surface font-sans">{selectedDate}</strong>
               </span>
             </div>
 
@@ -754,23 +765,23 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                     <span className="material-symbols-outlined text-[36px] text-outline/50 mb-2 block">
                       event_busy
                     </span>
-                    <p className="text-sm font-semibold">নির্বাচিত তারিখে কোনো বিক্রয় ইনভয়েস পাওয়া যায়নি।</p>
+                    <p className="text-sm font-semibold">{text('No sales invoices found for the selected date.', 'নির্বাচিত তারিখে কোনো বিক্রয় ইনভয়েস পাওয়া যায়নি।')}</p>
                     <p className="text-xs text-outline/80 mt-1">
-                      অন্য কোনো তারিখ নির্বাচন করুন অথবা আজ নতুন ইনভয়েস তৈরি করুন।
+                      {text('Select another date or create a new invoice today.', 'অন্য তারিখ নির্বাচন করুন অথবা আজ নতুন ইনভয়েস তৈরি করুন।')}
                     </p>
                   </div>
                 ) : (
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-surface-container-low/80 dark:bg-[#1b202c] text-outline text-[11px] uppercase tracking-wider border-b border-outline-variant/60 dark:border-[#252b38]">
-                        <th className="py-2.5 px-3 font-bold">ইনভয়েস নম্বর</th>
-                        <th className="py-2.5 px-3 font-bold">রোগীর নাম ও মোবাইল</th>
-                        <th className="py-2.5 px-3 font-bold">বিক্রিত ফ্রেম ও লেন্স</th>
-                        <th className="py-2.5 px-3 font-bold">বিক্রেতা (Salesman)</th>
-                        <th className="py-2.5 px-3 font-bold text-right">মোট মূল্য</th>
-                        <th className="py-2.5 px-3 font-bold text-right text-emerald-700 dark:text-emerald-400">আদায়কৃত</th>
-                        <th className="py-2.5 px-3 font-bold text-right text-amber-700 dark:text-amber-400">বকেয়া</th>
-                        <th className="py-2.5 px-3 font-bold text-center">মাধ্যম</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Invoice Number', 'ইনভয়েস নম্বর')}</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Patient & Phone', 'রোগী ও মোবাইল')}</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Frames & Lenses Sold', 'বিক্রিত ফ্রেম ও লেন্স')}</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Salesperson', 'বিক্রয়কর্মী')}</th>
+                        <th className="py-2.5 px-3 font-bold text-right">{text('Total Amount', 'মোট মূল্য')}</th>
+                        <th className="py-2.5 px-3 font-bold text-right text-emerald-700 dark:text-emerald-400">{text('Collected', 'আদায়')}</th>
+                        <th className="py-2.5 px-3 font-bold text-right text-amber-700 dark:text-amber-400">{text('Due', 'বকেয়া')}</th>
+                        <th className="py-2.5 px-3 font-bold text-center">{text('Method', 'মাধ্যম')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant/40 dark:divide-[#252b38]">
@@ -787,7 +798,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                           </td>
                           <td className="py-2.5 px-3">
                             <span className="font-semibold text-on-surface block">{sale.patientName}</span>
-                            <span className="text-[10px] text-outline font-sans">{sale.patientPhone || 'N/A'}</span>
+                            <span className="text-[10px] text-outline font-sans">{sale.patientPhone || text('N/A', 'নেই')}</span>
                           </td>
                           <td className="py-2.5 px-3 max-w-[200px] truncate text-outline" title={sale.itemsSummary}>
                             {sale.itemsSummary}
@@ -822,7 +833,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                                   : 'bg-orange-500/15 text-orange-800 dark:text-orange-300'
                               }`}
                             >
-                              {sale.paymentMethod}
+                              {paymentMethodLabel(sale.paymentMethod)}
                             </span>
                           </td>
                         </tr>
@@ -831,7 +842,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                     <tfoot>
                       <tr className="bg-surface-container-low dark:bg-[#1a1f2c] font-bold text-on-surface border-t-2 border-outline-variant">
                         <td colSpan={4} className="py-2 px-3 text-right uppercase tracking-wider text-[11px]">
-                          সর্বমোট (Total):
+                          {text('Grand Total:', 'সর্বমোট:')}
                         </td>
                         <td className="py-2 px-3 text-right font-extrabold font-data-rx">
                           ৳{totalSales.toLocaleString('en-IN')}
@@ -843,7 +854,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                           ৳{totalDueAmounts.toLocaleString('en-IN')}
                         </td>
                         <td className="py-2 px-3 text-center text-[10px] text-outline">
-                          {selectedSales.length}টি চালান
+                          {selectedSales.length} {text('invoices', 'টি চালান')}
                         </td>
                       </tr>
                     </tfoot>
@@ -860,22 +871,22 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                     <span className="material-symbols-outlined text-[36px] text-outline/50 mb-2 block">
                       hourglass_empty
                     </span>
-                    <p className="text-sm font-semibold">নির্বাচিত তারিখে কোনো সম্পন্ন গ্লেজিং জব রেকর্ড নেই।</p>
+                    <p className="text-sm font-semibold">{text('No completed glazing jobs recorded for the selected date.', 'নির্বাচিত তারিখে সম্পন্ন গ্লেজিং কাজের কোনো রেকর্ড নেই।')}</p>
                     <p className="text-xs text-outline/80 mt-1">
-                      আজকের ল্যাব পাইপলাইনে স্টেজ ৫ ট্রানজিশন করা হলে এখানে হিসাব দৃশ্যমান হবে।
+                      {text('Jobs moved to Stage 5 in the lab pipeline will appear here.', 'ল্যাব পাইপলাইনে কোনো কাজ স্টেজ ৫-এ গেলে এখানে দেখা যাবে।')}
                     </p>
                   </div>
                 ) : (
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-surface-container-low/80 dark:bg-[#1b202c] text-outline text-[11px] uppercase tracking-wider border-b border-outline-variant/60 dark:border-[#252b38]">
-                        <th className="py-2.5 px-3 font-bold">ট্রে নম্বর ও জব কোড</th>
-                        <th className="py-2.5 px-3 font-bold">রোগীর নাম ও প্রেসক্রিপশন</th>
-                        <th className="py-2.5 px-3 font-bold">ফ্রেম ও লেন্স মডেল</th>
-                        <th className="py-2.5 px-3 font-bold">গ্লেজিয়ার / টেকনিশিয়ান</th>
-                        <th className="py-2.5 px-3 font-bold">স্ট্যাটাস</th>
-                        <th className="py-2.5 px-3 font-bold text-right">বাকি টাকা</th>
-                        <th className="py-2.5 px-3 font-bold text-center">অ্যাকশন</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Tray Number & Job Code', 'ট্রে নম্বর ও জব কোড')}</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Patient & Prescription', 'রোগী ও প্রেসক্রিপশন')}</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Frame & Lens Model', 'ফ্রেম ও লেন্সের মডেল')}</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Glazier / Technician', 'গ্লেজিয়ার / টেকনিশিয়ান')}</th>
+                        <th className="py-2.5 px-3 font-bold">{text('Status', 'অবস্থা')}</th>
+                        <th className="py-2.5 px-3 font-bold text-right">{text('Balance Due', 'বকেয়া')}</th>
+                        <th className="py-2.5 px-3 font-bold text-center">{text('Action', 'কার্যক্রম')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant/40 dark:divide-[#252b38]">
@@ -902,14 +913,14 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                           <td className="py-2.5 px-3">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
                               <span className="material-symbols-outlined text-[12px]">check_circle</span>
-                              <span>স্টেজ ৫ প্রস্তুত</span>
+                              <span>{text('Ready - Stage 5', 'প্রস্তুত - স্টেজ ৫')}</span>
                             </span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-bold font-data-rx">
                             {(job.dueAmount || 0) > 0 ? (
                               <span className="text-amber-700 dark:text-amber-400">৳{job.dueAmount}</span>
                             ) : (
-                              <span className="text-emerald-700 dark:text-emerald-400">পরিশোধিত</span>
+                              <span className="text-emerald-700 dark:text-emerald-400">{text('Paid', 'পরিশোধিত')}</span>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-center">
@@ -922,7 +933,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                                 }}
                                 className="px-2 py-1 bg-surface-container hover:bg-surface-container-high rounded text-[11px] font-bold text-[#169b90] transition-colors cursor-pointer"
                               >
-                                বিস্তারিত
+                                {text('Details', 'বিস্তারিত')}
                               </button>
                             )}
                           </td>
@@ -932,10 +943,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                     <tfoot>
                       <tr className="bg-surface-container-low dark:bg-[#1a1f2c] font-bold text-on-surface border-t-2 border-outline-variant">
                         <td colSpan={5} className="py-2 px-3 text-right uppercase tracking-wider text-[11px]">
-                          সম্পন্ন গ্লেজিং মোট আউটপুট:
+                          {text('Total Completed Glazing Output:', 'সম্পন্ন গ্লেজিংয়ের মোট আউটপুট:')}
                         </td>
                         <td colSpan={2} className="py-2 px-3 font-extrabold text-indigo-700 dark:text-indigo-400 font-data-rx">
-                          {completedGlazingCount} টি চশমা পেয়ার (Pairs Glazed)
+                          {completedGlazingCount} {text('pairs glazed', 'জোড়া চশমা')}
                         </td>
                       </tr>
                     </tfoot>
@@ -943,6 +954,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 )}
               </div>
             )}
+            <PrintFooterQuantum className="mt-4 pt-2 border-t border-outline-variant/60 text-center text-[9px] font-sans font-medium tracking-wide text-black dark:text-white" />
           </div>
         </div>
 
@@ -950,11 +962,11 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
         <div className="px-5 sm:px-6 py-3.5 bg-surface-container-low dark:bg-[#171b26] border-t border-outline-variant/80 dark:border-[#272e3d] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="text-[11px] text-outline flex items-center gap-3">
             <span>
-              প্রস্তুতকারক: <strong className="text-on-surface">{currentUserRole}</strong>
+              {text('Prepared by:', 'প্রস্তুতকারক:')} <strong className="text-on-surface">{currentUserRole}</strong>
             </span>
             <span>•</span>
             <span>
-              সময়: <strong className="text-on-surface">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>
+              {text('Time:', 'সময়:')} <strong className="text-on-surface">{new Date().toLocaleTimeString(language === 'bn' ? 'bn-BD' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</strong>
             </span>
           </div>
 
@@ -971,7 +983,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               <span className="material-symbols-outlined text-[16px]">
                 {copySuccess ? 'check' : 'share'}
               </span>
-              <span>{copySuccess ? 'কপি সফল হয়েছে!' : 'হোয়াটসঅ্যাপ / কপি সামারি'}</span>
+              <span>{copySuccess ? text('Copied successfully!', 'সফলভাবে কপি হয়েছে!') : text('Copy Summary for WhatsApp', 'বার্তা পাঠাতে সারসংক্ষেপ কপি করুন')}</span>
             </button>
 
             <button
@@ -980,7 +992,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               className="px-3.5 py-1.5 bg-[#169b90] hover:bg-[#128279] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
             >
               <span className="material-symbols-outlined text-[16px]">print</span>
-              <span>প্রিন্ট ভাউচার</span>
+              <span>{text('Print Statement', 'বিবরণী প্রিন্ট')}</span>
             </button>
 
             <button
@@ -988,7 +1000,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               onClick={onClose}
               className="px-4 py-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
-              বন্ধ করুন
+              {text('Close', 'বন্ধ করুন')}
             </button>
           </div>
         </div>

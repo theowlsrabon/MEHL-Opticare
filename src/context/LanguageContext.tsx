@@ -17,7 +17,7 @@ const LanguageContext = createContext<LanguageContextType>({
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    return 'en';
+    return localStorage.getItem('madina_language') === 'bn' ? 'bn' : 'en';
   });
 
   useEffect(() => {

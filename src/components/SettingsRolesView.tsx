@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { UserRole, SecurityAuditLog, SystemConfig } from '../types';
+import { UserRole, SecurityAuditLog, SystemConfig, InventoryItem, OpticalJob, SaleRecord, HospitalBranch, PurchaseOrder } from '../types';
 import { MADINA_STAFF_PROFILES } from '../data/rolesData';
 import { UserAccountsManager } from './UserAccountsManager';
 import { LabTechniciansManager } from './LabTechniciansManager';
+import { SuperAdminPurgeConsole } from './SuperAdminPurgeConsole';
 
 interface SettingsRolesViewProps {
   currentRole: UserRole;
@@ -11,6 +12,19 @@ interface SettingsRolesViewProps {
   auditLogs: SecurityAuditLog[];
   systemConfig: SystemConfig;
   onUpdateSystemConfig: (config: SystemConfig) => void;
+  inventory?: InventoryItem[];
+  jobs?: OpticalJob[];
+  salesRecords?: SaleRecord[];
+  branches?: HospitalBranch[];
+  purchaseOrders?: PurchaseOrder[];
+  activityLogs?: any[];
+  onDeleteStock?: (id: string) => void;
+  onDeleteJob?: (id: string) => void;
+  onDeleteSale?: (id: string) => void;
+  onDeleteBranch?: (id: string) => void;
+  onDeletePO?: (id: string) => void;
+  onClearHistory?: (id?: string) => void;
+  onPurgeAllOperationalData?: () => void;
 }
 
 export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
@@ -20,11 +34,35 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
   auditLogs,
   systemConfig,
   onUpdateSystemConfig,
+  inventory = [],
+  jobs = [],
+  salesRecords = [],
+  branches = [],
+  purchaseOrders = [],
+  activityLogs = [],
+  onDeleteStock,
+  onDeleteJob,
+  onDeleteSale,
+  onDeleteBranch,
+  onDeletePO,
+  onClearHistory,
+  onPurgeAllOperationalData,
 }) => {
-  const initialTab = typeof window !== 'undefined' && sessionStorage.getItem('settingsInitialTab') === 'technicians'
-    ? (sessionStorage.removeItem('settingsInitialTab'), 'technicians')
-    : 'accounts';
-  const [activeTab, setActiveTab] = useState<'accounts' | 'technicians' | 'rbac' | 'system' | 'audit'>(initialTab as 'accounts' | 'technicians');
+  const isDevSuperAdmin = currentUsername?.toLowerCase().trim() === 'srabon' || currentRole === 'super_admin';
+  const initialTab = (() => {
+    if (typeof window !== 'undefined') {
+      const savedTab = sessionStorage.getItem('settingsInitialTab');
+      if (savedTab) {
+        sessionStorage.removeItem('settingsInitialTab');
+        return savedTab;
+      }
+    }
+    if (isDevSuperAdmin) {
+      return 'superadmin';
+    }
+    return 'accounts';
+  })();
+  const [activeTab, setActiveTab] = useState<'accounts' | 'technicians' | 'rbac' | 'system' | 'audit' | 'superadmin'>(initialTab as any);
   const [configForm, setConfigForm] = useState<SystemConfig>(systemConfig);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -78,18 +116,6 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('rbac')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-            activeTab === 'rbac'
-              ? 'bg-[#00c49f] text-white shadow-xs'
-              : 'text-outline hover:text-on-surface'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">verified_user</span>
-          <span>ভূমিকা ও এক্সেস পারমিশন (RBAC Matrix)</span>
-        </button>
-
-        <button
           onClick={() => setActiveTab('technicians')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'technicians'
@@ -124,7 +150,40 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
           <span className="material-symbols-outlined text-[18px]">history</span>
           <span>সিকিউরিটি অডিট ট্রেইল ({auditLogs.length})</span>
         </button>
+
+        {isDevSuperAdmin && (
+          <button
+            onClick={() => setActiveTab('superadmin')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+              activeTab === 'superadmin'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">terminal</span>
+            <span>Super Admin Purge Console (Developer)</span>
+          </button>
+        )}
       </div>
+
+      {activeTab === 'superadmin' && isDevSuperAdmin && (
+        <SuperAdminPurgeConsole
+          inventory={inventory}
+          jobs={jobs}
+          salesRecords={salesRecords}
+          branches={branches}
+          purchaseOrders={purchaseOrders}
+          auditLogs={auditLogs}
+          activityLogs={activityLogs}
+          onDeleteStock={onDeleteStock || (() => {})}
+          onDeleteJob={onDeleteJob || (() => {})}
+          onDeleteSale={onDeleteSale || (() => {})}
+          onDeleteBranch={onDeleteBranch || (() => {})}
+          onDeletePO={onDeletePO || (() => {})}
+          onClearHistory={onClearHistory || (() => {})}
+          onPurgeAllOperationalData={onPurgeAllOperationalData || (() => {})}
+        />
+      )}
 
       {/* TAB 0: USER ACCOUNTS MANAGER (ADMIN EXCLUSIVE) */}
       {activeTab === 'accounts' && (
@@ -138,7 +197,9 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
         <div className="flex flex-col gap-4">
           {/* Active Role Selector Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            {(Object.keys(MADINA_STAFF_PROFILES) as UserRole[]).map((rKey) => {
+            {(Object.keys(MADINA_STAFF_PROFILES) as UserRole[])
+              .filter((rKey) => rKey !== 'super_admin' || currentUsername === 'srabon')
+              .map((rKey) => {
               const prof = MADINA_STAFF_PROFILES[rKey];
               const isSelected = currentRole === rKey;
               return (

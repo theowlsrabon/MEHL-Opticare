@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Supplier, PurchaseOrder, GoodsReceivedNote } from '../types';
 import { printElementById } from '../utils/printUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
+import { useLanguage } from '../context/LanguageContext';
 
 interface SupplierGrnViewProps {
   suppliers: Supplier[];
@@ -10,6 +12,7 @@ interface SupplierGrnViewProps {
   onUpdateGrns?: (grns: GoodsReceivedNote[]) => void;
   onCreatePo?: (po: PurchaseOrder) => void;
   onReceiveGrn?: (grn: GoodsReceivedNote) => void;
+  onDeletePurchaseOrder?: (poId: string) => void;
 }
 
 export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
@@ -20,7 +23,10 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
   onUpdateGrns,
   onCreatePo,
   onReceiveGrn,
+  onDeletePurchaseOrder,
 }) => {
+  const { language } = useLanguage();
+  const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
   const [activeTab, setActiveTab] = useState<'suppliers' | 'pos' | 'grns'>('grns');
   const [isCreatingPO, setIsCreatingPO] = useState(false);
   const [selectedGrnToPrint, setSelectedGrnToPrint] = useState<GoodsReceivedNote | null>(null);
@@ -87,11 +93,11 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
               <span className="material-symbols-outlined text-[22px]">local_shipping</span>
             </span>
             <h1 className="text-base sm:text-lg font-bold tracking-tight text-white font-headline-md">
-              সাপ্লায়ার প্রকিউরমেন্ট ও গুডস রিসিভড নোট (GRN Inward)
+              {text('Supplier Procurement & Goods Received Notes', 'সাপ্লায়ার সংগ্রহ ও পণ্য গ্রহণ নোট')}
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-            ভেন্ডর অর্ডার ট্র্যাকিং, বারকোড/লট ইনস্পেকশন, মেয়াদ নির্ধারণ এবং অটোমেটিক স্টক ইন্টিগ্রেশন।
+            {text('Track purchase orders, inspect barcode lots, set expiry dates, and update stock.', 'ক্রয় আদেশ ট্র্যাক, বারকোড/লট পরীক্ষা, মেয়াদ নির্ধারণ ও স্টক আপডেট করুন।')}
           </p>
         </div>
 
@@ -101,7 +107,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
             className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-[18px]">add_shopping_cart</span>
-            <span>নতুন পারচেজ অর্ডার (PO)</span>
+            <span>{text('New Purchase Order', 'নতুন ক্রয় আদেশ')}</span>
           </button>
         </div>
       </div>
@@ -117,7 +123,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">inventory</span>
-          <span>ইনওয়ার্ড চালান ও জিআরএন (GRN Ledger)</span>
+          <span>{text('Goods Received Notes', 'পণ্য গ্রহণ নথি')}</span>
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">{grns.length}</span>
         </button>
 
@@ -130,7 +136,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">shopping_bag</span>
-          <span>পারচেজ অর্ডার (Purchase Orders)</span>
+          <span>{text('Purchase Orders', 'ক্রয় আদেশ')}</span>
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-surface-container dark:bg-[#202532] text-outline">
             {purchaseOrders.length}
           </span>
@@ -145,7 +151,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">group</span>
-          <span>ভেন্ডর ডিরেক্টরি (Suppliers)</span>
+          <span>{text('Supplier Directory', 'সরবরাহকারী তালিকা')}</span>
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-surface-container dark:bg-[#202532] text-outline">
             {suppliers.length}
           </span>
@@ -158,22 +164,22 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
           <div className="p-4 border-b border-outline-variant/60 dark:border-[#252a36] flex items-center justify-between bg-[#fbfcfe] dark:bg-[#181c25]">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-teal-600">fact_check</span>
-              <h3 className="text-sm font-bold text-on-surface">গুডস রিসিভড নোট (Goods Received Notes)</h3>
+              <h3 className="text-sm font-bold text-on-surface">{text('Goods Received Notes', 'পণ্য গ্রহণ নথি')}</h3>
             </div>
-            <span className="text-xs text-outline font-semibold">QC ইনস্পেকশন সম্পন্ন চালানসমূহ</span>
+            <span className="text-xs text-outline font-semibold">{text('Shipments inspected by QC', 'মান যাচাই সম্পন্ন চালান')}</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-surface-container/60 dark:bg-[#1c202a] text-outline uppercase font-extrabold text-[10px] tracking-wider border-b border-outline-variant/60 dark:border-[#272d3a]">
-                  <th className="py-3 px-4">জিআরএন নম্বর ও তারিখ</th>
-                  <th className="py-3 px-4">সাপ্লায়ার ও চালানের রেফারেন্স</th>
-                  <th className="py-3 px-4">রিসিভিং ওয়্যারহাউস</th>
-                  <th className="py-3 px-4 text-center">আইটেম ও পরিমাণ</th>
-                  <th className="py-3 px-4 text-center">QC ইনস্পেকশন</th>
-                  <th className="py-3 px-4 text-right">ইনভয়েস মূল্য</th>
-                  <th className="py-3 px-4 text-center">প্রিন্ট ও ভিউ</th>
+                  <th className="py-3 px-4">{text('GRN Number & Date', 'জিআরএন নম্বর ও তারিখ')}</th>
+                  <th className="py-3 px-4">{text('Supplier & Challan Reference', 'সরবরাহকারী ও চালান রেফারেন্স')}</th>
+                  <th className="py-3 px-4">{text('Receiving Warehouse', 'গ্রহণকারী গুদাম')}</th>
+                  <th className="py-3 px-4 text-center">{text('Items & Quantity', 'পণ্য ও পরিমাণ')}</th>
+                  <th className="py-3 px-4 text-center">{text('QC Inspection', 'মান যাচাই')}</th>
+                  <th className="py-3 px-4 text-right">{text('Invoice Value', 'চালান মূল্য')}</th>
+                  <th className="py-3 px-4 text-center">{text('Print & View', 'প্রিন্ট ও দেখুন')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/40 dark:divide-[#242936]">
@@ -186,21 +192,21 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
 
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-on-surface">{grn.supplierName}</div>
-                      <div className="text-[10px] text-outline">Challan #{grn.challanNumber} (PO: {grn.poNumber})</div>
+                      <div className="text-[10px] text-outline">{text('Challan', 'চালান')} #{grn.challanNumber} ({text('PO', 'ক্রয় আদেশ')}: {grn.poNumber})</div>
                     </td>
 
                     <td className="py-3.5 px-4">
                       <span className="text-on-surface font-medium">{grn.warehouseLocation || (grn as any).receivingWarehouse || 'Central Plaza Central Hub'}</span>
-                      <div className="text-[10px] text-outline">ইনস্পেক্টর: {grn.inspectedBy || (grn as any).receivedBy || 'QC Inspector'}</div>
+                      <div className="text-[10px] text-outline">{text('Inspector', 'পরিদর্শক')}: {grn.inspectedBy || (grn as any).receivedBy || text('QC Inspector', 'মান যাচাইকারী')}</div>
                     </td>
 
                     <td className="py-3.5 px-4 text-center">
                       <div className="font-bold font-data-rx text-on-surface">
-                        {grn.items.reduce((acc, i) => acc + (i.acceptedQty ?? i.receivedQty ?? 0), 0)} Units Accepted
+                        {grn.items.reduce((acc, i) => acc + (i.acceptedQty ?? i.receivedQty ?? 0), 0)} {text('Units Accepted', 'টি গ্রহণ করা হয়েছে')}
                       </div>
                       {grn.items.some(i => (i.rejectedQty ?? 0) > 0) && (
                         <div className="text-[10px] text-red-500 font-bold">
-                          {grn.items.reduce((acc, i) => acc + (i.rejectedQty ?? 0), 0)} Rejected
+                          {grn.items.reduce((acc, i) => acc + (i.rejectedQty ?? 0), 0)} {text('Rejected', 'টি বাতিল')}
                         </div>
                       )}
                     </td>
@@ -213,7 +219,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                           ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
                           : 'bg-red-500/15 text-red-700 dark:text-red-400'
                       }`}>
-                        {((grn.qcStatus || (grn as any).inspectionStatus) === 'passed') ? 'PASSED (100% QC)' : (grn.qcStatus || (grn as any).inspectionStatus)}
+                        {((grn.qcStatus || (grn as any).inspectionStatus) === 'passed') ? text('Passed', 'উত্তীর্ণ') : (grn.qcStatus || (grn as any).inspectionStatus)}
                       </span>
                     </td>
 
@@ -227,7 +233,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                         className="px-2.5 py-1 rounded-lg bg-surface-container dark:bg-[#202532] text-on-surface hover:bg-surface-container-high font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer"
                       >
                         <span className="material-symbols-outlined text-[15px]">print</span>
-                        <span>GRN স্লিপ</span>
+                        <span>{text('GRN Slip', 'জিআরএন রসিদ')}</span>
                       </button>
                     </td>
                   </tr>
@@ -242,20 +248,21 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
       {activeTab === 'pos' && (
         <div className="bg-surface-container-lowest dark:bg-[#15181f] rounded-2xl border border-outline-variant/70 dark:border-[#252a36] shadow-2xs overflow-hidden">
           <div className="p-4 border-b border-outline-variant/60 dark:border-[#252a36] flex items-center justify-between bg-[#fbfcfe] dark:bg-[#181c25]">
-            <h3 className="text-sm font-bold text-on-surface">ইস্যুকৃত পারচেজ অর্ডার তালিকা</h3>
-            <span className="text-xs text-outline">{purchaseOrders.length} টি সক্রিয় অর্ডার</span>
+            <h3 className="text-sm font-bold text-on-surface">{text('Issued Purchase Orders', 'ইস্যুকৃত ক্রয় আদেশ')}</h3>
+            <span className="text-xs text-outline">{purchaseOrders.length} {text('active orders', 'টি সক্রিয় আদেশ')}</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-surface-container/60 dark:bg-[#1c202a] text-outline uppercase font-extrabold text-[10px] tracking-wider border-b border-outline-variant/60 dark:border-[#272d3a]">
-                  <th className="py-3 px-4">পিও নম্বর ও ইস্যু তারিখ</th>
-                  <th className="py-3 px-4">ভেন্ডর নাম</th>
-                  <th className="py-3 px-4">ডেলিভারির নির্ধারিত তারিখ</th>
-                  <th className="py-3 px-4 text-center">আইটেম সংখ্যা</th>
-                  <th className="py-3 px-4 text-right">মোট অ্যামাউন্ট</th>
-                  <th className="py-3 px-4 text-center">স্ট্যাটাস</th>
+                  <th className="py-3 px-4">{text('PO Number & Issue Date', 'ক্রয় আদেশ নম্বর ও ইস্যুর তারিখ')}</th>
+                  <th className="py-3 px-4">{text('Supplier', 'সরবরাহকারী')}</th>
+                  <th className="py-3 px-4">{text('Expected Delivery Date', 'সম্ভাব্য সরবরাহের তারিখ')}</th>
+                  <th className="py-3 px-4 text-center">{text('Items', 'পণ্যের সংখ্যা')}</th>
+                  <th className="py-3 px-4 text-right">{text('Total Amount', 'মোট অর্থ')}</th>
+                  <th className="py-3 px-4 text-center">{text('Status', 'অবস্থা')}</th>
+                  {onDeletePurchaseOrder && <th className="py-3 px-4 text-right">{text('Actions', 'কার্যক্রম')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/40 dark:divide-[#242936]">
@@ -264,7 +271,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                     <td className="py-3.5 px-4 font-data-rx font-bold text-on-surface">{po.poNumber}</td>
                     <td className="py-3.5 px-4 font-semibold text-on-surface">{po.supplierName}</td>
                     <td className="py-3.5 px-4 text-outline">{po.expectedDeliveryDate}</td>
-                    <td className="py-3.5 px-4 text-center font-bold text-on-surface">{po.items.length} আইটেম</td>
+                    <td className="py-3.5 px-4 text-center font-bold text-on-surface">{po.items.length} {text('items', 'টি পণ্য')}</td>
                     <td className="py-3.5 px-4 text-right font-data-rx font-bold text-teal-700 dark:text-teal-400">
                       ৳{po.totalAmountBDT?.toLocaleString()}
                     </td>
@@ -273,6 +280,22 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                         {po.status}
                       </span>
                     </td>
+                    {onDeletePurchaseOrder && (
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(text(`Permanently delete requisition "${po.poNumber}"?`, `আপনি কি "${po.poNumber}" অর্ডারটি মুছে ফেলতে চান?`))) {
+                              onDeletePurchaseOrder(po.id);
+                            }
+                          }}
+                          className="px-2 py-1 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white font-bold text-[11px] inline-flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">delete</span>
+                          <span>{text('Delete', 'মুছুন')}</span>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -321,11 +344,11 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
 
               <div className="mt-4 pt-3 border-t border-outline-variant/50 dark:border-[#252a36] flex items-center justify-between text-xs">
                 <div>
-                  <span className="text-[10px] text-outline uppercase">বাকি দেনা (Payable)</span>
+                  <span className="text-[10px] text-outline uppercase">{text('Payable', 'বকেয়া')}</span>
                   <div className="font-data-rx font-bold text-red-600">৳{sup.outstandingBalanceBDT?.toLocaleString()}</div>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-outline uppercase">পেমেন্ট টার্ম</span>
+                  <span className="text-[10px] text-outline uppercase">{text('Payment Terms', 'পেমেন্টের শর্ত')}</span>
                   <div className="font-semibold text-on-surface">{sup.paymentTerms}</div>
                 </div>
               </div>
@@ -339,7 +362,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <form onSubmit={handleCreatePO} className="bg-surface-container-lowest dark:bg-[#181c25] rounded-2xl max-w-lg w-full border border-outline-variant/80 dark:border-[#272d3a] shadow-2xl p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-outline-variant/60 dark:border-[#272d3a] pb-3">
-              <h3 className="text-base font-bold text-on-surface">নতুন ভেন্ডর পারচেজ অর্ডার (PO) তৈরি</h3>
+              <h3 className="text-base font-bold text-on-surface">{text('Create Purchase Order', 'নতুন ক্রয় আদেশ তৈরি করুন')}</h3>
               <button
                 type="button"
                 onClick={() => setIsCreatingPO(false)}
@@ -350,7 +373,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-outline">সাপ্লায়ার বা ভেন্ডর নির্বাচন</label>
+              <label className="text-[11px] font-bold text-outline">{text('Select Supplier', 'সরবরাহকারী নির্বাচন করুন')}</label>
               <select
                 value={selectedSupplierId}
                 onChange={(e) => setSelectedSupplierId(e.target.value)}
@@ -363,7 +386,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-outline">প্রত্যাশিত ডেলিভারির তারিখ</label>
+              <label className="text-[11px] font-bold text-outline">{text('Expected Delivery Date', 'সম্ভাব্য সরবরাহের তারিখ')}</label>
               <input
                 type="date"
                 value={poDueDate}
@@ -373,7 +396,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-outline">পারচেজ নোটস ও রেফারেন্স</label>
+              <label className="text-[11px] font-bold text-outline">{text('Purchase Notes & Reference', 'ক্রয় সংক্রান্ত নোট ও রেফারেন্স')}</label>
               <textarea
                 value={poNotes}
                 onChange={(e) => setPoNotes(e.target.value)}
@@ -388,13 +411,13 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                 onClick={() => setIsCreatingPO(false)}
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-outline hover:text-on-surface cursor-pointer"
               >
-                বাতিল
+                {text('Cancel', 'বাতিল')}
               </button>
               <button
                 type="submit"
                 className="px-5 py-2 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer"
               >
-                PO ইস্যু করুন
+                {text('Issue PO', 'ক্রয় আদেশ ইস্যু করুন')}
               </button>
             </div>
           </form>
@@ -406,7 +429,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-surface-container-lowest dark:bg-[#181c25] rounded-2xl max-w-lg w-full border border-outline-variant/80 dark:border-[#272d3a] shadow-2xl p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-on-surface">গুডস রিসিভড নোট প্রিন্ট</h4>
+              <h4 className="text-sm font-bold text-on-surface">{text('Print Goods Received Note', 'পণ্য গ্রহণ নথি প্রিন্ট করুন')}</h4>
               <button
                 onClick={() => setSelectedGrnToPrint(null)}
                 className="p-1 text-outline hover:text-on-surface cursor-pointer"
@@ -439,10 +462,10 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
               <table className="w-full text-left text-[11px] border border-slate-200 mt-2">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="py-1 px-2">Item Description</th>
-                    <th className="py-1 px-2 text-center">Batch / Expiry</th>
-                    <th className="py-1 px-2 text-right">Accepted</th>
-                    <th className="py-1 px-2 text-right">Total (BDT)</th>
+                    <th className="py-1 px-2">{text('Item Description', 'পণ্যের বিবরণ')}</th>
+                    <th className="py-1 px-2 text-center">{text('Batch / Expiry', 'ব্যাচ / মেয়াদ')}</th>
+                    <th className="py-1 px-2 text-right">{text('Accepted', 'গৃহীত')}</th>
+                    <th className="py-1 px-2 text-right">{text('Total (BDT)', 'মোট (টাকা)')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -460,20 +483,21 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
               </table>
 
               <div className="flex justify-between items-center text-xs font-bold border-t border-slate-300 pt-2">
-                <span>Total Invoice Value:</span>
+                <span>{text('Total Invoice Value:', 'চালানের মোট মূল্য:')}</span>
                 <span className="text-sm font-black">৳{(selectedGrnToPrint.totalAcceptedValueBDT ?? (selectedGrnToPrint as any).totalInvoiceAmountBDT ?? 0)?.toLocaleString()}</span>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-[10px] border-t border-slate-300 pt-6 mt-2 text-center">
                 <div>
                   <div className="border-t border-slate-400 w-32 mx-auto mb-1"></div>
-                  <span>Store Keeper ({selectedGrnToPrint.inspectedBy || (selectedGrnToPrint as any).receivedBy || 'Staff'})</span>
+                  <span>{text('Store Keeper', 'গুদামরক্ষক')} ({selectedGrnToPrint.inspectedBy || (selectedGrnToPrint as any).receivedBy || text('Staff', 'কর্মী')})</span>
                 </div>
                 <div>
                   <div className="border-t border-slate-400 w-32 mx-auto mb-1"></div>
-                  <span>Quality Control Inspector ({selectedGrnToPrint.inspectedBy})</span>
+                  <span>{text('Quality Control Inspector', 'মান যাচাই পরিদর্শক')} ({selectedGrnToPrint.inspectedBy})</span>
                 </div>
               </div>
+              <PrintFooterQuantum />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -481,14 +505,14 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                 onClick={() => setSelectedGrnToPrint(null)}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-outline hover:text-on-surface cursor-pointer"
               >
-                বন্ধ করুন
+                {text('Close', 'বন্ধ করুন')}
               </button>
               <button
                 onClick={() => printElementById('printable-grn-slip', { title: 'Goods Received Note' })}
                 className="px-4 py-1.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[16px]">print</span>
-                <span>প্রিন্ট জিআরএন</span>
+                <span>{text('Print GRN', 'জিআরএন প্রিন্ট করুন')}</span>
               </button>
             </div>
           </div>

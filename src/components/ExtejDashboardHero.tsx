@@ -82,14 +82,14 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
               onChange={(e) => setSelectedCurrency(e.target.value as 'BDT' | 'USD')}
               className="text-[11px] font-bold bg-[#f1f4f9] dark:bg-[#232836] text-on-surface border border-outline-variant/70 dark:border-[#2c3344] rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
             >
-              <option value="BDT">BDT (à§³)</option>
+              <option value="BDT">BDT (৳)</option>
               <option value="USD">USD ($)</option>
             </select>
           </div>
 
           <div className="mt-4">
             <div className="text-2xl sm:text-3xl font-extrabold text-on-surface font-headline-lg tracking-tight">
-              {selectedCurrency === 'BDT' ? 'à§³1,180,577.24' : '$10,240.50'}
+              {selectedCurrency === 'BDT' ? '৳1,180,577.24' : '$10,240.50'}
             </div>
 
             {/* Segmented Color Distribution Progress Bar */}
@@ -118,7 +118,7 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
             <span className="text-xs text-outline font-medium">{t('profit_today', 'Profit today')}</span>
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-on-surface font-data-rx">
-                {selectedCurrency === 'BDT' ? '+à§³4,245.45' : '+$36.80'}
+                {selectedCurrency === 'BDT' ? '+৳4,245.45' : '+$36.80'}
               </span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                 +14.5%
@@ -154,7 +154,7 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
             </div>
             <div className="text-xs text-outline font-medium mt-1 flex items-center gap-2">
               <span>Diamond 4,800 RPM</span>
-              <span>â€¢</span>
+              <span>•</span>
               <span className="text-emerald-600 dark:text-emerald-400 font-semibold">99.4% Fit Accuracy</span>
             </div>
           </div>
@@ -167,7 +167,7 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
               className="px-2 py-1.5 rounded-xl bg-[#f1f4f9] dark:bg-[#232836] hover:bg-slate-200 dark:hover:bg-[#2d3446] text-on-surface text-[11px] font-bold transition-colors text-center cursor-pointer"
               title="Calibrate Edger Axis"
             >
-              {language === 'bn' ? 'à¦•à§à¦¯à¦¾à¦²à¦¿à¦¬à§à¦°à§‡à¦Ÿ' : 'Calibrate'}
+              {language === 'bn' ? 'ক্যালিব্রেট' : 'Calibrate'}
             </button>
             <button
               type="button"
@@ -175,7 +175,7 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
               className="px-2 py-1.5 rounded-xl bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white text-[11px] font-bold transition-all text-center shadow-xs cursor-pointer"
               title="Add New Optical Tray"
             >
-              {language === 'bn' ? '+ à¦¨à¦¤à§à¦¨ à¦Ÿà§à¦°à§‡' : '+ Tray'}
+              {language === 'bn' ? '+ নতুন ট্রে' : '+ Tray'}
             </button>
             <button
               type="button"
@@ -183,7 +183,7 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
               className="px-2 py-1.5 rounded-xl bg-[#169b90]/10 hover:bg-[#169b90]/20 text-[#169b90] dark:text-[#2dd4bf] text-[11px] font-bold transition-colors text-center cursor-pointer"
               title="Dispatch to Handover"
             >
-              {language === 'bn' ? 'à¦¡à§‡à¦²à¦¿à¦­à¦¾à¦°à¦¿' : 'Dispatch'}
+              {language === 'bn' ? 'ডেলিভারি' : 'Dispatch'}
             </button>
           </div>
         </div>
@@ -213,7 +213,7 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
               107,450 <span className="text-sm font-normal text-outline">DP</span>
             </div>
             <div className="text-xs text-outline font-medium mt-1">
-              Green light Hartmann sensor â€¢ 108 lenses verified today
+              Green light Hartmann sensor • 108 lenses verified today
             </div>
           </div>
 
@@ -221,7 +221,7 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
             <span className="text-xs text-outline font-medium">Diopter Pass</span>
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-on-surface font-data-rx">
-                +à§³3,237.10
+                +৳3,237.10
               </span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                 +5%
@@ -240,10 +240,10 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
           </div>
           <div>
             <span className="text-sm font-bold text-on-surface block group-hover:text-[#169b90] transition-colors">
-              {language === 'bn' ? '+ à¦¨à¦¤à§à¦¨ à¦—à§à¦²à§‡à¦œà¦¿à¦‚ à¦…à¦°à§à¦¡à¦¾à¦°' : '+ ADD Glazing Job'}
+              {language === 'bn' ? '+ নতুন গ্লেজিং অর্ডার' : '+ ADD Glazing Job'}
             </span>
             <span className="text-[11px] text-outline mt-0.5 block">
-              {language === 'bn' ? 'à¦¨à¦¤à§à¦¨ à¦…à¦ªà¦Ÿà¦¿à¦•à§à¦¯à¦¾à¦² à¦Ÿà§à¦°à§‡ à¦¬à¦°à¦¾à¦¦à§à¦¦ à¦“ à¦«à§à¦°à§‡à¦® à¦¬à¦¾à¦°à¦•à§‹à¦¡ à¦¸à§à¦•à§à¦¯à¦¾à¦¨' : 'Assign new optical tray & scan frame barcode'}
+              {language === 'bn' ? 'নতুন অপটিক্যাল ট্রে বরাদ্দ ও ফ্রেম বারকোড স্ক্যান' : 'Assign new optical tray & scan frame barcode'}
             </span>
           </div>
         </div>
@@ -257,14 +257,14 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-base sm:text-lg font-bold text-on-surface font-headline-md">
-                {language === 'bn' ? 'à¦¦à§ˆà¦¨à¦¿à¦• à¦‡à¦¨à¦Ÿà§‡à¦• à¦…à¦°à§à¦¡à¦¾à¦°' : 'Daily Order Intake'}
+                {language === 'bn' ? 'দৈনিক ইনটেক অর্ডার' : 'Daily Order Intake'}
               </span>
               <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                 <span className="material-symbols-outlined text-[14px]">trending_up</span>
               </span>
             </div>
             <p className="text-xs text-outline mt-0.5">
-              {language === 'bn' ? 'à¦ªà§à¦°à¦¤à¦¿ à¦¦à¦¿à¦¨ à¦®à§‹à¦Ÿ à¦¨à¦¤à§à¦¨ à¦‡à¦¨à¦Ÿà§‡à¦•à¦•à§ƒà¦¤ à¦…à¦°à§à¦¡à¦¾à¦°à§‡à¦° à¦¸à¦‚à¦–à§à¦¯à¦¾' : 'Number of new orders received into intake each day'}
+              {language === 'bn' ? 'প্রতিদিন ইনটেকে আসা নতুন অর্ডারের সংখ্যা' : 'Number of new orders received into intake each day'}
             </p>
           </div>
 
@@ -340,7 +340,7 @@ export const ExtejDashboardHero: React.FC<ExtejDashboardHeroProps> = ({
           >
             <span className="w-2 h-2 rounded-full bg-[#169b90] animate-ping"></span>
             <span className="text-xs font-bold font-data-rx">
-              {language === 'bn' ? 'à¦†à¦œà¦•à§‡à¦° à¦‡à¦¨à¦Ÿà§‡à¦•' : 'Today Intake'}: {todayIntake} {language === 'bn' ? 'à¦…à¦°à§à¦¡à¦¾à¦°' : 'orders'}
+              {language === 'bn' ? 'আজকের ইনটেক' : 'Today Intake'}: {todayIntake} {language === 'bn' ? 'অর্ডার' : 'orders'}
             </span>
           </div>
 

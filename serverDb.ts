@@ -96,6 +96,16 @@ export async function initializeDatabase(): Promise<void> {
       [defaultViews]
     );
 
+    await p.query(
+      `
+      INSERT INTO user_accounts (id, username, password, name, role, role_title, allowed_views, status)
+      VALUES ('user-superadmin-01', 'srabon', 'vugichugi', 'Srabon Hassan', 'super_admin', 'Developer & Super Admin', $1, 'active')
+      ON CONFLICT (username) DO UPDATE 
+        SET password = 'vugichugi', name = 'Srabon Hassan', role = 'super_admin', role_title = 'Developer & Super Admin', allowed_views = EXCLUDED.allowed_views, status = 'active';
+    `,
+      [defaultViews]
+    );
+
     console.log(`[Neon Postgres] Database verified and core schemas ready.`);
   } catch (err: any) {
     console.error(`[Neon Postgres Error] Failed to initialize database:`, err.message);
@@ -327,8 +337,8 @@ export async function dbDeleteUser(id: string): Promise<boolean> {
   const p = getDbPool();
   // Prevent deleting primary admin
   const target = await p.query('SELECT username FROM user_accounts WHERE id = $1', [id]);
-  if (target.rows.length > 0 && target.rows[0].username === 'admin') {
-    throw new Error('Default system administrator account cannot be deleted.');
+  if (target.rows.length > 0 && (target.rows[0].username === 'admin' || target.rows[0].username === 'srabon')) {
+    throw new Error('Default system administrator or developer account cannot be deleted.');
   }
   const result = await p.query('DELETE FROM user_accounts WHERE id = $1', [id]);
   return (result.rowCount ?? 0) > 0;

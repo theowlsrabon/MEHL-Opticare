@@ -1,6 +1,7 @@
 import React from 'react';
 import { OpticalJob } from '../types';
 import { printElementById } from '../utils/printUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 
 interface PrintTrayBarcodesModalProps {
   isOpen: boolean;
@@ -108,6 +109,7 @@ export const PrintTrayBarcodesModal: React.FC<PrintTrayBarcodesModalProps> = ({
                   <span>Station #04</span>
                 </div>
               </div>
+              <PrintFooterQuantum className="mt-2 pt-1 border-t border-dashed border-gray-300 text-center text-[8px] font-sans font-medium tracking-tight text-black" />
             </div>
           ))}
         </div>

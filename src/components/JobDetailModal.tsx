@@ -12,6 +12,7 @@ interface JobDetailModalProps {
   onOpenSmsModal?: (job: OpticalJob) => void;
   onCheckIn?: (jobId: string, qrCode: string, operator?: string) => void;
   onUpdateJob?: (job: OpticalJob) => void;
+  onDeleteJob?: (jobId: string) => void;
 }
 
 const fieldClass = 'w-full h-10 px-3 text-xs bg-surface-container-lowest dark:bg-[#202430] border border-outline-variant dark:border-[#2c3344] rounded-xl text-on-surface outline-hidden focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors';
@@ -24,6 +25,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
   onSendToAIGlazing,
   onUpdateJob,
   onCheckIn,
+  onDeleteJob,
 }) => {
   const [draft, setDraft] = useState<OpticalJob | null>(null);
   const [saved, setSaved] = useState(false);
@@ -239,6 +241,21 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
         <div className="px-5 py-3 border-t border-outline-variant flex items-center justify-between gap-3 shrink-0">
           <div className="text-xs text-primary font-bold min-h-5">{saved ? 'Changes saved' : ''}</div>
           <div className="flex items-center gap-2">
+            {onDeleteJob && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (draft && window.confirm(`Permanently delete lab job "${draft.jobCode} (${draft.patientName})"?`)) {
+                    onDeleteJob(draft.id);
+                    onClose();
+                  }
+                }}
+                className="h-9 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+                <span>Delete Lab Job</span>
+              </button>
+            )}
             <button type="button" onClick={save} className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-bold">
               Save
             </button>

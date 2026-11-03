@@ -296,6 +296,7 @@ export const NewInvoiceModal: React.FC<NewInvoiceModalProps> = ({
   const subtotal = framePrice + lensPrice + rushFee;
   const netPayable = Math.max(0, subtotal - discountAmount);
   const dueAmount = Math.max(0, netPayable - advancePaid);
+  const discountToAllocate = Math.min(Math.max(0, discountAmount), subtotal);
 
   // Commission calculation
   const commissionRate = selectedSalesman.commissionPct || 4.5;
@@ -344,6 +345,35 @@ export const NewInvoiceModal: React.FC<NewInvoiceModalProps> = ({
       commissionPct: commissionRate,
       commissionEarned: estCommission,
       paymentMethod,
+      itemLines: [
+        ...(framePrice > 0
+          ? [{
+              inventoryItemId: inventory.find((item) => item.sku === activeFrame.sku)?.id,
+              sku: activeFrame.sku,
+              name: `${activeFrame.brand} ${activeFrame.model}`,
+              brand: activeFrame.brand,
+              category: inventory.find((item) => item.sku === activeFrame.sku)?.category || 'Optical Frame',
+              quantity: 1,
+              unitPriceBDT: framePrice,
+              unitCostBDT: activeFrame.cost,
+              discountBDT: subtotal > 0 ? (framePrice / subtotal) * discountToAllocate : 0,
+            }]
+          : []),
+        ...(lensPrice > 0
+          ? [{
+              inventoryItemId: inventory.find((item) => item.id === currentLens.id)?.id,
+              sku: inventory.find((item) => item.id === currentLens.id)?.sku || `LENS-${currentLens.id}`,
+              name: currentLens.name,
+              category: 'Finished Lens' as const,
+              quantity: 1,
+              unitPriceBDT: lensPrice,
+              unitCostBDT: inventory.find((item) => item.id === currentLens.id)
+                ? Math.round((inventory.find((item) => item.id === currentLens.id)?.costPrice || 0) * 120)
+                : undefined,
+              discountBDT: subtotal > 0 ? (lensPrice / subtotal) * discountToAllocate : 0,
+            }]
+          : []),
+      ],
     };
 
     onInvoiceCreated(invoice);

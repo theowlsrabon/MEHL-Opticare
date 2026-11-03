@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { initialPrescriptions } from '../data/initialData';
 import { PrescriptionRecord } from '../types';
 import { printElementById } from '../utils/printUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 
 interface PrescriptionsViewProps {
   onOpenGlazingAssistant: () => void;
@@ -170,6 +171,8 @@ export const PrescriptionsView: React.FC<PrescriptionsViewProps> = ({
                   </p>
                 )}
               </div>
+
+              <PrintFooterQuantum />
 
               <div className="no-print flex justify-end gap-2 pt-3 border-t border-outline-variant/50 dark:border-[#262c3b]">
                 <button

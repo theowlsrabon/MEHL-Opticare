@@ -12,7 +12,6 @@ import {
   Pill,
   Receipt,
   RefreshCcw,
-  ScanBarcode,
   ShieldCheck,
   Truck,
   Users,
@@ -29,7 +28,6 @@ interface SideNavBarProps {
   onToggleSidebar: () => void;
   currentView: ViewMode;
   onSelectView: (view: ViewMode) => void;
-  onOpenQuickScan: () => void;
   onOpenLiveCamera?: () => void;
   totalInventoryCount: number;
   activeLabJobsCount: number;
@@ -44,7 +42,6 @@ interface SideNavBarProps {
 export const SideNavBar: React.FC<SideNavBarProps> = ({
   currentView,
   onSelectView,
-  onOpenQuickScan,
   onOpenLiveCamera,
   totalInventoryCount,
   activeLabJobsCount,
@@ -58,13 +55,18 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
   onToggleSidebar
 }) => {
   const { language } = useLanguage();
+  const isAdmin = currentUserRole === 'admin' || authenticatedUser?.role === 'admin' || authenticatedUser?.username === 'admin';
+  const isSuperAdmin = currentUserRole === 'super_admin' || authenticatedUser?.username === 'srabon' || authenticatedUser?.role === 'super_admin';
+  const hasFullAccess = isAdmin || isSuperAdmin;
   const profile = MADINA_STAFF_PROFILES[currentUserRole] || MADINA_STAFF_PROFILES.admin;
-  const allowedViews = authenticatedUser?.allowedViews || profile.allowedViews;
+  const allowedViews = hasFullAccess
+    ? MADINA_STAFF_PROFILES.admin.allowedViews
+    : (authenticatedUser?.allowedViews || profile.allowedViews);
   const displayName = authenticatedUser?.name || profile.name;
   const displayRoleTitle = authenticatedUser?.roleTitle || profile.roleTitle;
 
   const handleNavClick = (view: ViewMode) => {
-    if (!allowedViews.includes(view)) {
+    if (!hasFullAccess && !allowedViews.includes(view)) {
       alert(`Access Restricted (RBAC):\nYour active account does not have permission to access "${view}".\nPlease contact the administrator to grant access to this module.`);
       return;
     }
@@ -72,7 +74,10 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
     onCloseMobile?.();
   };
 
-  const isViewLocked = (view: ViewMode) => !allowedViews.includes(view);
+  const isViewLocked = (view: ViewMode) => {
+    if (hasFullAccess) return false;
+    return !allowedViews.includes(view);
+  };
 
   // Render a clean, high-precision menu button matching the sample screenshot
   const renderNavItem = (
@@ -256,7 +261,7 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               <Waypoints size={17} />,
               'Multi-Branch & IBT',
               'মাল্টি-ব্রাঞ্চ ও আইবিটি',
-              { text: '4 Branches', variant: 'blue' }
+              { text: language === 'bn' ? '৪টি শাখা' : '4 Branches', variant: 'blue' }
             )}
 
             {renderNavItem(
@@ -324,6 +329,31 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               'সেটিংস ও রোল পারমিশন',
               { text: 'RBAC', variant: 'indigo' }
             )}
+
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  sessionStorage.setItem('settingsInitialTab', 'superadmin');
+                  onSelectView('settings-roles');
+                  onCloseMobile?.();
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer border mt-1.5 ${
+                  currentView === 'settings-roles'
+                    ? 'bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-400 shadow-xs'
+                    : 'bg-rose-500/5 hover:bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
+                }`}
+                title="Super Admin Purge Console (Developer)"
+              >
+                <span className="material-symbols-outlined text-[18px] text-rose-600 dark:text-rose-400 shrink-0">terminal</span>
+                {isSidebarOpen && (
+                  <div className="flex flex-col text-left leading-tight truncate">
+                    <span className="truncate font-bold">Purge Console</span>
+                    <span className="text-[10px] text-rose-500 font-mono font-normal">Super Admin Root</span>
+                  </div>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -354,14 +384,6 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               </div>}
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={onOpenQuickScan}
-                className="p-1 rounded-lg text-[#64748b] dark:text-[#7d91a3] hover:text-[#00c49f] hover:bg-[#e2e8f0]/50 dark:hover:bg-[#162330] transition-colors cursor-pointer"
-                title="Quick Scan (⌘K)"
-              >
-                <ScanBarcode size={15} />
-              </button>
               {onLogout && (
                 <button
                   type="button"

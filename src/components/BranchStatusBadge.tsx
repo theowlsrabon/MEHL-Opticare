@@ -16,6 +16,7 @@ export const BranchStatusBadge: React.FC<BranchStatusBadgeProps> = ({
   variant = 'bilingual',
   size = 'sm',
   className = '',
+  showIcon = true,
 }) => {
   // Determine effective status with backward compatibility
   const effectiveStatus: BranchStatus = status || (isActive !== false ? 'active' : 'inactive');

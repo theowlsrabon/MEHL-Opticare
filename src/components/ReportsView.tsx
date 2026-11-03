@@ -3,6 +3,8 @@ import { Salesman, SaleRecord, InventoryItem, OpticalJob } from '../types';
 import { SalesmanReportsSection } from './SalesmanReportsSection';
 import { ItemWiseSalesSection } from './ItemWiseSalesSection';
 import { DailyClosingSummaryModal } from './DailyClosingSummaryModal';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
+import { useLanguage } from '../context/LanguageContext';
 
 interface ReportsViewProps {
   salesmen?: Salesman[];
@@ -27,6 +29,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   currentUserRole = 'Admin',
   onViewJob,
 }) => {
+  const { language } = useLanguage();
+  const isBangla = language === 'bn';
   const [activeTab, setActiveTab] = useState<'production' | 'salesmen' | 'item_sales'>(initialTab);
   const [isDailyClosingOpen, setIsDailyClosingOpen] = useState(false);
   const [closingInitialDate, setClosingInitialDate] = useState<string | undefined>(undefined);
@@ -39,14 +43,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <div className="flex items-center gap-2 mb-1">
             <span className="material-symbols-outlined text-[#169b90] text-[18px]">analytics</span>
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#169b90]">
-              Business Intelligence &amp; Performance Audit
+              {isBangla ? 'ব্যবসায়িক বিশ্লেষণ ও পারফরম্যান্স অডিট' : 'Business Intelligence & Performance Audit'}
             </span>
           </div>
           <h2 className="text-xl font-bold text-on-surface font-headline-md">
-            Optical Analytics &amp; Reports Center
+            {isBangla ? 'অপটিক্যাল অ্যানালিটিক্স ও রিপোর্ট সেন্টার' : 'Optical Analytics & Reports Center'}
           </h2>
           <p className="text-xs text-outline">
-            Monitor product sales velocity, salesman commissions, edger telemetry, and optical lab turnaround
+            {isBangla
+              ? 'পণ্যের বিক্রির গতি, বিক্রয়কর্মীর কমিশন, এজার কার্যক্রম এবং অপটিক্যাল ল্যাবের কাজের সময় পর্যবেক্ষণ করুন'
+              : 'Monitor product sales velocity, salesman commissions, edger telemetry, and optical lab turnaround'}
           </p>
         </div>
 
@@ -60,10 +66,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               setIsDailyClosingOpen(true);
             }}
             className="px-3 py-1.5 bg-[#08745f] hover:bg-[#065f4e] text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Open Daily Closing Summary Modal"
+            title={isBangla ? 'দৈনিক ক্লোজিং সামারি খুলুন' : 'Open Daily Closing Summary'}
           >
             <span className="material-symbols-outlined text-[18px] !text-white">fact_check</span>
-            <span className="!text-white">দৈনিক ক্লোজিং সামারি (Daily Closing Summary)</span>
+            <span className="!text-white">{isBangla ? 'দৈনিক ক্লোজিং সামারি' : 'Daily Closing Summary'}</span>
           </button>
 
           {/* Tab Switcher */}
@@ -78,7 +84,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">category</span>
-              <span>আইটেমভিত্তিক বিক্রয়</span>
+              <span>{isBangla ? 'আইটেমভিত্তিক বিক্রয়' : 'Item-wise Sales'}</span>
             </button>
 
             <button
@@ -91,7 +97,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">badge</span>
-              <span>Salesman</span>
+              <span>{isBangla ? 'বিক্রয়কর্মী' : 'Salesman'}</span>
             </button>
 
             <button
@@ -104,7 +110,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span>
-              <span>Lab Telemetry</span>
+              <span>{isBangla ? 'ল্যাব টেলিমেট্রি' : 'Lab Telemetry'}</span>
             </button>
           </div>
         </div>
@@ -129,7 +135,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               className="px-3.5 py-1.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[16px] text-teal-600">badge</span>
-              <span>Salesmen Profiles</span>
+              <span>{isBangla ? 'বিক্রয়কর্মীর প্রোফাইল' : 'Salesman Profiles'}</span>
             </button>
           </div>
           <SalesmanReportsSection
@@ -149,10 +155,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <div>
               <h3 className="text-base font-bold text-on-surface flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-[20px]">engineering</span>
-                <span>Workshop Production &amp; Clinical Analytics</span>
+                <span>{isBangla ? 'ওয়ার্কশপ উৎপাদন ও ক্লিনিক্যাল অ্যানালিটিক্স' : 'Workshop Production & Clinical Analytics'}</span>
               </h3>
               <p className="text-[12px] text-outline">
-                Edger cycle times, lens spoilage rate, rush SLA turnaround, and daily sales performance
+                {isBangla
+                  ? 'এজার সাইকেল টাইম, লেন্স নষ্টের হার, জরুরি অর্ডারের সময়সীমা এবং দৈনিক বিক্রির পারফরম্যান্স'
+                  : 'Edger cycle times, lens spoilage rate, rush SLA turnaround, and daily sales performance'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -165,7 +173,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-label-md font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[16px]">fact_check</span>
-                <span>দৈনিক ক্লোজিং সামারি</span>
+                <span>{isBangla ? 'দৈনিক ক্লোজিং সামারি' : 'Daily Closing Summary'}</span>
               </button>
               <button
                 type="button"
@@ -173,7 +181,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 className="px-3 py-1.5 bg-surface-container-low border border-outline-variant hover:bg-surface-container rounded-lg text-label-md font-semibold text-on-surface flex items-center gap-1.5 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[16px]">print</span>
-                <span>Export PDF Report</span>
+                <span>{isBangla ? 'PDF রিপোর্ট রপ্তানি' : 'Export PDF Report'}</span>
               </button>
             </div>
           </div>
@@ -181,32 +189,32 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           {/* Metrics Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 shadow-sm">
-              <span className="text-label-md text-outline">Lenses Glazed Today</span>
+              <span className="text-label-md text-outline">{isBangla ? 'আজ গ্লেজ করা লেন্স' : 'Lenses Glazed Today'}</span>
               <div className="text-display-lg font-extrabold text-primary mt-1 font-data-rx">
-                28 <span className="text-headline-sm font-normal text-outline">Pairs</span>
+                28 <span className="text-headline-sm font-normal text-outline">{isBangla ? 'জোড়া' : 'Pairs'}</span>
               </div>
               <div className="text-[11px] text-emerald-700 font-semibold mt-2">
-                ↑ +12% above daily target (25 pairs)
+                {isBangla ? '↑ দৈনিক লক্ষ্যমাত্রার চেয়ে +১২% বেশি (২৫ জোড়া)' : '↑ +12% above daily target (25 pairs)'}
               </div>
             </div>
 
             <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 shadow-sm">
-              <span className="text-label-md text-outline">Avg Edger Cycle Time</span>
+              <span className="text-label-md text-outline">{isBangla ? 'গড় এজার সাইকেল সময়' : 'Avg Edger Cycle Time'}</span>
               <div className="text-display-lg font-extrabold text-secondary mt-1 font-data-rx">
-                4.2 <span className="text-headline-sm font-normal text-outline">Min / Pair</span>
+                4.2 <span className="text-headline-sm font-normal text-outline">{isBangla ? 'মিনিট / জোড়া' : 'Min / Pair'}</span>
               </div>
               <div className="text-[11px] text-outline mt-2">
-                Essilor Delta 200 Diamond Wheel #01
+                {isBangla ? 'এসিলর ডেল্টা ২০০ ডায়মন্ড হুইল #০১' : 'Essilor Delta 200 Diamond Wheel #01'}
               </div>
             </div>
 
             <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 shadow-sm">
-              <span className="text-label-md text-outline">Lens Spoilage / Breakage</span>
+              <span className="text-label-md text-outline">{isBangla ? 'লেন্স নষ্ট / ভাঙার হার' : 'Lens Spoilage / Breakage'}</span>
               <div className="text-display-lg font-extrabold text-emerald-700 mt-1 font-data-rx">
-                0.8% <span className="text-headline-sm font-normal text-outline">Rate</span>
+                0.8% <span className="text-headline-sm font-normal text-outline">{isBangla ? 'হার' : 'Rate'}</span>
               </div>
               <div className="text-[11px] text-emerald-800 mt-2 font-medium">
-                Industry benchmark: &lt;2.0%
+                {isBangla ? 'শিল্পমান: <২.০%' : 'Industry benchmark: <2.0%'}
               </div>
             </div>
 
@@ -216,18 +224,22 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 setIsDailyClosingOpen(true);
               }}
               className="bg-surface-container-lowest border border-outline-variant hover:border-[#169b90] rounded-xl p-4 shadow-sm cursor-pointer transition-all hover:shadow-md group"
-              title="Click to view full Daily Closing Summary"
+              title={isBangla ? 'সম্পূর্ণ দৈনিক ক্লোজিং সামারি দেখতে ক্লিক করুন' : 'View the full Daily Closing Summary'}
             >
               <div className="flex items-center justify-between">
-                <span className="text-label-md text-outline group-hover:text-[#169b90] transition-colors">Today&apos;s Revenue</span>
+                <span className="text-label-md text-outline group-hover:text-[#169b90] transition-colors">
+                  {isBangla ? 'আজকের রাজস্ব' : 'Today’s Revenue'}
+                </span>
                 <span className="material-symbols-outlined text-[16px] text-outline group-hover:text-[#169b90] transition-transform group-hover:translate-x-0.5">open_in_new</span>
               </div>
               <div className="text-display-lg font-extrabold text-on-surface mt-1 font-data-rx group-hover:text-[#169b90] transition-colors">
                 ৳84,200
               </div>
               <div className="text-[11px] text-outline mt-2 flex items-center justify-between">
-                <span>৳62,400 Cash/bKash + ৳21,800 Adv. Deposit</span>
-                <span className="text-[#169b90] font-bold text-[10px] underline">ক্লোজিং দেখুন</span>
+                <span>{isBangla ? '৳৬২,৪০০ নগদ/বিকাশ + ৳২১,৮০০ অগ্রিম জমা' : '৳62,400 Cash/bKash + ৳21,800 Adv. Deposit'}</span>
+                <span className="text-[#169b90] font-bold text-[10px] underline">
+                  {isBangla ? 'ক্লোজিং দেখুন' : 'View closing'}
+                </span>
               </div>
             </div>
           </div>
@@ -237,24 +249,32 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 shadow-sm flex flex-col gap-3">
               <h3 className="font-bold text-on-surface text-[14px] flex items-center gap-2">
                 <span className="material-symbols-outlined text-secondary text-[18px]">precision_manufacturing</span>
-                <span>Edger Delta 200 Machine Telemetry</span>
+                <span>{isBangla ? 'এজার ডেল্টা ২০০ মেশিন টেলিমেট্রি' : 'Edger Delta 200 Machine Telemetry'}</span>
               </h3>
               <div className="flex flex-col gap-2.5 text-[12px] font-body-sm">
                 <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-lg">
-                  <span>Roughing Diamond Wheel Wear:</span>
-                  <span className="font-data-rx font-bold text-emerald-700">18% (Good for 420 more cuts)</span>
+                  <span>{isBangla ? 'রাফিং ডায়মন্ড হুইলের ক্ষয়:' : 'Roughing Diamond Wheel Wear:'}</span>
+                  <span className="font-data-rx font-bold text-emerald-700">
+                    {isBangla ? '১৮% (আরও ৪২০টি কাটিং উপযোগী)' : '18% (Good for 420 more cuts)'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-lg">
-                  <span>Bevel &amp; Grooving Blade Alignment:</span>
-                  <span className="font-data-rx font-bold text-emerald-700">Calibrated (Today 08:30 AM)</span>
+                  <span>{isBangla ? 'বেভেল ও গ্রুভিং ব্লেডের অ্যালাইনমেন্ট:' : 'Bevel & Grooving Blade Alignment:'}</span>
+                  <span className="font-data-rx font-bold text-emerald-700">
+                    {isBangla ? 'ক্যালিব্রেট করা (আজ সকাল ০৮:৩০)' : 'Calibrated (Today 08:30 AM)'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-lg">
-                  <span>Coolant Water Circulation Filter:</span>
-                  <span className="font-data-rx font-bold text-amber-700">Filter Replacement in 3 Days</span>
+                  <span>{isBangla ? 'কুল্যান্ট পানি চলাচলের ফিল্টার:' : 'Coolant Water Circulation Filter:'}</span>
+                  <span className="font-data-rx font-bold text-amber-700">
+                    {isBangla ? '৩ দিনের মধ্যে ফিল্টার বদলাতে হবে' : 'Filter Replacement in 3 Days'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-lg">
-                  <span>Digital Auto-Centering Clamp:</span>
-                  <span className="font-data-rx font-bold text-emerald-700">Zero Slippage (Axis ±0.25°)</span>
+                  <span>{isBangla ? 'ডিজিটাল অটো-সেন্টারিং ক্ল্যাম্প:' : 'Digital Auto-Centering Clamp:'}</span>
+                  <span className="font-data-rx font-bold text-emerald-700">
+                    {isBangla ? 'কোনো স্লিপ নেই (অক্ষ ±০.২৫°)' : 'Zero Slippage (Axis ±0.25°)'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -262,30 +282,38 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 shadow-sm flex flex-col gap-3">
               <h3 className="font-bold text-on-surface text-[14px] flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-[18px]">speed</span>
-                <span>Rush Turnaround SLA (2-Hour Express)</span>
+                <span>{isBangla ? 'জরুরি কাজের সময়সীমা (২ ঘণ্টা)' : 'Rush Turnaround SLA (2-Hour Express)'}</span>
               </h3>
               <div className="flex flex-col gap-2.5 text-[12px] font-body-sm">
                 <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-lg">
-                  <span>On-Time Handover Rate:</span>
+                  <span>{isBangla ? 'সময়মতো হস্তান্তরের হার:' : 'On-Time Handover Rate:'}</span>
                   <span className="font-data-rx font-bold text-emerald-700">96.4%</span>
                 </div>
                 <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-lg">
-                  <span>Fastest Glaze-to-Mount:</span>
-                  <span className="font-data-rx font-bold text-primary">38 Minutes (Single Vision CR-39)</span>
+                  <span>{isBangla ? 'দ্রুততম গ্লেজিং থেকে মাউন্ট:' : 'Fastest Glaze-to-Mount:'}</span>
+                  <span className="font-data-rx font-bold text-primary">
+                    {isBangla ? '৩৮ মিনিট (সিঙ্গেল ভিশন CR-39)' : '38 Minutes (Single Vision CR-39)'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-lg">
-                  <span>Complex Progressive Average:</span>
-                  <span className="font-data-rx font-bold text-on-surface">1 Hr 15 Min (Freeform 1.67)</span>
+                  <span>{isBangla ? 'জটিল প্রগ্রেসিভের গড় সময়:' : 'Complex Progressive Average:'}</span>
+                  <span className="font-data-rx font-bold text-on-surface">
+                    {isBangla ? '১ ঘণ্টা ১৫ মিনিট (ফ্রিফর্ম ১.৬৭)' : '1 Hr 15 Min (Freeform 1.67)'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-2.5 bg-surface-container-low rounded-lg">
-                  <span>QC Re-cut / Re-edge Incidents:</span>
-                  <span className="font-data-rx font-bold text-emerald-700">0 today (100% first-pass pass)</span>
+                  <span>{isBangla ? 'কিউসি পুনরায় কাটিং / এজিং:' : 'QC Re-cut / Re-edge Incidents:'}</span>
+                  <span className="font-data-rx font-bold text-emerald-700">
+                    {isBangla ? 'আজ ০টি (প্রথমবারেই ১০০% সফল)' : '0 today (100% first-pass pass)'}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      <PrintFooterQuantum className="hidden print:block mt-6 pt-3 border-t border-slate-300 text-center text-[9px] font-sans font-medium tracking-wide text-black" />
 
       {/* Daily Closing Summary Modal */}
       <DailyClosingSummaryModal

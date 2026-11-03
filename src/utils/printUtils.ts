@@ -81,6 +81,14 @@ export function printHtml(htmlContent: string, options: PrintOptions = {}): bool
     </style>
   `;
 
+  const hasQuantumProject = htmlContent.includes('Quantum') && htmlContent.includes('Project');
+  const renderedContent = hasQuantumProject
+    ? htmlContent
+    : `${htmlContent}
+      <div style="margin-top: 14px; padding-top: 6px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 9px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #000000; letter-spacing: 0.05em;">
+        A <span style="color: #047857; font-weight: 700;">Quantum</span> Project
+      </div>`;
+
   const fullPrintDoc = `
     <!DOCTYPE html>
     <html lang="en">
@@ -89,7 +97,7 @@ export function printHtml(htmlContent: string, options: PrintOptions = {}): bool
     </head>
     <body class="bg-white text-slate-900">
       <div class="print-container">
-        ${htmlContent}
+        ${renderedContent}
       </div>
       <script>
         window.addEventListener('load', function() {

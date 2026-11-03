@@ -3,6 +3,7 @@ import { InventoryItem, OpticalJob, UserProfile, UserRole, PrescriptionRecord } 
 import { initialPrescriptions } from '../data/initialData';
 import { decodeAdminCostCipher, encodeAdminCostCipher } from '../utils/barcodeUtils';
 import { printElementById } from '../utils/printUtils';
+import { PrintFooterQuantum } from './PrintFooterQuantum';
 
 export interface CartItem {
   id: string;
@@ -1867,6 +1868,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
               <div className="text-center font-bold tracking-widest text-[16px] mt-1">
                 |||||||||||||||||||||||||||||||
               </div>
+              <PrintFooterQuantum className="mt-2 pt-1 border-t border-dashed border-gray-300 text-center text-[9px] font-sans font-medium tracking-wide text-black" />
             </div>
 
             <div className="no-print flex items-center justify-between gap-3 pt-2">

