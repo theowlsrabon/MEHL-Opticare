@@ -143,7 +143,7 @@ export const CameraBarcodeScanner: React.FC<CameraBarcodeScannerProps> = ({
             height: Math.floor(minEdge * (isCompact ? 0.75 : 0.65)),
           };
         },
-        aspectRatio: 1.333,
+        aspectRatio: isCompact ? 16 / 9 : 1.333,
       };
 
       await html5QrCode.start(
@@ -382,7 +382,7 @@ export const CameraBarcodeScanner: React.FC<CameraBarcodeScannerProps> = ({
       </div>
 
       {/* Video Viewfinder Container */}
-      <div className="relative w-full rounded-xl overflow-hidden bg-black/90 aspect-4/3 flex items-center justify-center border border-outline-variant">
+      <div className={`relative w-full rounded-xl overflow-hidden bg-black/90 ${isCompact ? 'h-[clamp(140px,25vh,220px)]' : 'aspect-4/3'} flex items-center justify-center border border-outline-variant`}>
         {/* HTML5 QR code viewport element */}
         <div
           id={scannerRegionId.current}

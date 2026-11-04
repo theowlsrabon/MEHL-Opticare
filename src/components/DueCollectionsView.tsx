@@ -92,6 +92,8 @@ export interface DueCollectionRecord {
   id: string;
   amountBDT: number;
   tenderMode: string;
+  date: string;
+  invoiceNumber: string;
 }
 
 const INVOICE_DATABASE: DispensaryInvoice[] = [
@@ -718,6 +720,8 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
       id: paymentId,
       amountBDT: Math.round(collAmt),
       tenderMode: selectedPayMode,
+      date: new Date().toISOString().slice(0, 10),
+      invoiceNumber: activeInvoice.invoiceNumber,
     });
 
     // Update KPIs & Audit log

@@ -6,22 +6,26 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface SupplierGrnViewProps {
   suppliers: Supplier[];
+  onUpdateSuppliers: (suppliers: Supplier[]) => void;
   purchaseOrders: PurchaseOrder[];
   grns: GoodsReceivedNote[];
-  onUpdatePurchaseOrders?: (pos: PurchaseOrder[]) => void;
   onUpdateGrns?: (grns: GoodsReceivedNote[]) => void;
-  onCreatePo?: (po: PurchaseOrder) => void;
+  cashAvailableBDT: number;
+  onCreatePo: (po: PurchaseOrder) => boolean;
+  onPayPurchaseOrderDue: (poId: string) => void;
   onReceiveGrn?: (grn: GoodsReceivedNote) => void;
   onDeletePurchaseOrder?: (poId: string) => void;
 }
 
 export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
   suppliers,
+  onUpdateSuppliers,
   purchaseOrders,
   grns,
-  onUpdatePurchaseOrders,
-  onUpdateGrns,
+  cashAvailableBDT,
   onCreatePo,
+  onPayPurchaseOrderDue,
+  onUpdateGrns,
   onReceiveGrn,
   onDeletePurchaseOrder,
 }) => {
@@ -29,7 +33,82 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
   const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
   const [activeTab, setActiveTab] = useState<'suppliers' | 'pos' | 'grns'>('grns');
   const [isCreatingPO, setIsCreatingPO] = useState(false);
+  const [isEditingSupplier, setIsEditingSupplier] = useState(false);
+  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [selectedGrnToPrint, setSelectedGrnToPrint] = useState<GoodsReceivedNote | null>(null);
+  const [supplierFormError, setSupplierFormError] = useState('');
+  const [supplierForm, setSupplierForm] = useState({
+    name: '',
+    category: 'Optical Lenses' as Supplier['category'],
+    contactPerson: '',
+    phone: '',
+    email: '',
+    address: '',
+    taxRegistrationNumber: '',
+    paymentTermsDays: '30',
+  });
+
+  const openSupplierForm = (supplier?: Supplier) => {
+    setEditingSupplierId(supplier?.id ?? null);
+    setSupplierForm({
+      name: supplier?.name ?? '',
+      category: supplier?.category ?? 'Optical Lenses',
+      contactPerson: supplier?.contactPerson ?? '',
+      phone: supplier?.phone ?? '',
+      email: supplier?.email ?? '',
+      address: supplier?.address ?? '',
+      taxRegistrationNumber: supplier?.taxRegistrationNumber ?? '',
+      paymentTermsDays: String(supplier?.paymentTermsDays ?? 30),
+    });
+    setSupplierFormError('');
+    setIsEditingSupplier(true);
+  };
+
+  const handleSaveSupplier = (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = supplierForm.name.trim();
+    const paymentTermsDays = Number(supplierForm.paymentTermsDays);
+    if (!name || !supplierForm.contactPerson.trim() || !supplierForm.phone.trim() ||
+      !supplierForm.address.trim() || !Number.isInteger(paymentTermsDays) || paymentTermsDays < 0) {
+      setSupplierFormError(text('Enter the supplier name, contact, phone, address, and valid payment days.', 'সরবরাহকারীর নাম, যোগাযোগের ব্যক্তি, ফোন, ঠিকানা ও সঠিক পেমেন্ট দিনের সংখ্যা দিন।'));
+      return;
+    }
+
+    if (editingSupplierId) {
+      onUpdateSuppliers(suppliers.map((supplier) => supplier.id === editingSupplierId
+        ? {
+            ...supplier,
+            ...supplierForm,
+            name,
+            contactPerson: supplierForm.contactPerson.trim(),
+            phone: supplierForm.phone.trim(),
+            email: supplierForm.email.trim(),
+            address: supplierForm.address.trim(),
+            taxRegistrationNumber: supplierForm.taxRegistrationNumber.trim(),
+            paymentTermsDays,
+          }
+        : supplier
+      ));
+    } else {
+      const code = `SUP-${Date.now().toString(36).toUpperCase()}`;
+      onUpdateSuppliers([{
+        id: `supplier-${Date.now()}`,
+        code,
+        ...supplierForm,
+        name,
+        contactPerson: supplierForm.contactPerson.trim(),
+        phone: supplierForm.phone.trim(),
+        email: supplierForm.email.trim(),
+        address: supplierForm.address.trim(),
+        taxRegistrationNumber: supplierForm.taxRegistrationNumber.trim(),
+        paymentTermsDays,
+        activeOrdersCount: 0,
+        totalPurchasedBDT: 0,
+        ratingStars: 0,
+      }, ...suppliers]);
+    }
+    setIsEditingSupplier(false);
+  };
 
   // New PO State
   const [selectedSupplierId, setSelectedSupplierId] = useState(suppliers[0]?.id || '');
@@ -38,12 +117,37 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
     d.setDate(d.getDate() + 14);
     return d.toISOString().split('T')[0];
   });
+  const [poProductDescription, setPoProductDescription] = useState('');
+  const [poOrderAmount, setPoOrderAmount] = useState('');
+  const [poPaidAmount, setPoPaidAmount] = useState('0');
   const [poNotes, setPoNotes] = useState('Urgent optical inventory stock replenishment');
+  const [poFormError, setPoFormError] = useState('');
+  const parsedOrderAmount = Number(poOrderAmount) || 0;
+  const parsedPaidAmount = Number(poPaidAmount) || 0;
+  const poDueAmount = Math.max(0, parsedOrderAmount - parsedPaidAmount);
 
   const handleCreatePO = (e: React.FormEvent) => {
     e.preventDefault();
     const sup = suppliers.find(s => s.id === selectedSupplierId);
-    if (!sup) return;
+    if (!sup) {
+      setPoFormError(text('Select a supplier first.', 'প্রথমে সরবরাহকারী নির্বাচন করুন।'));
+      return;
+    }
+
+    const totalAmountBDT = Number(poOrderAmount);
+    const paidAmountBDT = Number(poPaidAmount);
+    if (!Number.isFinite(totalAmountBDT) || totalAmountBDT <= 0) {
+      setPoFormError(text('Enter an order amount greater than ৳0.', '৳০-এর বেশি অর্ডারের পরিমাণ লিখুন।'));
+      return;
+    }
+    if (!Number.isFinite(paidAmountBDT) || paidAmountBDT < 0 || paidAmountBDT > totalAmountBDT) {
+      setPoFormError(text('Paid amount must be between ৳0 and the order amount.', 'পরিশোধিত টাকা ৳০ থেকে অর্ডারের মোট টাকার মধ্যে হতে হবে।'));
+      return;
+    }
+    if (paidAmountBDT > cashAvailableBDT) {
+      setPoFormError(text('Paid amount exceeds available cash collected.', 'পরিশোধিত টাকা বর্তমানে থাকা নগদ সংগ্রহের চেয়ে বেশি।'));
+      return;
+    }
 
     const newPO: PurchaseOrder = {
       id: `po-${Date.now()}`,
@@ -56,31 +160,31 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
       items: [
         {
           id: 'item-1',
-          itemName: 'Crizal Alize UV 1.56 AR Hard Coated Lens Blanks',
-          category: 'Lens',
-          orderedQty: 100,
+          itemName: poProductDescription.trim() || text('Supplier product order', 'সরবরাহকারীর পণ্য অর্ডার'),
+          category: sup.category,
+          orderedQty: 1,
           receivedQty: 0,
-          unitPriceBDT: 1200,
-          totalPriceBDT: 120000,
-        },
-        {
-          id: 'item-2',
-          itemName: 'Ray-Ban Aviator Classic Gold Frame Medium',
-          category: 'Frame',
-          orderedQty: 20,
-          receivedQty: 0,
-          unitPriceBDT: 4800,
-          totalPriceBDT: 96000,
+          unitPriceBDT: totalAmountBDT,
+          totalPriceBDT: totalAmountBDT,
         },
       ],
-      totalAmountBDT: 216000,
-      paymentStatus: 'unpaid',
+      totalAmountBDT,
+      paidAmountBDT,
+      dueAmountBDT: totalAmountBDT - paidAmountBDT,
+      notes: poNotes.trim(),
+      paymentStatus: paidAmountBDT === 0 ? 'unpaid' : paidAmountBDT === totalAmountBDT ? 'paid' : 'partial',
       createdByName: 'TASFIQUR RAHMAN',
     };
 
-    onUpdatePurchaseOrders?.([newPO, ...purchaseOrders]);
-    onCreatePo?.(newPO);
+    if (!onCreatePo(newPO)) {
+      setPoFormError(text('Unable to create the order. Check available cash and try again.', 'অর্ডার তৈরি করা যায়নি। নগদ ব্যালেন্স দেখে আবার চেষ্টা করুন।'));
+      return;
+    }
     setIsCreatingPO(false);
+    setPoOrderAmount('');
+    setPoPaidAmount('0');
+    setPoProductDescription('');
+    setPoFormError('');
   };
 
   return (
@@ -249,7 +353,12 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
         <div className="bg-surface-container-lowest dark:bg-[#15181f] rounded-2xl border border-outline-variant/70 dark:border-[#252a36] shadow-2xs overflow-hidden">
           <div className="p-4 border-b border-outline-variant/60 dark:border-[#252a36] flex items-center justify-between bg-[#fbfcfe] dark:bg-[#181c25]">
             <h3 className="text-sm font-bold text-on-surface">{text('Issued Purchase Orders', 'ইস্যুকৃত ক্রয় আদেশ')}</h3>
-            <span className="text-xs text-outline">{purchaseOrders.length} {text('active orders', 'টি সক্রিয় আদেশ')}</span>
+            <div className="text-right">
+              <span className="block text-xs text-outline">{purchaseOrders.length} {text('active orders', 'টি সক্রিয় আদেশ')}</span>
+              <span className="block text-[11px] font-semibold text-teal-700 dark:text-teal-400">
+                {text('Drawer balance', 'ড্রয়ারে নগদ')}: ৳{cashAvailableBDT.toLocaleString()}
+              </span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -260,44 +369,77 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                   <th className="py-3 px-4">{text('Supplier', 'সরবরাহকারী')}</th>
                   <th className="py-3 px-4">{text('Expected Delivery Date', 'সম্ভাব্য সরবরাহের তারিখ')}</th>
                   <th className="py-3 px-4 text-center">{text('Items', 'পণ্যের সংখ্যা')}</th>
-                  <th className="py-3 px-4 text-right">{text('Total Amount', 'মোট অর্থ')}</th>
-                  <th className="py-3 px-4 text-center">{text('Status', 'অবস্থা')}</th>
-                  {onDeletePurchaseOrder && <th className="py-3 px-4 text-right">{text('Actions', 'কার্যক্রম')}</th>}
+                  <th className="py-3 px-4 text-right">{text('Order Amount', 'অর্ডারের পরিমাণ')}</th>
+                  <th className="py-3 px-4 text-right">{text('Paid', 'পরিশোধিত')}</th>
+                  <th className="py-3 px-4 text-right">{text('Due', 'বাকি')}</th>
+                  <th className="py-3 px-4 text-center">{text('Payment Status', 'পেমেন্ট অবস্থা')}</th>
+                  <th className="py-3 px-4 text-right">{text('Actions', 'কার্যক্রম')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/40 dark:divide-[#242936]">
-                {purchaseOrders.map((po) => (
-                  <tr key={po.id} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60">
-                    <td className="py-3.5 px-4 font-data-rx font-bold text-on-surface">{po.poNumber}</td>
-                    <td className="py-3.5 px-4 font-semibold text-on-surface">{po.supplierName}</td>
-                    <td className="py-3.5 px-4 text-outline">{po.expectedDeliveryDate}</td>
-                    <td className="py-3.5 px-4 text-center font-bold text-on-surface">{po.items.length} {text('items', 'টি পণ্য')}</td>
-                    <td className="py-3.5 px-4 text-right font-data-rx font-bold text-teal-700 dark:text-teal-400">
-                      ৳{po.totalAmountBDT?.toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-teal-500/15 text-teal-700 dark:text-teal-300">
-                        {po.status}
-                      </span>
-                    </td>
-                    {onDeletePurchaseOrder && (
-                      <td className="py-3.5 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(text(`Permanently delete requisition "${po.poNumber}"?`, `আপনি কি "${po.poNumber}" অর্ডারটি মুছে ফেলতে চান?`))) {
-                              onDeletePurchaseOrder(po.id);
-                            }
-                          }}
-                          className="px-2 py-1 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white font-bold text-[11px] inline-flex items-center gap-1 transition-all cursor-pointer"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">delete</span>
-                          <span>{text('Delete', 'মুছুন')}</span>
-                        </button>
+                {purchaseOrders.map((po) => {
+                  const paidAmount = po.paidAmountBDT ?? (po.paymentStatus === 'paid' ? po.totalAmountBDT : 0);
+                  const dueAmount = po.dueAmountBDT ?? Math.max(0, po.totalAmountBDT - paidAmount);
+                  const paymentStatus = dueAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+                  return (
+                    <tr key={po.id} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60">
+                      <td className="py-3.5 px-4 font-data-rx font-bold text-on-surface">{po.poNumber}</td>
+                      <td className="py-3.5 px-4 font-semibold text-on-surface">{po.supplierName}</td>
+                      <td className="py-3.5 px-4 text-outline">{po.expectedDeliveryDate}</td>
+                      <td className="py-3.5 px-4 text-center font-bold text-on-surface">{po.items.length} {text('items', 'টি পণ্য')}</td>
+                      <td className="py-3.5 px-4 text-right font-data-rx font-bold text-teal-700 dark:text-teal-400">
+                        ৳{po.totalAmountBDT.toLocaleString()}
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="py-3.5 px-4 text-right font-data-rx font-semibold text-on-surface">
+                        ৳{paidAmount.toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-data-rx font-bold text-rose-600 dark:text-rose-400">
+                        ৳{dueAmount.toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
+                          paymentStatus === 'paid'
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                            : paymentStatus === 'partial'
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              : 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                        }`}>
+                          {paymentStatus}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                        {dueAmount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => onPayPurchaseOrderDue(po.id)}
+                            disabled={dueAmount > cashAvailableBDT}
+                            title={dueAmount > cashAvailableBDT
+                              ? text('Not enough cash collected to pay this due.', 'এই বাকি পরিশোধের জন্য যথেষ্ট নগদ নেই।')
+                              : text('Pay the full remaining due from cash collected.', 'সংগৃহীত নগদ থেকে সম্পূর্ণ বাকি পরিশোধ করুন।')}
+                            className="px-2 py-1 mr-1 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-700 font-bold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">payments</span>
+                            <span>{text('Pay Due', 'বাকি পরিশোধ')}</span>
+                          </button>
+                        )}
+                        {onDeletePurchaseOrder && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(text(`Permanently delete requisition "${po.poNumber}"?`, `আপনি কি "${po.poNumber}" অর্ডারটি মুছে ফেলতে চান?`))) {
+                                onDeletePurchaseOrder(po.id);
+                              }
+                            }}
+                            className="px-2 py-1 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white font-bold text-[11px] inline-flex items-center gap-1 transition-all cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">delete</span>
+                            <span>{text('Delete', 'মুছুন')}</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -306,7 +448,18 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
 
       {/* TAB 3: SUPPLIERS DIRECTORY */}
       {activeTab === 'suppliers' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => openSupplierForm()}
+              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs inline-flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[18px]">person_add</span>
+              <span>{text('Add Supplier', 'সরবরাহকারী যোগ করুন')}</span>
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {suppliers.map((sup) => (
             <div
               key={sup.id}
@@ -319,7 +472,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                   </span>
                   <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
                     <span className="material-symbols-outlined text-[14px]">star</span>
-                    <span>{sup.rating}</span>
+                    <span>{sup.ratingStars || text('Not rated', 'রেটিং নেই')}</span>
                   </div>
                 </div>
 
@@ -345,15 +498,104 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
               <div className="mt-4 pt-3 border-t border-outline-variant/50 dark:border-[#252a36] flex items-center justify-between text-xs">
                 <div>
                   <span className="text-[10px] text-outline uppercase">{text('Payable', 'বকেয়া')}</span>
-                  <div className="font-data-rx font-bold text-red-600">৳{sup.outstandingBalanceBDT?.toLocaleString()}</div>
+                  <div className="font-data-rx font-bold text-red-600">
+                    ৳{purchaseOrders
+                      .filter((po) => po.supplierId === sup.id)
+                      .reduce((total, po) => total + (po.dueAmountBDT ?? Math.max(0, po.totalAmountBDT - (po.paidAmountBDT ?? (po.paymentStatus === 'paid' ? po.totalAmountBDT : 0)))), 0)
+                      .toLocaleString()}
+                  </div>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-outline uppercase">{text('Payment Terms', 'পেমেন্টের শর্ত')}</span>
-                  <div className="font-semibold text-on-surface">{sup.paymentTerms}</div>
+                  <div className="font-semibold text-on-surface">{sup.paymentTermsDays} {text('days', 'দিন')}</div>
                 </div>
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => openSupplierForm(sup)}
+                  aria-label={text(`Edit ${sup.name}`, `${sup.name} সম্পাদনা করুন`)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#252a36] text-on-surface hover:bg-slate-200 dark:hover:bg-[#303746] font-bold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[14px]">edit</span>
+                  <span>{text('Edit', 'সম্পাদনা')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(text(`Remove supplier "${sup.name}"? Existing purchase orders will be kept.`, `“${sup.name}” সরাবেন? আগের ক্রয় আদেশগুলো থাকবে।`))) {
+                      onUpdateSuppliers(suppliers.filter((supplier) => supplier.id !== sup.id));
+                    }
+                  }}
+                  aria-label={text(`Remove ${sup.name}`, `${sup.name} সরান`)}
+                  className="px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white font-bold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[14px]">delete</span>
+                  <span>{text('Remove', 'সরান')}</span>
+                </button>
               </div>
             </div>
           ))}
+          </div>
+        </div>
+      )}
+
+      {isEditingSupplier && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <form onSubmit={handleSaveSupplier} className="bg-surface-container-lowest dark:bg-[#181c25] rounded-2xl max-w-2xl w-full border border-outline-variant/80 dark:border-[#272d3a] shadow-2xl p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-outline-variant/60 dark:border-[#272d3a] pb-3">
+              <h3 className="text-base font-bold text-on-surface">
+                {editingSupplierId ? text('Edit Supplier', 'সরবরাহকারীর তথ্য সম্পাদনা') : text('Add Supplier', 'নতুন সরবরাহকারী যোগ করুন')}
+              </h3>
+              <button type="button" onClick={() => setIsEditingSupplier(false)} aria-label={text('Close', 'বন্ধ করুন')} className="p-1 text-outline hover:text-on-surface cursor-pointer">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="text-[11px] font-bold text-outline">
+                {text('Supplier Name', 'সরবরাহকারীর নাম')} *
+                <input required value={supplierForm.name} onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })} className="w-full mt-1 px-2.5 py-2 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]" />
+              </label>
+              <label className="text-[11px] font-bold text-outline">
+                {text('Category', 'ধরন')} *
+                <select value={supplierForm.category} onChange={(e) => setSupplierForm({ ...supplierForm, category: e.target.value as Supplier['category'] })} className="w-full mt-1 px-2.5 py-2 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]">
+                  <option value="Optical Lenses">{text('Optical Lenses', 'অপটিক্যাল লেন্স')}</option>
+                  <option value="Designer Frames">{text('Designer Frames', 'ডিজাইনার ফ্রেম')}</option>
+                  <option value="Ophthalmic Pharma">{text('Ophthalmic Pharma', 'চক্ষু ওষুধ')}</option>
+                  <option value="Lab Consumables">{text('Lab Consumables', 'ল্যাব সামগ্রী')}</option>
+                </select>
+              </label>
+              <label className="text-[11px] font-bold text-outline">
+                {text('Contact Person', 'যোগাযোগের ব্যক্তি')} *
+                <input required value={supplierForm.contactPerson} onChange={(e) => setSupplierForm({ ...supplierForm, contactPerson: e.target.value })} className="w-full mt-1 px-2.5 py-2 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]" />
+              </label>
+              <label className="text-[11px] font-bold text-outline">
+                {text('Phone', 'ফোন')} *
+                <input required type="tel" value={supplierForm.phone} onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })} className="w-full mt-1 px-2.5 py-2 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]" />
+              </label>
+              <label className="text-[11px] font-bold text-outline">
+                {text('Email', 'ইমেইল')}
+                <input type="email" value={supplierForm.email} onChange={(e) => setSupplierForm({ ...supplierForm, email: e.target.value })} className="w-full mt-1 px-2.5 py-2 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]" />
+              </label>
+              <label className="text-[11px] font-bold text-outline">
+                {text('Tax Registration Number', 'ট্যাক্স রেজিস্ট্রেশন নম্বর')}
+                <input value={supplierForm.taxRegistrationNumber} onChange={(e) => setSupplierForm({ ...supplierForm, taxRegistrationNumber: e.target.value })} className="w-full mt-1 px-2.5 py-2 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]" />
+              </label>
+              <label className="text-[11px] font-bold text-outline">
+                {text('Payment Terms (days)', 'পেমেন্টের মেয়াদ (দিন)')} *
+                <input required type="number" min="0" step="1" value={supplierForm.paymentTermsDays} onChange={(e) => setSupplierForm({ ...supplierForm, paymentTermsDays: e.target.value })} className="w-full mt-1 px-2.5 py-2 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]" />
+              </label>
+              <label className="text-[11px] font-bold text-outline sm:col-span-2">
+                {text('Address', 'ঠিকানা')} *
+                <textarea required rows={2} value={supplierForm.address} onChange={(e) => setSupplierForm({ ...supplierForm, address: e.target.value })} className="w-full mt-1 px-2.5 py-2 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]" />
+              </label>
+            </div>
+            {supplierFormError && <p role="alert" className="text-xs font-semibold text-rose-600 dark:text-rose-400">{supplierFormError}</p>}
+            <div className="border-t border-outline-variant/60 dark:border-[#272d3a] pt-3 flex justify-end gap-2">
+              <button type="button" onClick={() => setIsEditingSupplier(false)} className="px-4 py-2 rounded-xl text-xs font-semibold text-outline hover:text-on-surface cursor-pointer">{text('Cancel', 'বাতিল')}</button>
+              <button type="submit" className="px-5 py-2 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer">{text('Save Supplier', 'সংরক্ষণ করুন')}</button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -386,6 +628,55 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
             </div>
 
             <div>
+              <label className="text-[11px] font-bold text-outline">{text('Product / Order Description', 'পণ্য / অর্ডারের বিবরণ')}</label>
+              <input
+                type="text"
+                value={poProductDescription}
+                onChange={(e) => setPoProductDescription(e.target.value)}
+                placeholder={text('Describe the products being ordered', 'অর্ডার করা পণ্যের বিবরণ লিখুন')}
+                className="w-full mt-1 px-2.5 py-1.5 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-outline">{text('Order Amount (৳)', 'অর্ডারের মোট টাকা (৳)')}</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={poOrderAmount}
+                  onChange={(e) => setPoOrderAmount(e.target.value)}
+                  required
+                  className="w-full mt-1 px-2.5 py-1.5 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-outline">{text('Paid Now (৳)', 'এখন পরিশোধ (৳)')}</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={poPaidAmount}
+                  onChange={(e) => setPoPaidAmount(e.target.value)}
+                  required
+                  className="w-full mt-1 px-2.5 py-1.5 bg-surface-container dark:bg-[#202532] text-xs font-semibold text-on-surface rounded-lg border border-outline-variant/70 dark:border-[#2a3040]"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg bg-surface-container/70 dark:bg-[#202532] px-3 py-2 text-xs">
+              <span className="font-semibold text-outline">{text('Due after payment', 'পরিশোধের পর বাকি')}</span>
+              <span className="font-bold text-rose-600 dark:text-rose-400">৳{poDueAmount.toLocaleString()}</span>
+            </div>
+            <div className="text-[11px] text-outline">
+              {text('Drawer balance', 'ড্রয়ারে নগদ')}: ৳{cashAvailableBDT.toLocaleString()}
+            </div>
+            {poFormError && (
+              <p role="alert" className="text-xs font-semibold text-rose-600 dark:text-rose-400">{poFormError}</p>
+            )}
+
+            <div>
               <label className="text-[11px] font-bold text-outline">{text('Expected Delivery Date', 'সম্ভাব্য সরবরাহের তারিখ')}</label>
               <input
                 type="date"
@@ -415,6 +706,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
               </button>
               <button
                 type="submit"
+                disabled={suppliers.length === 0}
                 className="px-5 py-2 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer"
               >
                 {text('Issue PO', 'ক্রয় আদেশ ইস্যু করুন')}

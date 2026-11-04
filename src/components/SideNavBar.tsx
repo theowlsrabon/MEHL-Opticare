@@ -330,7 +330,7 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               { text: 'RBAC', variant: 'indigo' }
             )}
 
-            {isSuperAdmin && (
+            {/*{isSuperAdmin && (
               <button
                 type="button"
                 onClick={() => {
@@ -353,7 +353,7 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
                   </div>
                 )}
               </button>
-            )}
+            )}*/}
           </div>
         </div>
 

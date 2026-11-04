@@ -319,9 +319,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       <DailyClosingSummaryModal
         isOpen={isDailyClosingOpen}
         onClose={() => setIsDailyClosingOpen(false)}
-        salesRecords={salesRecords}
-        jobs={jobs}
-        salesmen={salesmen}
         currentUserRole={currentUserRole}
         initialDate={closingInitialDate}
         onViewJob={onViewJob}

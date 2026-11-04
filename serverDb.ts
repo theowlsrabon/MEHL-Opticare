@@ -65,6 +65,19 @@ export async function initializeDatabase(): Promise<void> {
       );
     `);
 
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS financial_collections (
+        id VARCHAR(150) NOT NULL PRIMARY KEY,
+        collection_date DATE NOT NULL,
+        amount_bdt NUMERIC(12,2) NOT NULL,
+        tender_mode VARCHAR(50) NOT NULL,
+        invoice_number VARCHAR(100) NOT NULL DEFAULT '',
+        data_json TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_financial_collections_date ON financial_collections (collection_date);
+    `);
+
     // Ensure default admin user exists
     const defaultViews = JSON.stringify([
       'executive-dashboard',
@@ -246,6 +259,97 @@ export async function dbUpsertSale(sale: any): Promise<void> {
     sale.salesmanId || null,
     JSON.stringify(sale),
   ]);
+}
+
+export async function dbGetFinancialCollections(): Promise<any[]> {
+  const p = getDbPool();
+  const result = await p.query('SELECT data_json FROM financial_collections ORDER BY collection_date DESC, created_at DESC');
+  return result.rows.map((row: any) => JSON.parse(row.data_json));
+}
+
+export async function dbGetDailyClosingData(date: string): Promise<{
+  sales: any[];
+  collections: any[];
+  invoiceCollections: any[];
+  completedJobs: any[];
+}> {
+  const p = getDbPool();
+  const salesResult = await p.query(
+    `SELECT data_json
+     FROM sales_records
+     WHERE COALESCE(data_json::jsonb->>'date', LEFT(data_json::jsonb->>'timestamp', 10)) = $1
+     ORDER BY created_at DESC`,
+    [date]
+  );
+  const sales = salesResult.rows.map((row: any) => JSON.parse(row.data_json));
+  const collectionsResult = await p.query(
+    'SELECT data_json FROM financial_collections WHERE collection_date = $1::date ORDER BY created_at',
+    [date]
+  );
+  const collections = collectionsResult.rows.map((row: any) => JSON.parse(row.data_json));
+  const invoiceNumbers = [...new Set(sales.map((sale: any) => sale.invoiceNumber).filter(Boolean))];
+  const invoiceCollectionsResult = invoiceNumbers.length
+    ? await p.query(
+        'SELECT data_json FROM financial_collections WHERE invoice_number = ANY($1::text[]) ORDER BY collection_date, created_at',
+        [invoiceNumbers]
+      )
+    : { rows: [] };
+  const invoiceCollections = invoiceCollectionsResult.rows.map((row: any) => JSON.parse(row.data_json));
+  const collectionIds = new Set(invoiceCollections.map((collection: any) => collection.id));
+  const legacyAdvances = sales
+    .filter((sale: any) => Number(sale.advancePaid) > 0 && !collectionIds.has(`sale-${sale.id}`))
+    .map((sale: any) => ({
+      id: `sale-${sale.id}`,
+      amountBDT: Number(sale.advancePaid),
+      tenderMode: sale.paymentMethod || 'Cash',
+      date: sale.date || String(sale.timestamp || '').slice(0, 10),
+      invoiceNumber: sale.invoiceNumber,
+    }));
+  invoiceCollections.push(...legacyAdvances);
+  const dailyCollectionIds = new Set(collections.map((collection: any) => collection.id));
+  collections.push(...legacyAdvances.filter(
+    (collection: any) => collection.date === date && !dailyCollectionIds.has(collection.id)
+  ));
+  const jobsResult = await p.query('SELECT data_json FROM optical_jobs');
+  const formattedDate = new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  const completedJobs = jobsResult.rows
+    .map((row: any) => JSON.parse(row.data_json))
+    .filter((job: any) => job.stage === 5 && (job.auditTrail || []).some(
+      (entry: any) => {
+        if (entry.stageNumber !== 5 || typeof entry.timestamp !== 'string') return false;
+        const auditDate = entry.timestamp.split(' • ')[0].trim();
+        return entry.timestamp.slice(0, 10) === date || auditDate === formattedDate;
+      }
+    ));
+
+  return { sales, collections, invoiceCollections, completedJobs };
+}
+
+export async function dbUpsertFinancialCollection(collection: any): Promise<void> {
+  const p = getDbPool();
+  await p.query(
+    `INSERT INTO financial_collections (id, collection_date, amount_bdt, tender_mode, invoice_number, data_json)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE SET
+       collection_date = EXCLUDED.collection_date,
+       amount_bdt = EXCLUDED.amount_bdt,
+       tender_mode = EXCLUDED.tender_mode,
+       invoice_number = EXCLUDED.invoice_number,
+       data_json = EXCLUDED.data_json`,
+    [
+      collection.id,
+      collection.date,
+      collection.amountBDT,
+      collection.tenderMode,
+      collection.invoiceNumber || '',
+      JSON.stringify(collection),
+    ]
+  );
 }
 
 // ----------------- SALESMEN REPOSITORY -----------------

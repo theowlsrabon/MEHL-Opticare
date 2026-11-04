@@ -60,6 +60,19 @@ CREATE TABLE IF NOT EXISTS sales_records (
 CREATE INDEX IF NOT EXISTS idx_sales_records_invoice_number ON sales_records (invoice_number);
 CREATE INDEX IF NOT EXISTS idx_sales_records_salesman ON sales_records (salesman_id);
 
+-- 3a. Financial collections received from POS and due-payment receipts
+CREATE TABLE IF NOT EXISTS financial_collections (
+  id VARCHAR(150) NOT NULL PRIMARY KEY,
+  collection_date DATE NOT NULL,
+  amount_bdt NUMERIC(12,2) NOT NULL,
+  tender_mode VARCHAR(50) NOT NULL,
+  invoice_number VARCHAR(100) NOT NULL DEFAULT '',
+  data_json TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_collections_date ON financial_collections (collection_date);
+
 -- 4. Sales Staff Registry
 CREATE TABLE IF NOT EXISTS salesmen (
   id VARCHAR(100) NOT NULL PRIMARY KEY,

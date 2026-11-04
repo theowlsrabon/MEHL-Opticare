@@ -15,6 +15,9 @@ import {
   dbBulkUpsertInventory,
   dbGetSales,
   dbUpsertSale,
+  dbGetFinancialCollections,
+  dbGetDailyClosingData,
+  dbUpsertFinancialCollection,
   dbGetSalesmen,
   dbUpsertSalesman,
   dbGetSmsLogs,
@@ -335,6 +338,54 @@ app.post("/api/sales", async (req, res) => {
     if (!sale || !sale.id) return res.status(400).json({ success: false, error: "Missing sale object or id" });
     await dbUpsertSale(sale);
     res.json({ success: true, message: `Sale record ${sale.invoiceNumber || sale.id} saved to Neon PostgreSQL` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/financial-collections", async (_req, res) => {
+  try {
+    const collections = await dbGetFinancialCollections();
+    res.json({ success: true, count: collections.length, data: collections });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.get("/api/daily-closing", async (req, res) => {
+  const date = typeof req.query.date === "string" ? req.query.date : "";
+  const parsedDate = new Date(`${date}T00:00:00Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.toISOString().slice(0, 10) !== date
+  ) {
+    return res.status(400).json({ success: false, error: "A valid date query is required (YYYY-MM-DD)." });
+  }
+
+  try {
+    const data = await dbGetDailyClosingData(date);
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/financial-collections", async (req, res) => {
+  try {
+    const collection = req.body;
+    if (
+      !collection ||
+      typeof collection.id !== "string" ||
+      typeof collection.date !== "string" ||
+      !Number.isFinite(Number(collection.amountBDT)) ||
+      Number(collection.amountBDT) <= 0 ||
+      typeof collection.tenderMode !== "string"
+    ) {
+      return res.status(400).json({ success: false, error: "Invalid collection record" });
+    }
+    await dbUpsertFinancialCollection(collection);
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

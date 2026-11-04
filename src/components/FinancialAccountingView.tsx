@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
-import { DispensationRecord, FinancialSummary, ExpenseItem, SaleRecord } from '../types';
+import { DispensationRecord, FinancialSummary, ExpenseItem, SaleRecord, PurchaseOrder, SalesReturn, PurchaseReturn } from '../types';
 import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { useLanguage } from '../context/LanguageContext';
+import { DueCollectionRecord } from './DueCollectionsView';
 
 interface FinancialAccountingViewProps {
   financialSummary: FinancialSummary;
   expenses: ExpenseItem[];
   salesRecords: SaleRecord[];
   dispensations: DispensationRecord[];
+  financialCollections: DueCollectionRecord[];
+  purchaseOrders: PurchaseOrder[];
+  salesReturns: SalesReturn[];
+  purchaseReturns: PurchaseReturn[];
   onAddExpense: (expense: ExpenseItem) => void;
+  onDeleteExpense?: (expenseId: string) => void;
 }
 
 const toDateInputValue = (date: Date) => {
@@ -31,7 +37,12 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   expenses,
   salesRecords,
   dispensations,
+  financialCollections,
+  purchaseOrders,
+  salesReturns,
+  purchaseReturns,
   onAddExpense,
+  onDeleteExpense,
 }) => {
   const { language } = useLanguage();
   const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
@@ -60,17 +71,40 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   const filteredExpenses = validReportPeriod
     ? expenses.filter((expense) => expense.date >= reportStartDate && expense.date <= reportEndDate)
     : [];
+  const filteredCollections = validReportPeriod
+    ? financialCollections.filter((collection) => collection.date >= reportStartDate && collection.date <= reportEndDate)
+    : [];
+  const filteredSalesReturns = validReportPeriod
+    ? salesReturns.filter((record) => record.date >= reportStartDate && record.date <= reportEndDate && record.status !== 'pending')
+    : [];
+  const filteredPurchaseOrders = validReportPeriod
+    ? purchaseOrders.filter((order) => order.date >= reportStartDate && order.date <= reportEndDate && order.status !== 'draft')
+    : [];
+  const filteredPurchaseReturns = validReportPeriod
+    ? purchaseReturns.filter((record) => record.date >= reportStartDate && record.date <= reportEndDate && record.status === 'credit_adjusted')
+    : [];
+  const reportCollectionsReceived = filteredCollections.reduce((total, record) => total + record.amountBDT, 0);
+  const reportSalesRefunds = filteredSalesReturns.reduce((total, record) => total + record.totalRefundBDT, 0);
+  const reportSupplierPurchases = filteredPurchaseOrders.reduce((total, order) => total + order.totalAmountBDT, 0);
+  const reportSupplierCredits = filteredPurchaseReturns.reduce((total, record) => total + record.totalClaimAmountBDT, 0);
+  const collectionsByTender: Record<string, number> = {};
+  filteredCollections.forEach((collection) => {
+    collectionsByTender[collection.tenderMode] = (collectionsByTender[collection.tenderMode] || 0) + collection.amountBDT;
+  });
   const reportOpticalRevenue = filteredSales.reduce((total, sale) => total + sale.totalAmount, 0);
   const reportPharmacyRevenue = filteredDispensations.reduce((total, record) => total + record.totalPriceBDT, 0);
   const reportRecordedRevenue = reportOpticalRevenue + reportPharmacyRevenue;
+  const reportRecordedCogs = filteredSales.reduce((total, sale) => (
+    total + (sale.itemLines || []).reduce((saleTotal, line) => (
+      typeof line.unitCostBDT === 'number' && Number.isFinite(line.unitCostBDT)
+        ? saleTotal + line.unitCostBDT * line.quantity
+        : saleTotal
+    ), 0)
+  ), 0);
+  const reportNetRevenue = reportRecordedRevenue - reportSalesRefunds;
+  const reportGrossProfitEstimate = reportNetRevenue - reportRecordedCogs;
   const reportOperatingExpenses = filteredExpenses.reduce((total, expense) => total + expense.amountBDT, 0);
-  const expensesByCategory = filteredExpenses.reduce<Partial<Record<ExpenseItem['category'], number>>>(
-    (totals, expense) => {
-      totals[expense.category] = (totals[expense.category] || 0) + expense.amountBDT;
-      return totals;
-    },
-    {}
-  );
+  const reportEbitdaEstimate = reportGrossProfitEstimate - reportOperatingExpenses;
 
   // New Expense Form State
   const [expenseTitle, setExpenseTitle] = useState('');
@@ -144,7 +178,7 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
       </div>
 
       {/* Top Financial KPI Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
         <div className="bg-surface-container-lowest dark:bg-[#15181f] p-4 rounded-xl border border-outline-variant/70 dark:border-[#252a36]">
           <span className="text-[10px] font-extrabold text-outline uppercase tracking-wider">{text('Total Revenue', 'মোট রাজস্ব')}</span>
           <div className="text-2xl font-black text-on-surface mt-1">
@@ -178,6 +212,16 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
           </div>
           <div className="text-[11px] text-teal-800 dark:text-teal-200 font-bold mt-1">
             {text('Net margin:', 'নিট মুনাফার হার:')} {financialSummary.profitMarginPct}%
+          </div>
+        </div>
+
+        <div className="bg-surface-container-lowest dark:bg-[#15181f] p-4 rounded-xl border border-outline-variant/70 dark:border-[#252a36]">
+          <span className="text-[10px] font-extrabold text-outline uppercase tracking-wider">{text('Cash in Drawer', 'ড্রয়ারে নগদ')}</span>
+          <div className="text-2xl font-black text-blue-700 dark:text-blue-300 mt-1">
+            ৳{formatAmount(financialSummary.cashCollectedBDT)}
+          </div>
+          <div className="text-[11px] text-outline font-semibold mt-1">
+            {text('Current balance after cash transactions', 'নগদ লেনদেনের পর বর্তমান ব্যালেন্স')}
           </div>
         </div>
       </div>
@@ -270,12 +314,12 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
               </p>
             </header>
             <p className="mb-4 rounded-lg bg-amber-50 p-2 text-[10px] leading-relaxed text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-              {text('Dated sales, pharmacy dispensing, and expense records are shown for the selected period. Full gross/net profit cannot be calculated because dated COGS and consultation-fee transactions are not recorded.', 'নির্বাচিত সময়সীমার তারিখযুক্ত বিক্রয়, ফার্মেসি বিক্রয় ও খরচের তথ্য দেখানো হয়েছে। তারিখভিত্তিক COGS ও পরামর্শ-ফি সংরক্ষিত না থাকায় পূর্ণ মোট/নিট মুনাফা গণনা করা যাচ্ছে না।')}
+              {text('Profit figures are estimates from recorded sales-line costs and operating expenses. Unrecorded product costs, pharmacy COGS, depreciation, interest, and tax are excluded. Collections and inventory purchases are shown separately and do not change EBITDA.', 'লাভের হিসাব বিক্রয়-লাইনে সংরক্ষিত পণ্যের খরচ ও পরিচালন ব্যয়ের ভিত্তিতে আনুমানিক। অনুপস্থিত পণ্যমূল্য, ফার্মেসি COGS, অবচয়, সুদ ও কর এতে অন্তর্ভুক্ত নয়। আদায় ও পণ্য কেনাকাটা আলাদাভাবে দেখানো হয়েছে; EBITDA-তে যোগ বা বিয়োগ করা হয়নি।')}
             </p>
-            {/* Revenue Block */}
+            {/* Revenue and returns */}
             <div className="border-b border-slate-200 dark:border-[#272d3a] pb-3 mb-3">
               <div className="font-extrabold text-sm text-teal-700 dark:text-teal-400 uppercase tracking-wider mb-2">
-                {text('1. Gross Revenue', '১. মোট ইনভয়েসকৃত রাজস্ব')}
+                {text('1. Revenue', '১. রাজস্ব')}
               </div>
               <div className="space-y-1.5 pl-3">
                 <div className="flex justify-between">
@@ -286,58 +330,67 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <span>{text('Pharmacy Sales', 'ফার্মেসি বিক্রয়')}</span>
                   <span className="font-data-rx font-bold">৳{formatAmount(reportPharmacyRevenue)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-on-surface">{text('Clinical / Consultation Fees', 'ক্লিনিক্যাল / পরামর্শ ফি')}</span>
-                  <span className="font-semibold text-outline">{text('No dated records', 'তারিখভিত্তিক রেকর্ড নেই')}</span>
+                <div className="flex justify-between pt-1 font-bold border-t border-dashed border-slate-300 dark:border-[#272d3a]">
+                  <span>{text('Gross sales revenue', 'মোট বিক্রয় রাজস্ব')}</span>
+                  <span className="font-data-rx">৳{formatAmount(reportRecordedRevenue)}</span>
+                </div>
+                <div className="flex justify-between text-red-700 dark:text-red-300">
+                  <span>{text('Less: sales returns and refunds', 'বাদ: বিক্রয় ফেরত ও রিফান্ড')}</span>
+                  <span className="font-data-rx font-bold">−৳{formatAmount(reportSalesRefunds)}</span>
                 </div>
                 <div className="flex justify-between pt-1 font-extrabold border-t border-dashed border-slate-300 dark:border-[#272d3a]">
-                  <span>{text('Total Recorded Revenue:', 'মোট রেকর্ডকৃত রাজস্ব:')}</span>
+                  <span>{text('Net Revenue', 'নিট রাজস্ব')}</span>
                   <span className="font-data-rx text-emerald-600 dark:text-emerald-400">
-                    ৳{formatAmount(reportRecordedRevenue)}
+                    ৳{formatAmount(reportNetRevenue)}
                   </span>
                 </div>
+                {filteredSalesReturns.map((record) => (
+                  <div key={record.id} className="flex justify-between gap-4 pl-3 text-[10px] text-outline">
+                    <span>{record.date} · {record.returnNumber} · {record.patientName} · {record.refundMethod}</span>
+                    <span className="font-data-rx">৳{formatAmount(record.totalRefundBDT)}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* COGS Block */}
+            {/* Recorded COGS */}
             <div className="border-b border-slate-200 dark:border-[#272d3a] pb-3 mb-3">
               <div className="font-extrabold text-sm text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">
-                {text('2. Cost of Goods Sold (COGS)', '২. বিক্রিত পণ্যের ক্রয়মূল্য (COGS)')}
+                {text('2. Cost of Goods Sold (recorded)', '২. বিক্রিত পণ্যের খরচ (সংরক্ষিত)')}
               </div>
               <div className="space-y-1.5 pl-3">
                 <div className="flex justify-between">
-                  <span className="text-on-surface">{text('Wholesale Frame & Lens Cost', 'ফ্রেম ও লেন্সের পাইকারি ক্রয়মূল্য')}</span>
-                  <span className="font-semibold text-outline">{text('No dated records', 'তারিখভিত্তিক রেকর্ড নেই')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-on-surface">{text('Lens Material & Lab Consumables', 'লেন্সের উপকরণ ও ল্যাবের ভোগ্যপণ্য')}</span>
-                  <span className="font-semibold text-outline">{text('No dated records', 'তারিখভিত্তিক রেকর্ড নেই')}</span>
+                  <span className="text-on-surface">{text('Cost recorded on sale lines', 'বিক্রয়-লাইনে সংরক্ষিত পণ্যমূল্য')}</span>
+                  <span className="font-data-rx font-bold text-on-surface">৳{formatAmount(reportRecordedCogs)}</span>
                 </div>
                 <div className="flex justify-between pt-1 font-extrabold border-t border-dashed border-slate-300 dark:border-[#272d3a]">
-                  <span>{text('Total COGS:', 'মোট COGS:')}</span>
-                  <span className="font-semibold text-outline">{text('No cost data', 'ব্যয়ের তথ্য নেই')}</span>
+                  <span>{text('Recorded COGS', 'সংরক্ষিত COGS')}</span>
+                  <span className="font-data-rx text-amber-700 dark:text-amber-300">৳{formatAmount(reportRecordedCogs)}</span>
                 </div>
+                <p className="text-[10px] text-outline">
+                  {text('Only sale lines with a recorded unit cost are included; missing line costs and pharmacy costs are not assumed to be zero.', 'শুধু ইউনিট খরচ সংরক্ষিত বিক্রয়-লাইন অন্তর্ভুক্ত; অনুপস্থিত লাইন ও ফার্মেসির খরচ শূন্য ধরা হয়নি।')}
+                </p>
               </div>
             </div>
 
-            {/* Gross Profit Block */}
+            {/* Gross profit estimate */}
             <div className="border-b border-slate-200 dark:border-[#272d3a] pb-3 mb-3 bg-teal-500/10 p-3 rounded-lg">
               <div className="flex justify-between text-sm font-black text-teal-800 dark:text-teal-300">
-                <span>{text('3. Gross Profit:', '৩. মোট মুনাফা:')}</span>
-                <span className="font-data-rx">{text('Not available', 'হিসাব করা যায়নি')}</span>
+                <span>{text('3. Gross Profit (recorded-cost estimate)', '৩. মোট মুনাফা (সংরক্ষিত খরচের আনুমানিক হিসাব)')}</span>
+                <span className="font-data-rx">৳{formatAmount(reportGrossProfitEstimate)}</span>
               </div>
             </div>
 
             {/* OPEX Block */}
             <div className="border-b border-slate-200 dark:border-[#272d3a] pb-3 mb-3">
               <div className="font-extrabold text-sm text-red-700 dark:text-red-400 uppercase tracking-wider mb-2">
-                {text('4. Operating & Workshop Expenses (OPEX)', '৪. পরিচালন ও ওয়ার্কশপ ব্যয় (OPEX)')}
+                {text('4. Operating Expenses (OPEX)', '৪. পরিচালন ব্যয় (OPEX)')}
               </div>
               <div className="space-y-1.5 pl-3">
-                {Object.entries(expensesByCategory).map(([category, amount]) => (
-                  <div key={category} className="flex justify-between gap-4">
-                    <span className="text-on-surface">{category}</span>
-                    <span className="font-data-rx font-bold text-on-surface">৳{formatAmount(amount)}</span>
+                {filteredExpenses.map((expense) => (
+                  <div key={expense.id} className="flex justify-between gap-4 pl-3 text-[10px] text-outline">
+                    <span>{expense.date} · {expense.voucherNumber} · {expense.category} · {expense.description}</span>
+                    <span className="font-data-rx">৳{formatAmount(expense.amountBDT)}</span>
                   </div>
                 ))}
                 {filteredExpenses.length === 0 && (
@@ -350,10 +403,54 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
               </div>
             </div>
 
-            {/* Net EBITDA Block */}
+            {/* EBITDA estimate */}
             <div className="bg-emerald-600 text-white p-3.5 rounded-xl flex justify-between items-center text-sm font-black shadow-xs">
-              <span>{text('5. Net Operating Profit (EBITDA):', '৫. নিট পরিচালন মুনাফা (EBITDA):')}</span>
-              <span className="text-lg font-data-rx">{text('Not available', 'হিসাব করা যায়নি')}</span>
+              <span>{text('5. EBITDA estimate', '৫. EBITDA আনুমানিক')}</span>
+              <span className="text-lg font-data-rx">৳{formatAmount(reportEbitdaEstimate)}</span>
+            </div>
+
+            {/* Non-P&L cash and inventory activity */}
+            <div className="mt-4 border-t border-slate-200 dark:border-[#272d3a] pt-3">
+              <h3 className="font-extrabold text-sm text-blue-700 dark:text-blue-400 uppercase tracking-wider mb-2">
+                {text('Cash and Inventory Activity (not included in EBITDA)', 'নগদ ও মজুত কার্যক্রম (EBITDA-তে অন্তর্ভুক্ত নয়)')}
+              </h3>
+              <div className="space-y-3 pl-3">
+                <section>
+                  <div className="flex justify-between font-bold">
+                    <span>{text('Collections received', 'আদায়')}</span>
+                    <span className="font-data-rx">৳{formatAmount(reportCollectionsReceived)}</span>
+                  </div>
+                  {Object.keys(collectionsByTender).map((tenderMode) => (
+                    <div key={tenderMode} className="flex justify-between pl-3 text-[10px] text-outline">
+                      <span>{text('Received via', 'গ্রহণের মাধ্যম')}: {tenderMode}</span>
+                      <span className="font-data-rx">৳{formatAmount(collectionsByTender[tenderMode])}</span>
+                    </div>
+                  ))}
+                  {filteredCollections.length === 0 && (
+                    <p className="text-[10px] text-outline">{text('No collection records in the selected period.', 'নির্বাচিত সময়সীমায় আদায়ের কোনো রেকর্ড নেই।')}</p>
+                  )}
+                  <p className="text-[10px] text-outline">{filteredCollections.length} {text('payment records', 'টি পেমেন্ট রেকর্ড')}</p>
+                </section>
+                <section>
+                  <div className="flex justify-between font-bold">
+                    <span>{text('Inventory purchase orders (commitments)', 'মজুত পণ্যের ক্রয়াদেশ (প্রতিশ্রুত অর্থ)')}</span>
+                    <span className="font-data-rx">৳{formatAmount(reportSupplierPurchases)}</span>
+                  </div>
+                  {filteredPurchaseOrders.map((order) => (
+                    <div key={order.id} className="flex justify-between gap-4 pl-3 text-[10px] text-outline">
+                      <span>{order.date} · {order.poNumber} · {order.supplierName}</span>
+                      <span className="font-data-rx">৳{formatAmount(order.totalAmountBDT)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-emerald-700 dark:text-emerald-300">
+                    <span>{text('Supplier return credits', 'সরবরাহকারী ফেরত ক্রেডিট')}</span>
+                    <span className="font-data-rx">−৳{formatAmount(reportSupplierCredits)}</span>
+                  </div>
+                  <p className="text-[10px] text-outline">
+                    {text('Purchases are inventory assets until sold; purchase orders are not treated as period expenses.', 'পণ্য বিক্রি না হওয়া পর্যন্ত কেনাকাটা মজুত সম্পদ; ক্রয়াদেশকে এই সময়ের ব্যয় ধরা হয়নি।')}
+                  </p>
+                </section>
+              </div>
             </div>
             <PrintFooterQuantum />
           </div>
@@ -445,6 +542,7 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <th className="py-3 px-4">{text('Payment Method', 'পেমেন্টের মাধ্যম')}</th>
                   <th className="py-3 px-4 text-right">{text('Amount (BDT)', 'পরিমাণ (টাকা)')}</th>
                   <th className="py-3 px-4 text-center">{text('Approved By', 'অনুমোদনকারী')}</th>
+                  {onDeleteExpense && <th className="py-3 px-4 text-right">{text('Actions', 'কার্যক্রম')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/40 dark:divide-[#242936]">
@@ -468,6 +566,26 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                       ৳{formatAmount(exp.amountBDT)}
                     </td>
                     <td className="py-3 px-4 text-center font-medium text-outline">{exp.approvedBy}</td>
+                    {onDeleteExpense && (
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(text(
+                              `Delete expense voucher "${exp.voucherNumber}"?`,
+                              `“${exp.voucherNumber}” খরচের ভাউচারটি মুছে ফেলবেন?`
+                            ))) {
+                              onDeleteExpense(exp.id);
+                            }
+                          }}
+                          aria-label={text(`Delete expense ${exp.voucherNumber}`, `${exp.voucherNumber} খরচ মুছুন`)}
+                          className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white font-bold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">delete</span>
+                          <span>{text('Delete', 'মুছুন')}</span>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

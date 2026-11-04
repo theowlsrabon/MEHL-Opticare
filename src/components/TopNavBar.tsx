@@ -16,16 +16,25 @@ import {
   CheckCircle2,
   Lock,
   LogOut,
+  Clock,
+  Package,
+  Receipt,
+  CircleDollarSign,
+  ExternalLink,
+  Sparkles,
+  Filter,
+  ArrowUpRight,
 } from 'lucide-react';
-import { ViewMode, UserRole, UserAccount } from '../types';
+import { ViewMode, UserRole, UserAccount, UnifiedActivityLogItem } from '../types';
 import { MADINA_STAFF_PROFILES } from '../data/rolesData';
 import { useLanguage } from '../context/LanguageContext';
+import { QuantumAboutTooltip } from './QuantumAboutTooltip';
 
 interface TopNavBarProps {
   currentView: ViewMode;
   onSelectView: (view: ViewMode) => void;
   onOpenNewInvoice: () => void;
-  onOpenQuickScan: () => void;
+  onOpenQuickScan: (initialCode?: string) => void;
   onOpenShiftSummary: () => void;
   searchQuery: string;
   onSearchChange: (val: string) => void;
@@ -34,11 +43,13 @@ interface TopNavBarProps {
   onToggleMobileMenu?: () => void;
   onToggleSidebar?: () => void;
   currentUserRole: UserRole;
+  drawerBalanceBDT: number;
   onRoleChange: (role: UserRole) => void;
   onToggleCameraScanner?: () => void;
   isCameraScannerActive?: boolean;
   onOpenSmsCenter?: () => void;
   onOpenActivityFeed?: () => void;
+  activityLogs?: UnifiedActivityLogItem[];
   authenticatedUser?: UserAccount | null;
   onLogout?: () => void;
 }
@@ -59,20 +70,25 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   isCameraScannerActive = false,
   onOpenSmsCenter,
   onOpenActivityFeed,
+  activityLogs = [],
+  drawerBalanceBDT,
   authenticatedUser,
   onLogout,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showActivityLog, setShowActivityLog] = useState(false);
+  const [activityFilter, setActivityFilter] = useState<'all' | 'sales' | 'lab' | 'inventory' | 'payment'>('all');
+  const [activitySearch, setActivitySearch] = useState('');
   const [showHelp, setShowHelp] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
-  const [showAboutUs, setShowAboutUs] = useState(false);
 
   const { language, setLanguage, t } = useLanguage();
   const roleMenuRef = useRef<HTMLDivElement>(null);
   const notifMenuRef = useRef<HTMLDivElement>(null);
+  const activityLogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   const isDevSuperAdmin = authenticatedUser?.role === 'super_admin' || authenticatedUser?.username === 'srabon' || currentUserRole === 'super_admin';
@@ -136,13 +152,23 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     const query = searchQuery.trim();
     if (!query) return;
 
-    if (filteredDestinations.length > 0) {
-      navigateToDestination(filteredDestinations[0]);
-    } else {
-      onSelectView('stock-master');
-      setShowSearchSuggestions(false);
-      setActiveSuggestion(-1);
+    // Check if query exactly matches a navigation destination:
+    const exactNav = searchDestinations.find(
+      (d) =>
+        d.keywords.some((k) => k.toLowerCase() === query.toLowerCase()) ||
+        d.label.toLowerCase() === query.toLowerCase() ||
+        d.labelBn === query
+    );
+    if (exactNav) {
+      navigateToDestination(exactNav);
+      return;
     }
+
+    // Otherwise, treat as an Omni-Barcode / Entity search:
+    // Open the Smart Overview Scan Report modal directly with this code!
+    onOpenQuickScan(query);
+    setShowSearchSuggestions(false);
+    setActiveSuggestion(-1);
   };
 
   // Initialize theme from document or localStorage
@@ -169,6 +195,9 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
       if (notifMenuRef.current && !notifMenuRef.current.contains(e.target as Node)) {
         setShowNotifications(false);
       }
+      if (activityLogRef.current && !activityLogRef.current.contains(e.target as Node)) {
+        setShowActivityLog(false);
+      }
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setShowSearchSuggestions(false);
         setActiveSuggestion(-1);
@@ -177,6 +206,71 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const formatTimeAgo = (epochMs: number) => {
+    const now = Date.now();
+    const diffSec = Math.max(0, Math.floor((now - epochMs) / 1000));
+    if (diffSec < 60) return language === 'bn' ? 'এইমাত্র' : 'Just now';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return language === 'bn' ? `${diffMin} মি. আগে` : `${diffMin}m ago`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return language === 'bn' ? `${diffHours} ঘণ্টা আগে` : `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return language === 'bn' ? 'গতকাল' : 'Yesterday';
+    if (diffDays < 7) return language === 'bn' ? `${diffDays} দিন আগে` : `${diffDays}d ago`;
+    return new Date(epochMs).toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-GB', {
+      day: 'numeric',
+      month: 'short',
+    });
+  };
+
+  // Filtered Activity Logs for Facebook-Style Feed
+  const filteredActivities = useMemo(() => {
+    let list = activityLogs || [];
+    if (activityFilter !== 'all') {
+      list = list.filter((item) => item.category === activityFilter);
+    }
+    if (activitySearch.trim()) {
+      const q = activitySearch.toLowerCase();
+      list = list.filter(
+        (item) =>
+          item.actorName.toLowerCase().includes(q) ||
+          item.action.toLowerCase().includes(q) ||
+          item.target.toLowerCase().includes(q) ||
+          (item.details && item.details.toLowerCase().includes(q)) ||
+          (item.badgeText && item.badgeText.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [activityLogs, activityFilter, activitySearch]);
+
+  // Grouped by Date (Today, Yesterday, Earlier)
+  const groupedActivities = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const groups: {
+      today: UnifiedActivityLogItem[];
+      yesterday: UnifiedActivityLogItem[];
+      earlier: UnifiedActivityLogItem[];
+    } = { today: [], yesterday: [], earlier: [] };
+
+    filteredActivities.forEach((item) => {
+      const itemDate = new Date(item.epochMs);
+      itemDate.setHours(0, 0, 0, 0);
+      if (itemDate.getTime() >= today.getTime()) {
+        groups.today.push(item);
+      } else if (itemDate.getTime() >= yesterday.getTime()) {
+        groups.yesterday.push(item);
+      } else {
+        groups.earlier.push(item);
+      }
+    });
+
+    return groups;
+  }, [filteredActivities]);
 
   const applyTheme = (dark: boolean) => {
     setIsDarkMode(dark);
@@ -251,31 +345,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#64748b] dark:text-[#7d91a3]">
             HOSPITAL &amp; RETAIL OS
           </span>
-        </div>
-
-        {/* About Quantum Info Popup */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowAboutUs(!showAboutUs)}
-            onMouseEnter={() => setShowAboutUs(true)}
-            onMouseLeave={() => setShowAboutUs(false)}
-            className="w-6 h-6 rounded-full border border-teal-500/50 text-[#008f76] dark:text-[#37d9ae] flex items-center justify-center font-serif text-xs font-bold hover:bg-[#00c49f]/10 transition-colors cursor-pointer shrink-0"
-            title="About Quantum"
-            aria-label="About Quantum"
-          >
-            i
-          </button>
-          {showAboutUs && (
-            <div className="absolute left-0 top-8 z-[80] w-64 bg-white dark:bg-[#0d141b] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3.5 animate-in fade-in zoom-in-95 duration-150">
-              <div className="text-[11px] font-black uppercase tracking-wider text-[#008f76] dark:text-[#37d9ae] mb-1">
-                ABOUT US
-              </div>
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-snug">
-                QUANTUM is a specialized industrial software lab.
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Hamburger Menu Toggle */}
@@ -364,6 +433,23 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             <div className="px-3 pb-1 pt-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">
               {searchQuery.trim() ? (language === 'bn' ? 'ফিচার খুঁজুন' : 'Jump to') : (language === 'bn' ? 'দ্রুত নেভিগেশন' : 'Quick navigation')}
             </div>
+            {searchQuery.trim() && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenQuickScan(searchQuery.trim());
+                  setShowSearchSuggestions(false);
+                }}
+                className="w-full px-3 py-2 text-left text-xs font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 bg-emerald-50/50 dark:bg-emerald-950/20 cursor-pointer"
+              >
+                <ScanBarcode size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span className="truncate">
+                  {language === 'bn' ? 'স্ক্যান ওভারভিউ রিপোর্ট দেখুন:' : 'View Scan Overview Report for:'}{' '}
+                  <strong className="font-mono text-emerald-800 dark:text-emerald-200">&quot;{searchQuery.trim()}&quot;</strong>
+                </span>
+              </button>
+            )}
+
             {filteredDestinations.length > 0 ? (
               filteredDestinations.map((destination, index) => (
                 <button
@@ -396,56 +482,512 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                 onClick={submitSearch}
                 className="w-full px-3 py-2.5 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60"
               >
-                Search inventory for “{searchQuery}”
+                Search overview for “{searchQuery}”
               </button>
             )}
           </div>
         )}
       </div>
 
-      {/* RIGHT SECTION: Drawer Cash, Scanner F3, Alerts 3, Hotkeys, Theme, Lang, User */}
+      {/* RIGHT SECTION: Drawer Cash, Scanner Shortcut, Alerts 3, Hotkeys, Theme, Lang, User */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Drawer Cash Pill (Glowing Green Amount) */}
-        <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-xs">
+        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-xs">
           <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-            {language === 'bn' ? 'ক্যাশ ড্রয়ার:' : 'Drawer Cash:'}
+            {language === 'bn' ? 'ড্রয়ার ব্যালেন্স:' : 'Drawer Balance:'}
           </span>
           <span className="font-mono font-bold text-[#00a884] dark:text-[#00f5b4] tracking-tight">
-            ৳3,420.50
+            ৳{drawerBalanceBDT.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-BD', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
           </span>
         </div>
 
-        {/* Scanner F3 Shortcut Button */}
+        {/* Scanner Shortcut Button */}
         <button
           type="button"
-          onClick={onOpenQuickScan}
+          onClick={() => onOpenQuickScan()}
           className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-[#00c49f] transition-all cursor-pointer"
-          title="Rapid Barcode Scanner (F3)"
+          title="Rapid Barcode Scanner & Overview Report"
         >
-          <ScanBarcode size={14} className="text-slate-400" />
-          <span>{language === 'bn' ? 'স্ক্যানার' : 'Scanner'}</span>
-          <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-            F3
-          </span>
+          <ScanBarcode size={14} className="text-[#00c49f]" />
+          <span>{language === 'bn' ? 'স্ক্যানার ও রিপোর্ট' : 'Scanner & Report'}</span>
         </button>
 
-        {/* Live Activity Feed Button */}
-        {onOpenActivityFeed && (
+        {/* Redesigned Live Activity Feed Field (Facebook Activity Log Style) */}
+        <div className="relative" ref={activityLogRef}>
           <button
             type="button"
-            onClick={onOpenActivityFeed}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#00c49f]/10 dark:bg-[#00c49f]/15 border border-[#00c49f]/30 dark:border-[#00c49f]/30 text-[#00a884] dark:text-[#00f5b4] text-xs font-bold hover:bg-[#00c49f]/20 transition-all cursor-pointer group"
-            title="Live Activity Feed & Audit Trail"
+            onClick={() => setShowActivityLog(!showActivityLog)}
+            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer group shadow-2xs ${
+              showActivityLog
+                ? 'bg-[#00c49f] text-slate-900 border-[#00c49f] shadow-md shadow-[#00c49f]/20 scale-[1.02]'
+                : 'bg-[#00c49f]/10 dark:bg-[#00c49f]/15 border-[#00c49f]/30 text-[#00a884] dark:text-[#00f5b4] hover:bg-[#00c49f]/20 hover:border-[#00c49f]/50'
+            }`}
+            title={language === 'bn' ? 'সাম্প্রতিক অ্যাক্টিভিটি লগ (ফেসবুক স্টাইল)' : 'Live Activity Log (Facebook Style)'}
             aria-label="Activity Feed"
+            aria-expanded={showActivityLog}
           >
-            <span className="relative flex h-1.5 w-1.5 shrink-0">
+            <span className="relative flex h-2 w-2 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00c49f] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#00c49f]"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#00c49f]"></span>
             </span>
             <Activity size={14} className="group-hover:scale-110 transition-transform" />
-            <span className="hidden xl:inline">{language === 'bn' ? 'ফিড' : 'Feed'}</span>
+            <span className="hidden md:inline font-bold">
+              {language === 'bn' ? 'অ্যাক্টিভিটি লগ' : 'Activity Log'}
+            </span>
+            {filteredActivities.length > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black ${
+                  showActivityLog
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-[#00c49f] text-slate-900'
+                }`}
+              >
+                {filteredActivities.length > 99 ? '99+' : filteredActivities.length}
+              </span>
+            )}
           </button>
-        )}
+
+          {/* Facebook-style Activity Log Popover Dropdown */}
+          {showActivityLog && (
+            <div className="fixed sm:absolute right-2 sm:right-0 top-14 w-[min(480px,calc(100vw-20px))] bg-white dark:bg-[#0c1219] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-0 z-[75] whitespace-normal animate-in fade-in duration-150 overflow-hidden flex flex-col max-h-[82vh]">
+              {/* Top Header Bar */}
+              <div className="p-3.5 sm:p-4 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-[#101722] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#00c49f] to-teal-700 text-white flex items-center justify-center shadow-xs">
+                    <Activity size={18} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        {language === 'bn' ? 'অ্যাক্টিভিটি লগ' : 'Activity Log'}
+                      </h3>
+                      <span className="px-1.5 py-0.2 bg-teal-50 dark:bg-teal-950/40 text-[#00a884] dark:text-[#00f5b4] text-[10px] font-mono font-bold rounded-full border border-teal-200 dark:border-teal-800">
+                        {filteredActivities.length} {language === 'bn' ? 'টি পরিবর্তন' : 'Updates'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {language === 'bn'
+                        ? 'সাম্প্রতিক পরিবর্তন ও কার্যক্রমের লাইভ হিস্ট্রি'
+                        : 'Real-time operational stream & recent changes'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {onOpenActivityFeed && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowActivityLog(false);
+                        onOpenActivityFeed();
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      title={language === 'bn' ? 'পূর্ণ ড্রয়ারে খুলুন' : 'Open in Full Drawer'}
+                    >
+                      <ExternalLink size={15} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowActivityLog(false)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    aria-label="Close activity log"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Facebook-style Horizontal Filter Chips */}
+              <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800/80 bg-white dark:bg-[#0c1219] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                {[
+                  { id: 'all', label: language === 'bn' ? 'সব' : 'All', count: activityLogs.length },
+                  { id: 'sales', label: language === 'bn' ? 'বিক্রয়' : 'Sales', count: activityLogs.filter(a => a.category === 'sales').length },
+                  { id: 'lab', label: language === 'bn' ? 'ল্যাব' : 'Lab', count: activityLogs.filter(a => a.category === 'lab').length },
+                  { id: 'inventory', label: language === 'bn' ? 'মজুদ' : 'Stock', count: activityLogs.filter(a => a.category === 'inventory').length },
+                  { id: 'payment', label: language === 'bn' ? 'পেমেন্ট' : 'Payments', count: activityLogs.filter(a => a.category === 'payment').length },
+                ].map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => setActivityFilter(chip.id as any)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                      activityFilter === chip.id
+                        ? 'bg-slate-900 text-white dark:bg-[#00c49f] dark:text-slate-900 shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>{chip.label}</span>
+                    <span className="text-[10px] opacity-75 font-mono">({chip.count})</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Bar inside Activity Log */}
+              <div className="p-2.5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#0e1620]">
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={activitySearch}
+                    onChange={(e) => setActivitySearch(e.target.value)}
+                    placeholder={language === 'bn' ? 'অ্যাক্টিভিটি খুঁজুন (নাম, ইনভয়েস, ট্রে, স্টাফ)...' : 'Search activities (patient, invoice, tray)...'}
+                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-[#141d28] border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-[#00c49f]"
+                  />
+                  {activitySearch && (
+                    <button
+                      type="button"
+                      onClick={() => setActivitySearch('')}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Feed Body - Grouped by Date (Facebook Style) */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-4 divide-y-0">
+                {filteredActivities.length === 0 ? (
+                  <div className="text-center py-10 px-4">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-2.5">
+                      <Clock size={20} />
+                    </div>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      {language === 'bn' ? 'কোনো সাম্প্রতিক কার্যক্রম নেই' : 'No activities found'}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {language === 'bn'
+                        ? 'নতুন কোনো বিক্রয়, মেরামত বা ল্যাব স্টেজ আপডেট হলে এখানে দেখা যাবে।'
+                        : 'Recent changes and actions will stream here automatically.'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* TODAY SECTION */}
+                    {groupedActivities.today.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-1 flex items-center gap-2">
+                          <span>{language === 'bn' ? 'আজকের কার্যক্রম' : 'Today'}</span>
+                          <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+                        </div>
+                        {groupedActivities.today.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              if (item.linkView) {
+                                onSelectView(item.linkView);
+                                setShowActivityLog(false);
+                              }
+                            }}
+                            className="p-3 rounded-xl bg-slate-50/70 hover:bg-teal-50/40 dark:bg-[#141b24] dark:hover:bg-[#162533] border border-slate-200/70 dark:border-slate-800/80 transition-all cursor-pointer group flex items-start gap-3 relative"
+                          >
+                            {/* Left: Avatar with Category Badge (Facebook style) */}
+                            <div className="relative shrink-0">
+                              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-slate-700 to-slate-900 dark:from-slate-700 dark:to-slate-800 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                                {item.actorName.slice(0, 2).toUpperCase()}
+                              </div>
+                              <span
+                                className={`absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] shadow-xs border border-white dark:border-[#0c1219] ${
+                                  item.category === 'sales'
+                                    ? 'bg-emerald-500 text-white'
+                                    : item.category === 'lab'
+                                    ? 'bg-purple-600 text-white'
+                                    : item.category === 'inventory'
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-[#00c49f] text-white'
+                                }`}
+                              >
+                                {item.category === 'sales' ? (
+                                  <Receipt size={10} />
+                                ) : item.category === 'lab' ? (
+                                  <Activity size={10} />
+                                ) : item.category === 'inventory' ? (
+                                  <Package size={10} />
+                                ) : (
+                                  <CircleDollarSign size={10} />
+                                )}
+                              </span>
+                            </div>
+
+                            {/* Center: Story & Content */}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                <span className="font-bold text-slate-900 dark:text-white mr-1">
+                                  {item.actorName}
+                                </span>
+                                <span>{item.action} </span>
+                                <span className="font-bold text-[#00a884] dark:text-[#00f5b4]">
+                                  {item.target}
+                                </span>
+                              </div>
+
+                              {/* Secondary Context Bubble / Snippet */}
+                              {item.details && (
+                                <div className="mt-1.5 p-2 rounded-lg bg-white/80 dark:bg-[#0c1219]/70 border border-slate-200/60 dark:border-slate-800/80 text-[11px] text-slate-600 dark:text-slate-400 font-medium leading-tight">
+                                  {item.details}
+                                </div>
+                              )}
+
+                              {/* Time and Badge footer */}
+                              <div className="flex items-center justify-between gap-2 mt-2 pt-1">
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                                  <Clock size={11} />
+                                  <span>{formatTimeAgo(item.epochMs)}</span>
+                                  <span>•</span>
+                                  <span className="capitalize">{item.category}</span>
+                                </div>
+
+                                {item.badgeText && (
+                                  <span
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono border whitespace-nowrap ${
+                                      item.category === 'sales'
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                        : item.category === 'lab'
+                                        ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                                        : item.category === 'inventory'
+                                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                        : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                                    }`}
+                                  >
+                                    {item.badgeText}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Hover Jump Indicator */}
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity self-center text-teal-600 dark:text-teal-400 pr-1">
+                              <ArrowUpRight size={15} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* YESTERDAY SECTION */}
+                    {groupedActivities.yesterday.length > 0 && (
+                      <div className="space-y-2 pt-2">
+                        <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-1 flex items-center gap-2">
+                          <span>{language === 'bn' ? 'গতকাল' : 'Yesterday'}</span>
+                          <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+                        </div>
+                        {groupedActivities.yesterday.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              if (item.linkView) {
+                                onSelectView(item.linkView);
+                                setShowActivityLog(false);
+                              }
+                            }}
+                            className="p-3 rounded-xl bg-slate-50/70 hover:bg-teal-50/40 dark:bg-[#141b24] dark:hover:bg-[#162533] border border-slate-200/70 dark:border-slate-800/80 transition-all cursor-pointer group flex items-start gap-3 relative"
+                          >
+                            <div className="relative shrink-0">
+                              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-slate-700 to-slate-900 dark:from-slate-700 dark:to-slate-800 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                                {item.actorName.slice(0, 2).toUpperCase()}
+                              </div>
+                              <span
+                                className={`absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] shadow-xs border border-white dark:border-[#0c1219] ${
+                                  item.category === 'sales'
+                                    ? 'bg-emerald-500 text-white'
+                                    : item.category === 'lab'
+                                    ? 'bg-purple-600 text-white'
+                                    : item.category === 'inventory'
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-[#00c49f] text-white'
+                                }`}
+                              >
+                                {item.category === 'sales' ? (
+                                  <Receipt size={10} />
+                                ) : item.category === 'lab' ? (
+                                  <Activity size={10} />
+                                ) : item.category === 'inventory' ? (
+                                  <Package size={10} />
+                                ) : (
+                                  <CircleDollarSign size={10} />
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                <span className="font-bold text-slate-900 dark:text-white mr-1">
+                                  {item.actorName}
+                                </span>
+                                <span>{item.action} </span>
+                                <span className="font-bold text-[#00a884] dark:text-[#00f5b4]">
+                                  {item.target}
+                                </span>
+                              </div>
+
+                              {item.details && (
+                                <div className="mt-1.5 p-2 rounded-lg bg-white/80 dark:bg-[#0c1219]/70 border border-slate-200/60 dark:border-slate-800/80 text-[11px] text-slate-600 dark:text-slate-400 font-medium leading-tight">
+                                  {item.details}
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between gap-2 mt-2 pt-1">
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                                  <Clock size={11} />
+                                  <span>{formatTimeAgo(item.epochMs)}</span>
+                                  <span>•</span>
+                                  <span className="capitalize">{item.category}</span>
+                                </div>
+
+                                {item.badgeText && (
+                                  <span
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono border whitespace-nowrap ${
+                                      item.category === 'sales'
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                        : item.category === 'lab'
+                                        ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                                        : item.category === 'inventory'
+                                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                        : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                                    }`}
+                                  >
+                                    {item.badgeText}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity self-center text-teal-600 dark:text-teal-400 pr-1">
+                              <ArrowUpRight size={15} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* EARLIER SECTION */}
+                    {groupedActivities.earlier.length > 0 && (
+                      <div className="space-y-2 pt-2">
+                        <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-1 flex items-center gap-2">
+                          <span>{language === 'bn' ? 'পূর্ববর্তী কার্যক্রম' : 'Earlier'}</span>
+                          <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+                        </div>
+                        {groupedActivities.earlier.slice(0, 15).map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              if (item.linkView) {
+                                onSelectView(item.linkView);
+                                setShowActivityLog(false);
+                              }
+                            }}
+                            className="p-3 rounded-xl bg-slate-50/70 hover:bg-teal-50/40 dark:bg-[#141b24] dark:hover:bg-[#162533] border border-slate-200/70 dark:border-slate-800/80 transition-all cursor-pointer group flex items-start gap-3 relative"
+                          >
+                            <div className="relative shrink-0">
+                              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-slate-700 to-slate-900 dark:from-slate-700 dark:to-slate-800 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                                {item.actorName.slice(0, 2).toUpperCase()}
+                              </div>
+                              <span
+                                className={`absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] shadow-xs border border-white dark:border-[#0c1219] ${
+                                  item.category === 'sales'
+                                    ? 'bg-emerald-500 text-white'
+                                    : item.category === 'lab'
+                                    ? 'bg-purple-600 text-white'
+                                    : item.category === 'inventory'
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-[#00c49f] text-white'
+                                }`}
+                              >
+                                {item.category === 'sales' ? (
+                                  <Receipt size={10} />
+                                ) : item.category === 'lab' ? (
+                                  <Activity size={10} />
+                                ) : item.category === 'inventory' ? (
+                                  <Package size={10} />
+                                ) : (
+                                  <CircleDollarSign size={10} />
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                <span className="font-bold text-slate-900 dark:text-white mr-1">
+                                  {item.actorName}
+                                </span>
+                                <span>{item.action} </span>
+                                <span className="font-bold text-[#00a884] dark:text-[#00f5b4]">
+                                  {item.target}
+                                </span>
+                              </div>
+
+                              {item.details && (
+                                <div className="mt-1.5 p-2 rounded-lg bg-white/80 dark:bg-[#0c1219]/70 border border-slate-200/60 dark:border-slate-800/80 text-[11px] text-slate-600 dark:text-slate-400 font-medium leading-tight">
+                                  {item.details}
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between gap-2 mt-2 pt-1">
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                                  <Clock size={11} />
+                                  <span>{formatTimeAgo(item.epochMs)}</span>
+                                  <span>•</span>
+                                  <span className="capitalize">{item.category}</span>
+                                </div>
+
+                                {item.badgeText && (
+                                  <span
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono border whitespace-nowrap ${
+                                      item.category === 'sales'
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                        : item.category === 'lab'
+                                        ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                                        : item.category === 'inventory'
+                                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                        : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                                    }`}
+                                  >
+                                    {item.badgeText}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity self-center text-teal-600 dark:text-teal-400 pr-1">
+                              <ArrowUpRight size={15} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Bottom Footer Action Bar */}
+              <div className="p-3 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/80 dark:bg-[#101722] flex items-center justify-between gap-2">
+                <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00c49f] animate-pulse"></span>
+                  {language === 'bn' ? 'লাইভ স্ট্রিম সক্রিয়' : 'Live stream active'}
+                </span>
+
+                {onOpenActivityFeed && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActivityLog(false);
+                      onOpenActivityFeed();
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/40 dark:hover:bg-teal-900/50 text-[#00a884] dark:text-[#00f5b4] text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border border-teal-200 dark:border-teal-800/60"
+                  >
+                    <span>{language === 'bn' ? 'সম্পূর্ণ অডিট ট্রেইল ড্রয়ার' : 'Open Full Audit Drawer'}</span>
+                    <ArrowUpRight size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Alerts Button (Warm Amber with Badge 3) */}
         <button
@@ -463,6 +1005,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         </button>
 
         {/* Hotkeys Pill Button */}
+        {/*  
         <button
           type="button"
           onClick={() => setShowHelp(true)}
@@ -472,7 +1015,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           <Keyboard size={14} />
           <span>Hotkeys</span>
         </button>
-
+           */}
         {/* Theme segmented switch */}
         <div
           className="relative flex h-8 w-[62px] items-center rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-1 dark:border-[#182531] dark:bg-[#090d12]"
@@ -550,7 +1093,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         </div>
 
         {/* Developer / Super Admin Purge Console Direct Access */}
-        {isDevSuperAdmin && (
+          {/* {isDevSuperAdmin && (
           <button
             type="button"
             onClick={() => {
@@ -563,8 +1106,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             <span className="material-symbols-outlined text-[16px] text-rose-500">terminal</span>
             <span>Purge Console</span>
           </button>
-        )}
-
+        )} */}
+       
         {/* User Profile Widget (Circular Avatar + Name & Role) */}
         <div
           className="relative pl-1 sm:pl-2 border-l border-[#e2e8f0] dark:border-[#182531]"
@@ -694,6 +1237,9 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             </div>
           )}
         </div>
+
+        {/* About Quantum Info Popup */}
+        <QuantumAboutTooltip align="right" />
       </div>
 
       {/* Notifications Modal */}

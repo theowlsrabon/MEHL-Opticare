@@ -24,6 +24,7 @@ import {
   SystemConfig,
   StageAuditEntry,
   AuditActionType,
+  UnifiedActivityLogItem,
 } from './types';
 import { initialJobs, initialInventory, initialSalesmen, initialSalesRecords } from './data/initialData';
 import {
@@ -71,6 +72,7 @@ import { AddGlassesStockModal } from './components/AddGlassesStockModal';
 import { CameraBarcodeScanner } from './components/CameraBarcodeScanner';
 import { PosTerminalView } from './components/PosTerminalView';
 import { ModinaOpticsErpPos } from './components/ModinaOpticsErpPos';
+import { PrescriptionsView } from './components/PrescriptionsView';
 import { SmsNotificationModal } from './components/SmsNotificationModal';
 import { ActivityFeed, ActivityFeedItem } from './components/ActivityFeed';
 import { triggerAutomatedStage5Sms, buildReadyForPickupMessage } from './utils/smsNotificationService';
@@ -80,6 +82,7 @@ import {
   bulkSyncJobsToDb,
   bulkSyncInventoryToDb,
   syncSaleToDb,
+  syncFinancialCollectionToDb,
 } from './utils/apiSync';
 import { useLanguage } from './context/LanguageContext';
 
@@ -170,7 +173,12 @@ export default function App() {
     const saved = localStorage.getItem('madina_salesmen');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const savedSalesmen = JSON.parse(saved) as Array<Salesman & { password?: string }>;
+        return savedSalesmen.map((salesman) => {
+          const cleanedSalesman = { ...salesman };
+          delete cleanedSalesman.password;
+          return cleanedSalesman;
+        });
       } catch {
         return initialSalesmen;
       }
@@ -196,7 +204,14 @@ export default function App() {
   const [ibtOrders, setIbtOrders] = useState<InterBranchTransferOrder[]>(initialIbtOrders);
   const [drugs, setDrugs] = useState<PharmacyDrug[]>(initialDrugs);
   const [dispensations, setDispensations] = useState<DispensationRecord[]>(initialDispensations);
-  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
+    try {
+      const saved = localStorage.getItem('madina_suppliers');
+      return saved ? JSON.parse(saved) as Supplier[] : initialSuppliers;
+    } catch {
+      return initialSuppliers;
+    }
+  });
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => {
     const saved = localStorage.getItem('madina_purchase_orders');
     if (saved) {
@@ -229,6 +244,14 @@ export default function App() {
     }
   });
   const postedDueCollectionIds = useRef<Set<string>>(new Set());
+  const recordedSaleIds = useRef<Set<string>>(new Set());
+  const [financialCollections, setFinancialCollections] = useState<DueCollectionRecord[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('madina_financial_collections') || '[]') as DueCollectionRecord[];
+    } catch {
+      return [];
+    }
+  });
   if (postedDueCollectionIds.current.size === 0) {
     try {
       postedDueCollectionIds.current = new Set(
@@ -322,7 +345,42 @@ export default function App() {
   };
 
   const handleCreatePurchaseOrder = (po: PurchaseOrder) => {
+    const paidAmountBDT = po.paidAmountBDT ?? 0;
+    if (paidAmountBDT > financialSummary.cashCollectedBDT) return false;
     setPurchaseOrders((prev) => [po, ...prev]);
+    if (paidAmountBDT > 0) {
+      setFinancialSummary((prev) => ({
+        ...prev,
+        cashCollectedBDT: prev.cashCollectedBDT - paidAmountBDT,
+      }));
+    }
+    return true;
+  };
+
+  const handlePayPurchaseOrderDue = (poId: string) => {
+    const po = purchaseOrders.find((item) => item.id === poId);
+    if (!po) return;
+    const paidAmountBDT = po.paidAmountBDT ?? (po.paymentStatus === 'paid' ? po.totalAmountBDT : 0);
+    const dueAmountBDT = po.dueAmountBDT ?? Math.max(0, po.totalAmountBDT - paidAmountBDT);
+    if (dueAmountBDT <= 0) return;
+    if (dueAmountBDT > financialSummary.cashCollectedBDT) {
+      window.alert('Not enough cash collected to pay this purchase order due.');
+      return;
+    }
+
+    setPurchaseOrders((prev) => prev.map((item) => item.id === poId
+      ? {
+          ...item,
+          paidAmountBDT: paidAmountBDT + dueAmountBDT,
+          dueAmountBDT: 0,
+          paymentStatus: 'paid',
+        }
+      : item
+    ));
+    setFinancialSummary((prev) => ({
+      ...prev,
+      cashCollectedBDT: prev.cashCollectedBDT - dueAmountBDT,
+    }));
   };
 
   const handleReceiveGrn = (grn: GoodsReceivedNote) => {
@@ -354,6 +412,19 @@ export default function App() {
       ...prev,
       totalExpenses: prev.totalExpenses + expense.amountBDT,
       netOperatingProfit: prev.netOperatingProfit - expense.amountBDT,
+      cashCollectedBDT: prev.cashCollectedBDT - (expense.paymentMode === 'Cash' ? expense.amountBDT : 0),
+    }));
+  };
+
+  const handleDeleteExpense = (expenseId: string) => {
+    const expense = expenses.find((item) => item.id === expenseId);
+    if (!expense) return;
+    setExpenses((prev) => prev.filter((item) => item.id !== expenseId));
+    setFinancialSummary((prev) => ({
+      ...prev,
+      totalExpenses: Math.max(0, prev.totalExpenses - expense.amountBDT),
+      netOperatingProfit: prev.netOperatingProfit + expense.amountBDT,
+      cashCollectedBDT: prev.cashCollectedBDT + (expense.paymentMode === 'Cash' ? expense.amountBDT : 0),
     }));
   };
 
@@ -365,6 +436,12 @@ export default function App() {
       'madina_due_collection_ids',
       JSON.stringify([...postedDueCollectionIds.current])
     );
+    setFinancialCollections((previous) => {
+      const merged = [collection, ...previous.filter((item) => item.id !== collection.id)];
+      localStorage.setItem('madina_financial_collections', JSON.stringify(merged));
+      return merged;
+    });
+    void syncFinancialCollectionToDb(collection);
     setFinancialSummary((prev) => ({
       ...prev,
       grossOpticalRevenue: prev.grossOpticalRevenue + collection.amountBDT,
@@ -376,6 +453,12 @@ export default function App() {
 
   const handleAddSalesReturn = (ret: SalesReturn) => {
     setSalesReturns((prev) => [ret, ...prev]);
+    if (ret.refundMethod === 'Cash Refund') {
+      setFinancialSummary((prev) => ({
+        ...prev,
+        cashCollectedBDT: prev.cashCollectedBDT - ret.totalRefundBDT,
+      }));
+    }
     setAuditLogs((prev) => [
       {
         id: `aud-${Date.now()}`,
@@ -443,6 +526,40 @@ export default function App() {
           void syncSaleToDb(sale).then((synced) => setSaleSyncWarning(!synced));
         });
 
+      const localCollections = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('madina_financial_collections') || '[]') as DueCollectionRecord[];
+        } catch (error) {
+          console.warn('[Collections Sync] Could not read locally cached collection records:', error);
+          return [];
+        }
+      })();
+      const databaseCollections = dbData.financialCollections || [];
+      const collectionsById = new Map<string, DueCollectionRecord>();
+      [...localCollections, ...databaseCollections].forEach((collection) => collectionsById.set(collection.id, collection));
+      const databaseCollectionIds = new Set(databaseCollections.map((collection) => collection.id));
+      localCollections
+        .filter((collection) => !databaseCollectionIds.has(collection.id))
+        .forEach((collection) => void syncFinancialCollectionToDb(collection));
+      const allSales = new Map<string, SaleRecord>();
+      [...salesRecords, ...localSales, ...databaseSales].forEach((sale) => allSales.set(sale.id, sale));
+      allSales.forEach((sale) => {
+        const saleAdvance = Number(sale.advancePaid) || 0;
+        if (saleAdvance <= 0) return;
+        const collection: DueCollectionRecord = {
+          id: `sale-${sale.id}`,
+          amountBDT: saleAdvance,
+          tenderMode: sale.paymentMethod || 'Cash',
+          date: sale.date || sale.timestamp?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+          invoiceNumber: sale.invoiceNumber,
+        };
+        collectionsById.set(collection.id, collection);
+        if (!databaseCollectionIds.has(collection.id)) void syncFinancialCollectionToDb(collection);
+      });
+      const mergedCollections = [...collectionsById.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      setFinancialCollections(mergedCollections);
+      localStorage.setItem('madina_financial_collections', JSON.stringify(mergedCollections));
+
       setSalesRecords((currentSales) => {
         const mergedSales = new Map<string, SaleRecord>();
         [...localSales, ...currentSales, ...databaseSales].forEach((sale) => mergedSales.set(sale.id, sale));
@@ -483,6 +600,10 @@ export default function App() {
   }, [financialSummary]);
 
   useEffect(() => {
+    localStorage.setItem('madina_financial_collections', JSON.stringify(financialCollections));
+  }, [financialCollections]);
+
+  useEffect(() => {
     localStorage.setItem('madina_salesmen', JSON.stringify(salesmen));
   }, [salesmen]);
 
@@ -493,6 +614,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('madina_purchase_orders', JSON.stringify(purchaseOrders));
   }, [purchaseOrders]);
+
+  useEffect(() => {
+    localStorage.setItem('madina_suppliers', JSON.stringify(suppliers));
+  }, [suppliers]);
 
   useEffect(() => {
     localStorage.setItem('madina_grns', JSON.stringify(grns));
@@ -658,10 +783,10 @@ export default function App() {
     setTimeout(() => setCameraToast(null), 4500);
   };
 
-  // Global Keyboard listener for F4, ⌘K / Ctrl+K, and Escape for Activity Feed drawer
+  // Global Keyboard listener for F3, F4, ⌘K / Ctrl+K, and Escape for Activity Feed drawer
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F4' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
+      if (e.key === 'F3' || e.key === 'F4' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
         e.preventDefault();
         setIsQuickScanOpen(true);
       } else if (e.key === 'Escape') {
@@ -848,10 +973,27 @@ export default function App() {
   };
 
   const handleRecordSale = (sale: SaleRecord) => {
-    setSalesRecords((prev) => {
-      if (prev.some((existingSale) => existingSale.id === sale.id)) return prev;
-      return [sale, ...prev];
-    });
+    if (recordedSaleIds.current.has(sale.id) || salesRecords.some((existingSale) => existingSale.id === sale.id)) return;
+    recordedSaleIds.current.add(sale.id);
+    setSalesRecords((prev) => [sale, ...prev]);
+    if (sale.paymentMethod === 'Cash' && sale.advancePaid > 0) {
+      setFinancialSummary((prev) => ({
+        ...prev,
+        cashCollectedBDT: prev.cashCollectedBDT + sale.advancePaid,
+      }));
+    }
+    const saleAdvance = Number(sale.advancePaid) || 0;
+    if (saleAdvance > 0) {
+      const collection: DueCollectionRecord = {
+        id: `sale-${sale.id}`,
+        amountBDT: saleAdvance,
+        tenderMode: sale.paymentMethod,
+        date: sale.date || sale.timestamp?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+        invoiceNumber: sale.invoiceNumber,
+      };
+      setFinancialCollections((previous) => [collection, ...previous.filter((item) => item.id !== collection.id)]);
+      void syncFinancialCollectionToDb(collection);
+    }
     void syncSaleToDb(sale).then((synced) => setSaleSyncWarning(!synced));
     setSalesmen((prev) =>
       prev.map((salesman) =>
@@ -1083,6 +1225,7 @@ export default function App() {
     }
 
     const quantitiesByItemId = new Map(records.map((record) => [record.inventoryItemId, record.quantity]));
+    const totalLossBDT = records.reduce((total, record) => total + record.totalLossBDT, 0);
     setInventory((previous) =>
       previous.map((item) => {
         const quantityWrittenOff = quantitiesByItemId.get(item.id);
@@ -1114,6 +1257,10 @@ export default function App() {
       })),
       ...previous,
     ]);
+    setFinancialSummary((previous) => ({
+      ...previous,
+      cashCollectedBDT: previous.cashCollectedBDT - totalLossBDT,
+    }));
     return true;
   };
 
@@ -1193,6 +1340,120 @@ export default function App() {
       .sort((a, b) => getTimestampScore(b) - getTimestampScore(a));
   }, [jobs]);
 
+  // Comprehensive Real-time Activity Feed Stream (FB Activity Log Style)
+  const unifiedActivityLogs: UnifiedActivityLogItem[] = useMemo(() => {
+    const list: UnifiedActivityLogItem[] = [];
+
+    const parseEpoch = (ts?: string, fallbackId?: string, offset = 0): number => {
+      if (fallbackId) {
+        const idMatch = fallbackId.match(/(?:audit|sale|mov)-(\d+)/);
+        if (idMatch && idMatch[1]) {
+          const num = parseInt(idMatch[1], 10);
+          if (num > 1000000000000) return num + offset;
+        }
+      }
+      if (!ts) return Date.now() + offset;
+      const cleaned = ts.replace('•', ' ').trim();
+      const d = new Date(cleaned);
+      if (!isNaN(d.getTime())) return d.getTime() + offset;
+
+      const m = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) {
+        const d2 = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        if (!isNaN(d2.getTime())) return d2.getTime() + offset;
+      }
+      return Date.now() + offset;
+    };
+
+    // 1. Sales Records (POS invoices & sales)
+    (salesRecords || []).forEach((sale, idx) => {
+      const epoch = parseEpoch(sale.timestamp || sale.date, sale.id, -idx * 1000);
+      list.push({
+        id: `log-sale-${sale.id}`,
+        category: 'sales',
+        type: 'pos_invoice',
+        actorName: sale.salesmanName || 'POS Billing Cashier',
+        actorRole: 'Floor Salesman',
+        action: 'created POS invoice',
+        target: `#${sale.invoiceNumber} (${sale.patientName || 'Walk-in'})`,
+        details: `${sale.itemsSummary || 'Optical Items'} · Total ৳${(sale.totalAmount || 0).toLocaleString()} · ${sale.paymentMethod || 'Cash'}`,
+        badgeText: `৳${(sale.totalAmount || 0).toLocaleString()}`,
+        badgeType: 'emerald',
+        timestamp: sale.timestamp || sale.date,
+        epochMs: epoch,
+        linkView: 'modina-erp',
+        linkId: sale.invoiceNumber,
+      });
+
+      if ((sale.advancePaid || 0) > 0) {
+        list.push({
+          id: `log-pay-${sale.id}`,
+          category: 'payment',
+          type: 'payment_received',
+          actorName: sale.salesmanName || 'Cashier',
+          actorRole: 'Counter Cashier',
+          action: 'received payment of',
+          target: `৳${(sale.advancePaid || 0).toLocaleString()} for #${sale.invoiceNumber}`,
+          details: `Patient: ${sale.patientName} · Method: ${sale.paymentMethod} · Due: ৳${(sale.dueAmount || 0).toLocaleString()}`,
+          badgeText: `Paid: ৳${(sale.advancePaid || 0).toLocaleString()}`,
+          badgeType: 'success',
+          timestamp: sale.timestamp || sale.date,
+          epochMs: epoch + 50,
+          linkView: 'due-collections',
+          linkId: sale.invoiceNumber,
+        });
+      }
+    });
+
+    // 2. Lab Tray Advancements & Glazing Audit Trail
+    (jobs || []).forEach((job) => {
+      if (job.auditTrail && Array.isArray(job.auditTrail)) {
+        job.auditTrail.forEach((entry) => {
+          const epoch = parseEpoch(entry.timestamp, entry.id);
+          list.push({
+            id: `log-lab-${entry.id}-${job.id}`,
+            category: 'lab',
+            type: 'stage_advance',
+            actorName: entry.actor || 'Lab Technician',
+            actorRole: 'Optical Workshop',
+            action: `advanced Tray #${job.trayNumber} (${job.jobCode}) to`,
+            target: `${entry.stageName} (Stage ${entry.stageNumber})`,
+            details: `Patient: ${job.patientName} · Frame: ${job.frameName || 'Standard'} · Lens: ${job.lensName || 'Optical'}`,
+            badgeText: `Stage ${entry.stageNumber}`,
+            badgeType: 'purple',
+            timestamp: entry.timestamp,
+            epochMs: epoch,
+            linkView: 'lab-pipeline',
+            linkId: job.id,
+          });
+        });
+      }
+    });
+
+    // 3. Inventory Stock Movements (Restocks, Damages, Adjustments)
+    (inventoryMovementRecords || []).forEach((move) => {
+      const epoch = parseEpoch(move.timestamp, move.id);
+      list.push({
+        id: `log-inv-${move.id}`,
+        category: 'inventory',
+        type: move.type,
+        actorName: move.recordedBy || 'Inventory Officer',
+        actorRole: 'Storage & Supply',
+        action: move.type === 'restock' ? 'restocked optical stock' : move.type === 'damage' ? 'logged damaged stock for' : 'adjusted inventory count for',
+        target: `${move.itemName} (${move.quantity} pcs)`,
+        details: `SKU: ${move.sku} · Category: ${move.category} · ${move.reason || 'Warehouse Log'}`,
+        badgeText: `${move.quantity > 0 ? `+${move.quantity}` : move.quantity} Units`,
+        badgeType: move.type === 'damage' ? 'warning' : 'info',
+        timestamp: move.timestamp || 'Today',
+        epochMs: epoch,
+        linkView: 'stock-master',
+        linkId: move.sku,
+      });
+    });
+
+    return list.sort((a, b) => b.epochMs - a.epochMs);
+  }, [salesRecords, jobs, inventoryMovementRecords]);
+
   // Gated Landing: Land on LoginPage first if not authenticated
   if (!authenticatedUser) {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
@@ -1219,6 +1480,7 @@ export default function App() {
       {/* 1. Fixed Top Application Bar */}
       <TopNavBar
         currentView={currentView}
+        activityLogs={unifiedActivityLogs}
         onSelectView={(v) => {
           if (v === 'ai-glazing') setIsGlazingAssistantOpen(true);
           else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
@@ -1231,13 +1493,17 @@ export default function App() {
           }
           setIsNewInvoiceOpen(true);
         }}
-        onOpenQuickScan={() => setIsQuickScanOpen(true)}
+        onOpenQuickScan={(code) => {
+          setCameraScannedCode(code || '');
+          setIsQuickScanOpen(true);
+        }}
         onToggleCameraScanner={() => setIsFloatingCameraActive((prev) => !prev)}
         isCameraScannerActive={isFloatingCameraActive}
         onOpenShiftSummary={() => setCurrentView('reports')}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onSearchSubmit={() => setCurrentView('stock-master')}
+        drawerBalanceBDT={financialSummary.cashCollectedBDT}
         isMobileMenuOpen={isMobileMenuOpen}
         onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
@@ -1645,27 +1911,40 @@ export default function App() {
                 showOverviewCards={false}
                 onSelectView={(view) => setCurrentView(view)}
                 onOpenCreateTray={() => setIsCreateTrayOpen(true)}
-                onOpenQuickScan={() => setIsQuickScanOpen(true)}
+                onOpenQuickScan={(code) => {
+          setCameraScannedCode(code || '');
+          setIsQuickScanOpen(true);
+        }}
                 onViewJobRx={(job) => setSelectedJobId(job.id)}
               />
             )}
           </div>
         )}
 
-        {currentView === 'modina-erp' && (
+        {(currentView === 'modina-erp' || currentView === 'pos-terminal') && (
           <ModinaOpticsErpPos
             salesmenList={salesmen}
+            canManageSalesmen={currentUserRole === 'admin' || isSuperAdmin}
             salesRecords={salesRecords}
             onAddSalesman={handleAddSalesman}
             onManageSalesmen={() => setCurrentView('salesmen')}
             onRecordSale={handleRecordSale}
-            onOpenQuickScan={() => setIsQuickScanOpen(true)}
+            onOpenQuickScan={(code) => {
+              setCameraScannedCode(code || '');
+              setIsQuickScanOpen(true);
+            }}
             onOpenLiveCamera={() => setIsFloatingCameraActive((prev) => !prev)}
             onOpenNewInvoice={() => setIsNewInvoiceOpen(true)}
             inventory={inventory}
             jobs={jobs}
             initialScannedBarcode={posScannedBarcode}
             onDeleteSaleRecord={isSuperAdmin ? handleDeleteSaleRecord : undefined}
+          />
+        )}
+
+        {currentView === 'prescriptions' && (
+          <PrescriptionsView
+            onOpenGlazingAssistant={() => setIsGlazingAssistantOpen(true)}
           />
         )}
 
@@ -1715,7 +1994,7 @@ export default function App() {
 
         {currentView === 'salesmen' && (
           <SalesmanManagementView
-            canManage={currentUserRole === 'admin'}
+            canManage={currentUserRole === 'admin' || isSuperAdmin}
             salesmen={salesmen}
             salesRecords={salesRecords}
             onAddSalesman={handleAddSalesman}
@@ -1757,11 +2036,13 @@ export default function App() {
         {currentView === 'supplier-grn' && (
           <SupplierGrnView
             suppliers={suppliers}
+            onUpdateSuppliers={setSuppliers}
             purchaseOrders={purchaseOrders}
             grns={grns}
-            onUpdatePurchaseOrders={setPurchaseOrders}
+            cashAvailableBDT={financialSummary.cashCollectedBDT}
             onUpdateGrns={setGrns}
             onCreatePo={handleCreatePurchaseOrder}
+            onPayPurchaseOrderDue={handlePayPurchaseOrderDue}
             onReceiveGrn={handleReceiveGrn}
             onDeletePurchaseOrder={isSuperAdmin ? handleDeletePurchaseOrder : undefined}
           />
@@ -1773,7 +2054,12 @@ export default function App() {
             expenses={expenses}
             salesRecords={salesRecords}
             dispensations={dispensations}
+            financialCollections={financialCollections}
+            purchaseOrders={purchaseOrders}
+            salesReturns={salesReturns}
+            purchaseReturns={purchaseReturns}
             onAddExpense={handleAddExpense}
+            onDeleteExpense={isSuperAdmin ? handleDeleteExpense : undefined}
           />
         )}
 
@@ -1916,15 +2202,21 @@ export default function App() {
         }}
         inventory={inventory}
         jobs={jobs}
+        salesRecords={salesRecords}
+        inventoryMovementRecords={inventoryMovementRecords}
+        purchaseOrders={purchaseOrders}
         currentUser={currentUser}
         initialScanCode={cameraScannedCode}
-        autoStartCamera={true}
+        autoStartCamera={false}
         onSelectJob={(job) => {
           setSelectedJobId(job.id);
           setCurrentView('lab-pipeline');
         }}
         onSelectInventory={(item) => {
           setPosScannedBarcode(item.sku);
+          setCurrentView('modina-erp');
+        }}
+        onSelectSale={(sale) => {
           setCurrentView('modina-erp');
         }}
         onPrintBarcode={(item) => {

@@ -23,7 +23,6 @@ export interface Salesman {
   phone: string;
   employeeId: string;
   commissionPct: number; // e.g. 5 for 5%
-  password?: string;
   status: 'active' | 'inactive';
   joinedDate?: string;
   totalSalesCount?: number;
@@ -57,12 +56,30 @@ export interface SaleRecord {
   itemLines?: SaleItemLine[];
 }
 
+export interface UnifiedActivityLogItem {
+  id: string;
+  category: 'sales' | 'lab' | 'inventory' | 'payment';
+  type: string;
+  actorName: string;
+  actorRole?: string;
+  action: string;
+  target: string;
+  details?: string;
+  badgeText?: string;
+  badgeType?: 'success' | 'info' | 'warning' | 'purple' | 'emerald';
+  timestamp: string;
+  epochMs: number;
+  relativeTime?: string;
+  linkView?: ViewMode;
+  linkId?: string;
+}
+
 export interface SaleItemLine {
   inventoryItemId?: string;
   sku: string;
   name: string;
   brand?: string;
-  category: InventoryItem['category'];
+  category: InventoryItem['category'] | 'Service' | 'Accessories' | string;
   quantity: number;
   unitPriceBDT: number;
   unitCostBDT?: number;
@@ -186,7 +203,7 @@ export interface InventoryDamageRecord {
   inventoryItemId: string;
   sku: string;
   itemName: string;
-  category: InventoryItem['category'];
+  category: InventoryItem['category'] | 'Service' | 'Accessories' | string;
   quantity: number;
   reason: string;
   unitCostBDT: number;
@@ -200,7 +217,7 @@ export interface InventoryMovementRecord {
   inventoryItemId: string;
   sku: string;
   itemName: string;
-  category: InventoryItem['category'];
+  category: InventoryItem['category'] | 'Service' | 'Accessories' | string;
   type: 'stock' | 'restock' | 'damage';
   quantity: number;
   reason?: string;
@@ -461,6 +478,9 @@ export interface PurchaseOrder {
     totalPriceBDT: number;
   }[];
   totalAmountBDT: number;
+  paidAmountBDT?: number;
+  dueAmountBDT?: number;
+  notes?: string;
   paymentStatus: 'unpaid' | 'partial' | 'paid';
   createdByName: string;
 }

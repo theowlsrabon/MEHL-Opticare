@@ -35,13 +35,11 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
     name: '',
     phone: '',
     employeeId: '',
-    commissionPct: 4.0,
-    password: '',
+    commissionPct: 0,
     status: 'active' as 'active' | 'inactive',
     notes: '',
   });
 
-  const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState('');
 
   // Filtered salesmen list
@@ -75,13 +73,11 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
       name: '',
       phone: '+880 1',
       employeeId: nextEmpId,
-      commissionPct: 4.5,
-      password: '',
+      commissionPct: 0,
       status: 'active',
       notes: '',
     });
     setFormError('');
-    setShowPassword(false);
     setIsModalOpen(true);
   };
 
@@ -93,12 +89,10 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
       phone: sm.phone,
       employeeId: sm.employeeId,
       commissionPct: sm.commissionPct,
-      password: sm.password || '',
       status: sm.status,
       notes: sm.notes || '',
     });
     setFormError('');
-    setShowPassword(false);
     setIsModalOpen(true);
   };
 
@@ -122,11 +116,6 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
       setFormError('Commission % must be between 0 and 50%.');
       return;
     }
-    if (!formData.password.trim()) {
-      setFormError('Password / PIN is required.');
-      return;
-    }
-
     if (editingSalesman) {
       // Update existing
       onUpdateSalesman({
@@ -135,7 +124,6 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
         phone: formData.phone.trim(),
         employeeId: formData.employeeId.trim(),
         commissionPct: Number(formData.commissionPct),
-        password: formData.password,
         status: formData.status,
         notes: formData.notes.trim(),
       });
@@ -147,7 +135,6 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
         phone: formData.phone.trim(),
         employeeId: formData.employeeId.trim(),
         commissionPct: Number(formData.commissionPct),
-        password: formData.password,
         status: formData.status,
         joinedDate: new Date().toISOString().slice(0, 10),
         totalSalesCount: 0,
@@ -175,7 +162,7 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
             Salesman Management &amp; Access Controls
           </h2>
           <p className="text-xs text-outline">
-            Create, edit, and deactivate optical counter sales executives, commission rates, and POS passwords
+            Create, edit, and deactivate optical counter sales executives and commission rates
           </p>
         </div>
 
@@ -353,16 +340,11 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
                   </span>
                 </div>
 
-                {/* Commission & Credentials Pills */}
+                {/* Commission */}
                 <div className="flex items-center gap-2 mb-4">
                   <div className="px-2.5 py-1 rounded-lg bg-teal-500/10 text-[#169b90] text-xs font-bold flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">percent</span>
                     <span>{sm.commissionPct}% Commission</span>
-                  </div>
-
-                  <div className="px-2 py-1 rounded-lg bg-surface-container dark:bg-[#1e2433] text-outline text-[11px] font-mono flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[13px]">lock</span>
-                    <span>••••••••</span>
                   </div>
                 </div>
 
@@ -545,7 +527,7 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
                       min="0"
                       max="50"
                       required
-                      placeholder="4.5"
+                      placeholder="0"
                       value={formData.commissionPct}
                       onChange={(e) =>
                         setFormData({ ...formData, commissionPct: parseFloat(e.target.value) || 0 })
@@ -571,35 +553,6 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
                     <option value="active">Active (Can generate POS sales)</option>
                     <option value="inactive">Inactive (Deactivated)</option>
                   </select>
-                </div>
-
-                {/* Password / PIN */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-outline uppercase tracking-wider mb-1">
-                    POS Authorization Password / PIN *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      placeholder="Enter password or 4-digit PIN"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full pl-3.5 pr-10 py-2 bg-surface-container-low dark:bg-[#1a1f2b] border border-outline-variant rounded-xl text-xs font-mono text-on-surface focus:outline-none focus:border-[#169b90]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2.5 top-2 text-outline hover:text-on-surface transition-colors cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">
-                        {showPassword ? 'visibility_off' : 'visibility'}
-                      </span>
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-outline mt-1">
-                    Used by the salesman to authorize invoices and claim commission at POS checkout.
-                  </p>
                 </div>
 
                 {/* Notes */}

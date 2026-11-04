@@ -5,6 +5,7 @@
 
 import { API_BASE } from './apiConfig';
 import type { SaleRecord } from '../types';
+import type { DueCollectionRecord } from '../components/DueCollectionsView';
 
 export interface DbStatusResponse {
   ok: boolean;
@@ -108,19 +109,39 @@ export async function syncSaleToDb(sale: SaleRecord): Promise<boolean> {
   }
 }
 
+export async function syncFinancialCollectionToDb(collection: DueCollectionRecord): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/api/financial-collections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collection),
+    });
+    const result = await response.json();
+    if (!response.ok || result?.success !== true) {
+      throw new Error(result?.error || `HTTP ${response.status}`);
+    }
+    return true;
+  } catch (error) {
+    console.warn('[Sync Warning] Financial collection remains in local cache; database sync is pending:', error);
+    return false;
+  }
+}
+
 // Initial Database Hydration
 export async function fetchInitialDataFromDb(): Promise<{
   jobs?: any[];
   inventory?: any[];
   sales?: any[];
   salesmen?: any[];
+  financialCollections?: DueCollectionRecord[];
 }> {
   const result: any = {};
   try {
-    const [jobsRes, invRes, salesRes] = await Promise.allSettled([
+    const [jobsRes, invRes, salesRes, collectionsRes] = await Promise.allSettled([
       fetch(`${API_BASE}/api/jobs`).then((r) => r.json()),
       fetch(`${API_BASE}/api/inventory`).then((r) => r.json()),
       fetch(`${API_BASE}/api/sales`).then((r) => r.json()),
+      fetch(`${API_BASE}/api/financial-collections`).then((r) => r.json()),
     ]);
 
     if (jobsRes.status === 'fulfilled' && jobsRes.value?.success && jobsRes.value.data?.length > 0) {
@@ -131,6 +152,9 @@ export async function fetchInitialDataFromDb(): Promise<{
     }
     if (salesRes.status === 'fulfilled' && salesRes.value?.success && salesRes.value.data?.length > 0) {
       result.sales = salesRes.value.data;
+    }
+    if (collectionsRes.status === 'fulfilled' && collectionsRes.value?.success) {
+      result.financialCollections = collectionsRes.value.data || [];
     }
   } catch (e) {
     console.warn('[Sync] Falling back to local storage cache:', e);

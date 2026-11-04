@@ -46,6 +46,7 @@ interface PrescriptionRow {
 
 interface Props {
   salesmenList?: Salesman[];
+  canManageSalesmen?: boolean;
   salesRecords: SaleRecord[];
   onManageSalesmen?: () => void;
   onAddSalesman?: (salesman: Salesman) => void;
@@ -68,6 +69,75 @@ interface InvoiceCopyPrescriptionRow {
   pd: string;
 }
 
+export interface PaidServiceDef {
+  id: string;
+  nameBn: string;
+  nameEn: string;
+  defaultPrice: number;
+  priceBadge: string;
+  isMrp?: boolean;
+  descriptionBn: string;
+  icon: string;
+}
+
+export const PAID_SERVICES_CATALOG: PaidServiceDef[] = [
+  {
+    id: 'srv-nose-pad',
+    nameBn: 'নোজ প্যাড চেঞ্জ',
+    nameEn: 'Nose Pad Replacement',
+    defaultPrice: 50,
+    priceBadge: '৳৫০',
+    descriptionBn: 'প্রিমিয়াম সিলিকন অ্যান্টি-গ্রিপ নোজ প্যাড...',
+    icon: 'fa-solid fa-wrench',
+  },
+  {
+    id: 'srv-super-clean',
+    nameBn: 'সুপার ক্লিন',
+    nameEn: 'Super Clean (Deep Ultrasonic)',
+    defaultPrice: 100,
+    priceBadge: '৳১০০',
+    descriptionBn: 'আল্ট্রাসনিক চেম্বার ডিপ ওয়াশ, অ্যান্টি-...',
+    icon: 'fa-solid fa-wand-magic-sparkles',
+  },
+  {
+    id: 'srv-local-wash',
+    nameBn: 'লোকাল ওয়াশ',
+    nameEn: 'Local Wash & Quick Rinse',
+    defaultPrice: 50,
+    priceBadge: '৳৫০',
+    descriptionBn: 'দ্রুত সারফেস ক্লিন, ডাস্ট ওয়াশ ও ফ্রেম...',
+    icon: 'fa-solid fa-droplet',
+  },
+  {
+    id: 'srv-ribbon',
+    nameBn: 'রিবন বিক্রয়',
+    nameEn: 'Eyewear Retainer Ribbon / Cord',
+    defaultPrice: 50,
+    priceBadge: '৳৫০',
+    descriptionBn: 'প্রিমিয়াম অ্যান্টি-ড্রপ ইলাস্টিক গ্লাস রিবন /...',
+    icon: 'fa-solid fa-link',
+  },
+  {
+    id: 'srv-glass-cleaner',
+    nameBn: 'গ্লাস ক্লিনার',
+    nameEn: 'Glass Cleaner Spray (MRP)',
+    defaultPrice: 100,
+    priceBadge: 'MRP অনুযায়ী',
+    isMrp: true,
+    descriptionBn: 'অ্যান্টি-ফগ ও অ্যান্টি-স্ট্যাটিক লেন্স ক্লিনার...',
+    icon: 'fa-solid fa-flask-vial',
+  },
+  {
+    id: 'srv-side-replacement',
+    nameBn: 'সাইড পরিবর্তন',
+    nameEn: 'Side / Temple Replacement',
+    defaultPrice: 100,
+    priceBadge: '৳১০০',
+    descriptionBn: 'ফ্রেমের সাইড/টেম্পল হাতল পেয়ার পরিবর্তন ও...',
+    icon: 'fa-solid fa-screwdriver',
+  },
+];
+
 interface InvoiceCopyPrescription {
   frameName?: string;
   frameDetails?: string;
@@ -78,6 +148,14 @@ interface InvoiceCopyPrescription {
   lensAmount?: number;
   deliveryDate?: string;
   rxGrid?: InvoiceCopyPrescriptionRow[];
+  paidServices?: Array<{
+    name: string;
+    nameEn?: string;
+    quantity: number;
+    price: number;
+    total: number;
+  }>;
+  paidServicesTotal?: number;
 }
 
 // Optical Inventory Catalog for Barcode Scanning
@@ -166,15 +244,9 @@ const LENS_PACKAGES: LensPackage[] = [
   { id: 'highindex', name: 'Ultra-Thin Hi-Index 1.67 Aspheric', price: 4900, coating: 'Super EMI Diamond Clear', index: '1.67' },
 ];
 
-const INITIAL_SALESMEN: Salesman[] = [
-  { id: 'sm-1', name: 'Tanvir Ahmed', phone: '01712-445588', employeeId: 'MED-101', commissionPct: 4.5, status: 'active', totalSalesCount: 142, totalSalesVolumeBDT: 745000 },
-  { id: 'sm-2', name: 'Sabrina Sultana', phone: '01823-998877', employeeId: 'MED-104', commissionPct: 5.0, status: 'active', totalSalesCount: 98, totalSalesVolumeBDT: 512000 },
-  { id: 'sm-3', name: 'Rafiqul Islam', phone: '01911-332211', employeeId: 'MED-108', commissionPct: 4.0, status: 'active', totalSalesCount: 84, totalSalesVolumeBDT: 418000 },
-  { id: 'sm-4', name: 'Kamal Hossain', phone: '01678-554433', employeeId: 'MED-112', commissionPct: 3.5, status: 'active', totalSalesCount: 65, totalSalesVolumeBDT: 310000 },
-];
-
 export const ModinaOpticsErpPos: React.FC<Props> = ({
   salesmenList,
+  canManageSalesmen = false,
   salesRecords,
   onManageSalesmen,
   onAddSalesman,
@@ -197,6 +269,11 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   const [patientPhone, setPatientPhone] = useState<string>('');
   const [optometrist, setOptometrist] = useState<string>('');
   const [deliveryDate, setDeliveryDate] = useState<string>('');
+
+  // Markable Steps Toggles
+  const [includeFrame, setIncludeFrame] = useState<boolean>(false);
+  const [includeLens, setIncludeLens] = useState<boolean>(false);
+  const [includePaidServices, setIncludePaidServices] = useState<boolean>(false);
 
   // 2. Optical Frame Barcode Scanner & Inventory State
   const [barcodeInput, setBarcodeInput] = useState<string>('');
@@ -224,16 +301,56 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     { eye: 'OS (Left)', sph: '', cyl: '', axis: '', add: '', pd: '' },
   ]);
 
+  // 4. Paid Services & Eyewear Repair State (পেইড সার্ভিস ও চশমা মেরামত)
+  const [selectedPaidServices, setSelectedPaidServices] = useState<
+    Record<string, { service: PaidServiceDef; quantity: number; price: number }>
+  >({});
+
+  const togglePaidService = (service: PaidServiceDef) => {
+    setSelectedPaidServices((prev) => {
+      const updated = { ...prev };
+      if (updated[service.id]) {
+        delete updated[service.id];
+      } else {
+        updated[service.id] = {
+          service,
+          quantity: 1,
+          price: service.defaultPrice,
+        };
+      }
+      return updated;
+    });
+  };
+
+  const updatePaidServiceQty = (serviceId: string, delta: number) => {
+    setSelectedPaidServices((prev) => {
+      const current = prev[serviceId];
+      if (!current) return prev;
+      const newQty = current.quantity + delta;
+      if (newQty <= 0) {
+        const updated = { ...prev };
+        delete updated[serviceId];
+        return updated;
+      }
+      return {
+        ...prev,
+        [serviceId]: {
+          ...current,
+          quantity: newQty,
+        },
+      };
+    });
+  };
+
+  const resetPaidServices = () => {
+    setSelectedPaidServices({});
+  };
+
   // 4. Salesman Assignment & Commission
-  const [salesmen, setSalesmen] = useState<Salesman[]>(() => {
-    if (salesmenList && salesmenList.length > 0) return salesmenList;
-    return INITIAL_SALESMEN;
-  });
+  const [salesmen, setSalesmen] = useState<Salesman[]>(salesmenList ?? []);
 
   useEffect(() => {
-    if (salesmenList && salesmenList.length > 0) {
-      setSalesmen(salesmenList);
-    }
+    setSalesmen(salesmenList ?? []);
   }, [salesmenList]);
 
   const [selectedSalesmanId, setSelectedSalesmanId] = useState<string>('');
@@ -255,7 +372,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   // 5. Dynamic Price Calculation & Invoice Actions
   const [specialDiscount, setSpecialDiscount] = useState<number>(0);
   const [advancePaid, setAdvancePaid] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'bKash' | 'Nagad' | 'Card'>('bKash');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'bKash' | 'Nagad' | 'Card'>('Cash');
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
   const [showInvoiceSummary, setShowInvoiceSummary] = useState<boolean>(false);
   const [invoiceValidationErrors, setInvoiceValidationErrors] = useState<string[]>([]);
@@ -302,15 +419,35 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
   const lensPrice = Number(negotiatedLensPrice) || 0;
 
+  // Active prices based on markable step inclusion
+  const activeFramePrice = useMemo(() => {
+    return includeFrame && scannedFrame ? (Number(negotiatedPrice) || 0) : 0;
+  }, [includeFrame, scannedFrame, negotiatedPrice]);
+
+  const activeLensPrice = useMemo(() => {
+    return includeLens ? lensPrice : 0;
+  }, [includeLens, lensPrice]);
+
+  const paidServicesTotal = useMemo(() => {
+    if (!includePaidServices) return 0;
+    return Object.values(selectedPaidServices).reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+  }, [includePaidServices, selectedPaidServices]);
+
   useEffect(() => {
     const payload = `MEHL-RX:${JSON.stringify({
       type: 'MEHL-RX',
       invoiceNumber: currentInvoiceNumber,
       patientName,
       patientPhone,
-      frameName: scannedFrame ? `${scannedFrame.brand} ${scannedFrame.model}` : '',
-      lensName: selectedLens.price > 0 ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}` : '',
-      rxGrid,
+      frameName: includeFrame && scannedFrame ? `${scannedFrame.brand} ${scannedFrame.model}` : '',
+      lensName: includeLens && activeLensPrice > 0 ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}` : '',
+      paidServices: includePaidServices
+        ? Object.values(selectedPaidServices).map((s) => `${s.service.nameBn} x${s.quantity}`)
+        : [],
+      rxGrid: includeLens ? rxGrid : [],
     })}`;
 
     QRCode.toDataURL(payload, {
@@ -319,7 +456,19 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       width: 220,
       color: { dark: '#0f172a', light: '#ffffff' },
     }).then(setPrescriptionQrDataUrl).catch(() => setPrescriptionQrDataUrl(''));
-  }, [currentInvoiceNumber, patientName, patientPhone, scannedFrame, selectedLens, rxGrid]);
+  }, [
+    currentInvoiceNumber,
+    patientName,
+    patientPhone,
+    includeFrame,
+    scannedFrame,
+    includeLens,
+    activeLensPrice,
+    selectedLens,
+    rxGrid,
+    includePaidServices,
+    selectedPaidServices,
+  ]);
 
   // Selected Salesman Object
   const currentSalesman = useMemo(() => {
@@ -328,8 +477,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
   // Financial Calculations
   const grossTotal = useMemo(() => {
-    return (Number(negotiatedPrice) || 0) + lensPrice;
-  }, [negotiatedPrice, lensPrice]);
+    return activeFramePrice + activeLensPrice + paidServicesTotal;
+  }, [activeFramePrice, activeLensPrice, paidServicesTotal]);
 
   const netTotal = useMemo(() => {
     return Math.max(0, grossTotal - (Number(specialDiscount) || 0));
@@ -346,9 +495,9 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   }, [netTotal, currentSalesman]);
 
   // Admin Profit Calculations
-  const wholesaleCost = scannedFrame?.wholesaleCost || 0;
-  const grossProfit = Math.max(0, (Number(negotiatedPrice) || 0) - wholesaleCost);
-  const profitMarginPct = negotiatedPrice > 0 ? (grossProfit / negotiatedPrice) * 100 : 0;
+  const wholesaleCost = (includeFrame && scannedFrame?.wholesaleCost) || 0;
+  const grossProfit = Math.max(0, activeFramePrice - wholesaleCost);
+  const profitMarginPct = activeFramePrice > 0 ? (grossProfit / activeFramePrice) * 100 : 0;
 
   // Barcode Handler (Instant or Enter)
   const handleBarcodeSearch = (code: string) => {
@@ -570,7 +719,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   // Add Salesman Handler
   const handleCreateSalesman = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSalesman.name.trim()) return;
+    if (!canManageSalesmen || !newSalesman.name.trim()) return;
 
     const created: Salesman = {
       id: `sm-${Date.now()}`,
@@ -594,9 +743,36 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     const errors: string[] = [];
     if (!patientName.trim()) errors.push(text('Patient name is required.', 'রোগীর নাম আবশ্যক।'));
     if (!patientPhone.trim()) errors.push(text('Patient phone number is required.', 'রোগীর ফোন নম্বর আবশ্যক।'));
-    if (!scannedFrame) errors.push(text('Frame selection is required.', 'ফ্রেম নির্বাচন আবশ্যক।'));
-    if (selectedLens.id === 'no-lens' || !selectedLens.name.trim()) errors.push(text('Lens configuration is required.', 'লেন্স কনফিগারেশন আবশ্যক।'));
-    if (!currentSalesman) errors.push(text('Salesman assignment is required.', 'বিক্রয়কর্মী নিয়োগ আবশ্যক।'));
+
+    if (!includeFrame && !includeLens && !includePaidServices) {
+      errors.push(
+        text(
+          'At least one item (Frame, Lens, or Paid Service) must be selected.',
+          'কমপক্ষে ফ্রেম, লেন্স অথবা পেইড সার্ভিসের যেকোনো একটি অন্তর্ভুক্ত করতে হবে।'
+        )
+      );
+    }
+
+    if (includeFrame && !scannedFrame) {
+      errors.push(text('Frame selection is required when frame is included.', 'ফ্রেম অন্তর্ভুক্ত থাকায় ফ্রেম নির্বাচন আবশ্যক।'));
+    }
+
+    if (includeLens && (selectedLens.id === 'no-lens' || !selectedLens.name.trim())) {
+      errors.push(text('Lens configuration is required when lens is included.', 'লেন্স অন্তর্ভুক্ত থাকায় লেন্স কনফিগারেশন আবশ্যক।'));
+    }
+
+    if (includePaidServices && Object.keys(selectedPaidServices).length === 0) {
+      errors.push(
+        text(
+          'Please select at least one paid service or uncheck Paid Services.',
+          'কমপক্ষে একটি পেইড সার্ভিস নির্বাচন করুন অথবা পেইড সার্ভিস আনচেক করুন।'
+        )
+      );
+    }
+
+    if (!currentSalesman) {
+      errors.push(text('Salesman assignment is required.', 'বিক্রয়কর্মী নিয়োগ আবশ্যক।'));
+    }
 
     setInvoiceValidationErrors(errors);
     if (errors.length === 0) setShowInvoiceSummary(true);
@@ -604,7 +780,11 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
   // Generate Invoice and Record
   const handleGenerateInvoice = () => {
-    if (!scannedFrame || !currentSalesman) return;
+    if (!currentSalesman) return;
+    if (!includeFrame && !includeLens && !includePaidServices) return;
+    if (includeFrame && !scannedFrame) return;
+    if (includePaidServices && Object.keys(selectedPaidServices).length === 0) return;
+
     const invId = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
     setCurrentInvoiceNumber(invId);
 
@@ -612,6 +792,64 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const itemDiscount = Math.min(Math.max(0, Number(specialDiscount) || 0), grossTotal);
+
+    // Build dynamic items summary
+    const summaryParts: string[] = [];
+    if (includeFrame && scannedFrame) {
+      summaryParts.push(`${scannedFrame.brand} ${scannedFrame.model}`);
+    }
+    if (includeLens && selectedLens.price > 0) {
+      summaryParts.push(selectedLens.name);
+    }
+    if (includePaidServices && Object.keys(selectedPaidServices).length > 0) {
+      const srvNames = Object.values(selectedPaidServices)
+        .map((s) => `${s.service.nameBn} (${s.quantity})`)
+        .join(', ');
+      summaryParts.push(`পেইড সার্ভিস: ${srvNames}`);
+    }
+    const itemsSummary = summaryParts.join(' + ') || 'Optical Services';
+
+    const itemLines: SaleItemLine[] = [];
+    if (includeFrame && scannedFrame) {
+      itemLines.push({
+        inventoryItemId: inventory.find((item) => item.sku === scannedFrame.barcode)?.id,
+        sku: scannedFrame.barcode,
+        name: `${scannedFrame.brand} ${scannedFrame.model}`,
+        brand: scannedFrame.brand,
+        category: inventory.find((item) => item.sku === scannedFrame.barcode)?.category || 'Optical Frame',
+        quantity: 1,
+        unitPriceBDT: activeFramePrice,
+        unitCostBDT: wholesaleCost,
+        discountBDT: grossTotal > 0 ? (activeFramePrice / grossTotal) * itemDiscount : 0,
+      });
+    }
+    if (includeLens && activeLensPrice > 0) {
+      itemLines.push({
+        sku: `LENS-${selectedLens.id}`,
+        name: selectedLens.name,
+        category: 'Finished Lens' as const,
+        quantity: 1,
+        unitPriceBDT: activeLensPrice,
+        discountBDT: grossTotal > 0 ? (activeLensPrice / grossTotal) * itemDiscount : 0,
+      });
+    }
+    if (includePaidServices) {
+      Object.values(selectedPaidServices).forEach(({ service, quantity, price }) => {
+        const lineTotal = price * quantity;
+        itemLines.push({
+          sku: service.id.toUpperCase(),
+          name: `${service.nameBn} (${service.nameEn})`,
+          category: 'Accessories' as const,
+          quantity,
+          unitPriceBDT: price,
+          discountBDT: grossTotal > 0 ? (lineTotal / grossTotal) * itemDiscount : 0,
+        });
+      });
+    }
+
+    const totalServiceUnits = includePaidServices
+      ? Object.values(selectedPaidServices).reduce((sum, s) => sum + s.quantity, 0)
+      : 0;
 
     const fullSaleRecord: SaleRecord = {
       id: `sale-${Date.now()}`,
@@ -629,36 +867,14 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       totalAmount: netTotal,
       advancePaid: Number(advancePaid) || 0,
       dueAmount: dueBalance,
-      framesCount: 1,
-      lensesCount: 2,
-      accessoriesCount: 0,
-      itemsSummary: `${scannedFrame.brand} ${scannedFrame.model} + ${selectedLens.name}`,
+      framesCount: includeFrame && scannedFrame ? 1 : 0,
+      lensesCount: includeLens && activeLensPrice > 0 ? 2 : 0,
+      accessoriesCount: totalServiceUnits,
+      itemsSummary,
       paymentMethod: (['Cash', 'bKash', 'Card', 'Nagad'].includes(paymentMethod) ? paymentMethod : 'Cash') as any,
       commissionEarned: Math.round(estimatedCommission),
       status: 'completed',
-      itemLines: [
-        {
-          inventoryItemId: inventory.find((item) => item.sku === scannedFrame.barcode)?.id,
-          sku: scannedFrame.barcode,
-          name: `${scannedFrame.brand} ${scannedFrame.model}`,
-          brand: scannedFrame.brand,
-          category: inventory.find((item) => item.sku === scannedFrame.barcode)?.category || 'Optical Frame',
-          quantity: 1,
-          unitPriceBDT: negotiatedPrice,
-          unitCostBDT: wholesaleCost,
-          discountBDT: grossTotal > 0 ? (negotiatedPrice / grossTotal) * itemDiscount : 0,
-        },
-        ...(lensPrice > 0
-          ? [{
-              sku: `LENS-${selectedLens.id}`,
-              name: selectedLens.name,
-              category: 'Finished Lens' as const,
-              quantity: 1,
-              unitPriceBDT: lensPrice,
-              discountBDT: grossTotal > 0 ? (lensPrice / grossTotal) * itemDiscount : 0,
-            }]
-          : []),
-      ],
+      itemLines,
     };
 
     const prescriptionPayload = {
@@ -666,17 +882,30 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       invoiceNumber: invId,
       patientName: patientName || '',
       patientPhone: patientPhone || '',
-      frameName: `${scannedFrame.brand} ${scannedFrame.model}`,
-      frameSpecs: scannedFrame.frameType,
-      frameDetails: scannedFrame.color,
-      frameAmount: negotiatedPrice,
-      lensName: selectedLens.price > 0
+      hasFrame: includeFrame && !!scannedFrame,
+      hasLens: includeLens && activeLensPrice > 0,
+      hasPaidServices: includePaidServices && Object.keys(selectedPaidServices).length > 0,
+      frameName: includeFrame && scannedFrame ? `${scannedFrame.brand} ${scannedFrame.model}` : '',
+      frameSpecs: includeFrame && scannedFrame ? scannedFrame.frameType : '',
+      frameDetails: includeFrame && scannedFrame ? scannedFrame.color : '',
+      frameAmount: activeFramePrice,
+      lensName: includeLens && selectedLens.price > 0
         ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}`
         : '',
-      lensSpecs: selectedLens.price > 0 ? `Index ${selectedLens.index}` : '',
-      lensAmount: lensPrice,
+      lensSpecs: includeLens && selectedLens.price > 0 ? `Index ${selectedLens.index}` : '',
+      lensAmount: activeLensPrice,
+      paidServices: includePaidServices
+        ? Object.values(selectedPaidServices).map((s) => ({
+            name: s.service.nameBn,
+            nameEn: s.service.nameEn,
+            quantity: s.quantity,
+            price: s.price,
+            total: s.price * s.quantity,
+          }))
+        : [],
+      paidServicesTotal,
       deliveryDate,
-      rxGrid,
+      rxGrid: includeLens ? rxGrid : [],
     };
     try {
       const saved = JSON.parse(localStorage.getItem('mehl-pos-prescriptions') || '{}') as Record<string, unknown>;
@@ -844,374 +1073,674 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
               {/* SECTION 2: Optical Frame Barcode Scanner & Inventory Section */}
               <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs transition-all hover:border-teal-200 dark:hover:border-teal-900">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4 gap-3">
                   <div className="flex items-center gap-2 text-teal-700 dark:text-teal-400 font-bold text-sm">
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-barcode"></i>
                     </span>
                     <span>{text('2. Frame Barcode Scanner & Inventory Management', '২. ফ্রেম বারকোড স্ক্যানার ও ইনভেন্টরি ব্যবস্থাপনা')}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAdminConfidential(!showAdminConfidential)}
-                      className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
-                        showAdminConfidential
-                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      <i className={`fa-solid ${showAdminConfidential ? 'fa-lock-open' : 'fa-lock'}`}></i>
-                      <span>{showAdminConfidential ? text('Hide Cost Info', 'কস্ট তথ্য লুকান') : text('Show Admin Cost', 'প্রশাসনিক কস্ট দেখান')}</span>
-                    </button>
+                  <div className="flex items-center gap-3">
+                    {/* Markable checkbox/toggle for Step 2 */}
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={includeFrame}
+                        onChange={(e) => setIncludeFrame(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-teal-600"></div>
+                      <span className={`ml-2 text-xs font-bold transition-colors ${includeFrame ? 'text-teal-700 dark:text-teal-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                        {includeFrame ? text('Include Frame', 'ফ্রেম অন্তর্ভুক্ত') : text('No Frame', 'ফ্রেম বাদ')}
+                      </span>
+                    </label>
+
+                    {includeFrame && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminConfidential(!showAdminConfidential)}
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+                          showAdminConfidential
+                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <i className={`fa-solid ${showAdminConfidential ? 'fa-lock-open' : 'fa-lock'}`}></i>
+                        <span>{showAdminConfidential ? text('Hide Cost', 'কস্ট লুকান') : text('Show Cost', 'কস্ট দেখান')}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                {/* Barcode Search Box */}
-                <div className="mb-4">
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                    {text('Dedicated Barcode / SKU Scanner Field', 'ডেডিকেটেড বারকোড / SKU স্ক্যানার ফিল্ড')}
-                  </label>
-                  <div className="relative flex items-center">
+                {!includeFrame ? (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-[#141824]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
+                      <i className="fa-solid fa-circle-info text-slate-400 text-sm"></i>
+                      <span>
+                        {text(
+                          'Frame selection is disabled. This sale will not require a frame or add frame charges to the invoice.',
+                          'ফ্রেম নির্বাচন নিষ্ক্রিয় করা হয়েছে। এই চালানে কোনো ফ্রেমের তথ্য বা মূল্য যোগ হবে না এবং ফ্রেম পূরণ আবশ্যক নয়।'
+                        )}
+                      </span>
+                    </div>
                     <button
                       type="button"
-                      onClick={onOpenQuickScan}
-                      className="absolute left-2.5 w-7 h-7 flex items-center justify-center text-teal-600 dark:text-teal-400 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-950/40 cursor-pointer"
-                      title="Open barcode scanner"
-                      aria-label="Open barcode scanner"
+                      onClick={() => setIncludeFrame(true)}
+                      className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded-lg text-xs font-bold hover:bg-teal-100 transition-all cursor-pointer self-start sm:self-auto whitespace-nowrap"
                     >
-                      <i className="fa-solid fa-qrcode text-base"></i>
-                    </button>
-                    <input
-                      ref={barcodeInputRef}
-                      type="text"
-                      value={barcodeInput}
-                      onChange={(e) => {
-                        setBarcodeInput(e.target.value);
-                        handleBarcodeSearch(e.target.value);
-                      }}
-                      onKeyDown={handleBarcodeKeyDown}
-                      placeholder="Scan frame barcode e.g., FRM-RB-5228 or FRM-GC-8840..."
-                      className="w-full pl-10 pr-24 py-2.5 bg-teal-50/40 dark:bg-teal-950/20 border-2 border-teal-500/60 dark:border-teal-700/60 rounded-xl text-sm font-mono focus:outline-none focus:border-teal-600 focus:ring-3 focus:ring-teal-500/20 text-slate-900 dark:text-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleBarcodeSearch(barcodeInput)}
-                      className="absolute right-2 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                    >
-                      {isScanning ? (
-                        <i className="fa-solid fa-spinner fa-spin"></i>
-                      ) : (
-                        <i className="fa-solid fa-magnifying-glass"></i>
-                      )}
-                      <span>Scan</span>
+                      + {text('Include Frame', 'ফ্রেম যোগ করুন')}
                     </button>
                   </div>
-
-                  {/* Recently added frame inventory suggestions */}
-                  {recentFrameSuggestions.length > 0 && (
-                    <div className="flex items-center gap-1.5 flex-wrap mt-2 text-[11px]">
-                      <span className="text-slate-400">{text('Recently added products:', 'সম্প্রতি যোগ করা পণ্য:')}</span>
-                      {recentFrameSuggestions.map((item) => (
+                ) : (
+                  <>
+                    {/* Barcode Search Box */}
+                    <div className="mb-4">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        {text('Dedicated Barcode / SKU Scanner Field', 'ডেডিকেটেড বারকোড / SKU স্ক্যানার ফিল্ড')}
+                      </label>
+                      <div className="relative flex items-center">
                         <button
-                          key={item.id}
                           type="button"
-                          onClick={() => {
-                            setBarcodeInput(item.sku);
-                            handleBarcodeSearch(item.sku);
-                          }}
-                          className={`px-2 py-0.5 rounded-md border text-[11px] font-mono transition-all cursor-pointer ${
-                            scannedFrame?.barcode === item.sku
-                              ? 'bg-teal-600 text-white border-teal-600 font-bold'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-teal-400'
-                          }`}
-                          title={`${item.name} · ${item.stockQty} ${text('in stock', 'টি মজুদ')}`}
+                          onClick={() => onOpenQuickScan?.()}
+                          className="absolute left-2.5 w-7 h-7 flex items-center justify-center text-teal-600 dark:text-teal-400 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-950/40 cursor-pointer"
+                          title="Open barcode scanner"
+                          aria-label="Open barcode scanner"
                         >
-                          {item.name} · {item.sku}
+                          <i className="fa-solid fa-qrcode text-base"></i>
                         </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {scanMessage && (
-                    <div className="mt-2 text-[11px] text-teal-700 dark:text-teal-400 font-medium flex items-center gap-1.5">
-                      <i className="fa-solid fa-circle-check text-emerald-500"></i>
-                      <span>{scanMessage}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Auto-Populated Frame Details Grid */}
-                {scannedFrame && (
-                  <div className="bg-slate-50 dark:bg-[#141824] rounded-xl p-4 border border-slate-200 dark:border-slate-800">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                      <div className="p-2.5 bg-white dark:bg-[#1a202c] rounded-lg border border-slate-200 dark:border-slate-800">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Brand</span>
-                        <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1">
-                          <i className="fa-solid fa-tag text-teal-600 text-xs"></i>
-                          {scannedFrame.brand}
-                        </span>
+                        <input
+                          ref={barcodeInputRef}
+                          type="text"
+                          value={barcodeInput}
+                          onChange={(e) => {
+                            setBarcodeInput(e.target.value);
+                            handleBarcodeSearch(e.target.value);
+                          }}
+                          onKeyDown={handleBarcodeKeyDown}
+                          placeholder="Scan frame barcode e.g., FRM-RB-5228 or FRM-GC-8840..."
+                          className="w-full pl-10 pr-24 py-2.5 bg-teal-50/40 dark:bg-teal-950/20 border-2 border-teal-500/60 dark:border-teal-700/60 rounded-xl text-sm font-mono focus:outline-none focus:border-teal-600 focus:ring-3 focus:ring-teal-500/20 text-slate-900 dark:text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleBarcodeSearch(barcodeInput)}
+                          className="absolute right-2 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          {isScanning ? (
+                            <i className="fa-solid fa-spinner fa-spin"></i>
+                          ) : (
+                            <i className="fa-solid fa-magnifying-glass"></i>
+                          )}
+                          <span>Scan</span>
+                        </button>
                       </div>
 
-                      <div className="p-2.5 bg-white dark:bg-[#1a202c] rounded-lg border border-slate-200 dark:border-slate-800">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Model No.</span>
-                        <span className="text-sm font-bold text-slate-900 dark:text-white font-mono">
-                          {scannedFrame.model}
-                        </span>
-                      </div>
-
-                      <div className="p-2.5 bg-white dark:bg-[#1a202c] rounded-lg border border-slate-200 dark:border-slate-800">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Frame Type</span>
-                        <span className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40 px-2 py-0.5 rounded inline-block mt-0.5">
-                          {scannedFrame.frameType}
-                        </span>
-                      </div>
-
-                      <div className="p-2.5 bg-white dark:bg-[#1a202c] rounded-lg border border-slate-200 dark:border-slate-800">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Frame Color</span>
-                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                          {scannedFrame.color}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Price Negotiation & Admin Confidential Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-slate-800">
-                      {/* Negotiated Price Entry */}
-                      <div className="p-3 bg-teal-50/50 dark:bg-teal-950/20 rounded-xl border border-teal-200/80 dark:border-teal-900/60">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-xs font-bold text-teal-900 dark:text-teal-200">
-                            Negotiated Frame Selling Price (BDT)
-                          </label>
-                          <span className="text-[11px] text-slate-500 line-through">
-                            Guide: ৳{scannedFrame.guidePrice?.toLocaleString()}
-                          </span>
+                      {/* Recently added frame inventory suggestions */}
+                      {recentFrameSuggestions.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-2 text-[11px]">
+                          <span className="text-slate-400">{text('Recently added products:', 'সম্প্রতি যোগ করা পণ্য:')}</span>
+                          {recentFrameSuggestions.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                setBarcodeInput(item.sku);
+                                handleBarcodeSearch(item.sku);
+                              }}
+                              className={`px-2 py-0.5 rounded-md border text-[11px] font-mono transition-all cursor-pointer ${
+                                scannedFrame?.barcode === item.sku
+                                  ? 'bg-teal-600 text-white border-teal-600 font-bold'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-teal-400'
+                              }`}
+                              title={`${item.name} · ${item.stockQty} ${text('in stock', 'টি মজুদ')}`}
+                            >
+                              {item.name} · {item.sku}
+                            </button>
+                          ))}
                         </div>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 font-bold text-teal-700 dark:text-teal-400">৳</span>
-                          <input
-                            type="number"
-                            value={negotiatedPrice}
-                            onChange={(e) => setNegotiatedPrice(Number(e.target.value) || 0)}
-                            placeholder={scannedFrame.guidePrice ? `Suggested: ${scannedFrame.guidePrice}` : ''}
-                            className="w-full pl-8 pr-3 py-2 text-base font-mono font-bold bg-white dark:bg-[#1a202c] border border-teal-300 dark:border-teal-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
-                        </div>
-                        <span className="text-[10px] text-teal-700 dark:text-teal-400 mt-1 block font-medium">
-                          Customer agreed frame retail price for this transaction.
-                        </span>
-                      </div>
+                      )}
 
-                      {/* Admin Confidential Purchase Cost & Profit Display */}
-                      {showAdminConfidential ? (
-                        <div className="p-3 bg-amber-50/70 dark:bg-amber-950/25 rounded-xl border border-amber-300/80 dark:border-amber-900/60 flex flex-col justify-between">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1">
-                              <i className="fa-solid fa-user-shield text-amber-600"></i>
-                              Admin Confidential Cost
-                            </span>
-                            <span className="text-[11px] font-mono font-bold bg-amber-200/70 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-2 py-0.5 rounded">
-                              Cipher: {scannedFrame.secretCode}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-amber-200 dark:border-amber-900/40">
-                            <div>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Purchase Cost</span>
-                              <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
-                                ৳{scannedFrame.wholesaleCost?.toLocaleString()}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Gross Profit</span>
-                              <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                +৳{grossProfit?.toLocaleString()}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Profit Margin</span>
-                              <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded inline-block ${
-                                profitMarginPct >= 30 
-                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' 
-                                  : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                              }`}>
-                                {profitMarginPct.toFixed(1)}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-3 bg-slate-100 dark:bg-slate-800/60 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center text-center">
-                          <span className="text-xs text-slate-400">
-                            <i className="fa-solid fa-lock mr-1.5"></i>
-                            Purchase wholesale cost hidden for floor staff.
-                          </span>
+                      {scanMessage && (
+                        <div className="mt-2 text-[11px] text-teal-700 dark:text-teal-400 font-medium flex items-center gap-1.5">
+                          <i className="fa-solid fa-circle-check text-emerald-500"></i>
+                          <span>{scanMessage}</span>
                         </div>
                       )}
                     </div>
-                  </div>
+
+                    {/* Auto-Populated Frame Details Grid */}
+                    {scannedFrame && (
+                      <div className="bg-slate-50 dark:bg-[#141824] rounded-xl p-4 border border-slate-200 dark:border-slate-800">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                          <div className="p-2.5 bg-white dark:bg-[#1a202c] rounded-lg border border-slate-200 dark:border-slate-800">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Brand</span>
+                            <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1">
+                              <i className="fa-solid fa-tag text-teal-600 text-xs"></i>
+                              {scannedFrame.brand}
+                            </span>
+                          </div>
+
+                          <div className="p-2.5 bg-white dark:bg-[#1a202c] rounded-lg border border-slate-200 dark:border-slate-800">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Model No.</span>
+                            <span className="text-sm font-bold text-slate-900 dark:text-white font-mono">
+                              {scannedFrame.model}
+                            </span>
+                          </div>
+
+                          <div className="p-2.5 bg-white dark:bg-[#1a202c] rounded-lg border border-slate-200 dark:border-slate-800">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Frame Type</span>
+                            <span className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40 px-2 py-0.5 rounded inline-block mt-0.5">
+                              {scannedFrame.frameType}
+                            </span>
+                          </div>
+
+                          <div className="p-2.5 bg-white dark:bg-[#1a202c] rounded-lg border border-slate-200 dark:border-slate-800">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Frame Color</span>
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {scannedFrame.color}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Price Negotiation & Admin Confidential Row */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-slate-800">
+                          {/* Negotiated Price Entry */}
+                          <div className="p-3 bg-teal-50/50 dark:bg-teal-950/20 rounded-xl border border-teal-200/80 dark:border-teal-900/60">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-xs font-bold text-teal-900 dark:text-teal-200">
+                                Negotiated Frame Selling Price (BDT)
+                              </label>
+                              <span className="text-[11px] text-slate-500 line-through">
+                                Guide: ৳{scannedFrame.guidePrice?.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 font-bold text-teal-700 dark:text-teal-400">৳</span>
+                              <input
+                                type="number"
+                                value={negotiatedPrice}
+                                onChange={(e) => setNegotiatedPrice(Number(e.target.value) || 0)}
+                                placeholder={scannedFrame.guidePrice ? `Suggested: ${scannedFrame.guidePrice}` : ''}
+                                className="w-full pl-8 pr-3 py-2 text-base font-mono font-bold bg-white dark:bg-[#1a202c] border border-teal-300 dark:border-teal-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                            </div>
+                            <span className="text-[10px] text-teal-700 dark:text-teal-400 mt-1 block font-medium">
+                              Customer agreed frame retail price for this transaction.
+                            </span>
+                          </div>
+
+                          {/* Admin Confidential Purchase Cost & Profit Display */}
+                          {showAdminConfidential ? (
+                            <div className="p-3 bg-amber-50/70 dark:bg-amber-950/25 rounded-xl border border-amber-300/80 dark:border-amber-900/60 flex flex-col justify-between">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1">
+                                  <i className="fa-solid fa-user-shield text-amber-600"></i>
+                                  Admin Confidential Cost
+                                </span>
+                                <span className="text-[11px] font-mono font-bold bg-amber-200/70 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-2 py-0.5 rounded">
+                                  Cipher: {scannedFrame.secretCode}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-amber-200 dark:border-amber-900/40">
+                                <div>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Purchase Cost</span>
+                                  <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                                    ৳{scannedFrame.wholesaleCost?.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Gross Profit</span>
+                                  <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                    +৳{grossProfit?.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Profit Margin</span>
+                                  <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded inline-block ${
+                                    profitMarginPct >= 30 
+                                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' 
+                                      : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                  }`}>
+                                    {profitMarginPct.toFixed(1)}%
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-slate-100 dark:bg-slate-800/60 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center text-center">
+                              <span className="text-xs text-slate-400">
+                                <i className="fa-solid fa-lock mr-1.5"></i>
+                                Purchase wholesale cost hidden for floor staff.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
               {/* SECTION 3: Ophthalmic Lens Selection & Full Prescription Grid */}
               <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs transition-all hover:border-teal-200 dark:hover:border-teal-900">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4 gap-3">
                   <div className="flex items-center gap-2 text-teal-700 dark:text-teal-400 font-bold text-sm">
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-eye"></i>
                     </span>
                     <span>{text('3. Ophthalmic Lens Selection & Full Prescription Grid', '৩. অপথালমিক লেন্স নির্বাচন ও পূর্ণ প্রেসক্রিপশন গ্রিড')}</span>
                   </div>
+                  <div className="flex items-center gap-3">
+                    {/* Markable checkbox/toggle for Step 3 */}
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={includeLens}
+                        onChange={(e) => setIncludeLens(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-teal-600"></div>
+                      <span className={`ml-2 text-xs font-bold transition-colors ${includeLens ? 'text-teal-700 dark:text-teal-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                        {includeLens ? text('Include Lens & Rx', 'লেন্স ও Rx অন্তর্ভুক্ত') : text('No Lens', 'লেন্স বাদ')}
+                      </span>
+                    </label>
+                  </div>
                 </div>
 
-                {/* 4-Step Ophthalmic Lens Selection (উপাদান, কোটিং, রঙ/টিন্ট, লেন্স ডিজাইন) */}
-                <div className="mb-5">
-                  <OphthalmicLensSelector
-                    selectedMaterial={lensMaterial}
-                    onSelectMaterial={setLensMaterial}
-                    selectedCoating={lensCoating}
-                    onSelectCoating={setLensCoating}
-                    selectedColor={lensColor}
-                    onSelectColor={setLensColor}
-                    selectedDesign={lensDesign}
-                    onSelectDesign={setLensDesign}
-                    onConfigurationChange={(cfg) => setLensCustomConfig(cfg)}
-                  />
-                </div>
+                {!includeLens ? (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-[#141824]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
+                      <i className="fa-solid fa-circle-info text-slate-400 text-sm"></i>
+                      <span>
+                        {text(
+                          'Lens selection and prescription grid are disabled. This sale will not require lens details or prescription data.',
+                          'লেন্স নির্বাচন ও প্রেসক্রিপশন গ্রিড নিষ্ক্রিয় করা হয়েছে। এই চালানে কোনো লেন্সের তথ্য বা মূল্য যোগ হবে না এবং লেন্স পূরণ আবশ্যক নয়।'
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIncludeLens(true)}
+                      className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded-lg text-xs font-bold hover:bg-teal-100 transition-all cursor-pointer self-start sm:self-auto whitespace-nowrap"
+                    >
+                      + {text('Include Lens & Rx', 'লেন্স যোগ করুন')}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* 4-Step Ophthalmic Lens Selection (উপাদান, কোটিং, রঙ/টিন্ট, লেন্স ডিজাইন) */}
+                    <div className="mb-5">
+                      <OphthalmicLensSelector
+                        selectedMaterial={lensMaterial}
+                        onSelectMaterial={setLensMaterial}
+                        selectedCoating={lensCoating}
+                        onSelectCoating={setLensCoating}
+                        selectedColor={lensColor}
+                        onSelectColor={setLensColor}
+                        selectedDesign={lensDesign}
+                        onSelectDesign={setLensDesign}
+                        onConfigurationChange={(cfg) => setLensCustomConfig(cfg)}
+                      />
+                    </div>
 
-                {/* Exact Prescription Grid Table Matrix (OD and OS) */}
-                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-100 dark:bg-[#141824] text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                        <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center w-28">
-                          Eye
-                        </th>
-                        <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center">
-                          Sph (Sphere)
-                        </th>
-                        <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center">
-                          Cyl (Cylinder)
-                        </th>
-                        <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center">
-                          Axis
-                        </th>
-                        <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center">
-                          Add (Near)
-                        </th>
-                        <th className="p-2.5 border-b border-slate-200 dark:border-slate-700 text-center">
-                          PD (mm)
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
-                      {rxGrid.map((row, idx) => (
-                        <tr
-                          key={row.eye}
-                          className={idx === 0 ? 'bg-white dark:bg-[#1a202c]' : 'bg-slate-50/50 dark:bg-[#161c27]'}
-                        >
-                          {/* Row 1/2 Eye indicator */}
-                          <td className="p-2.5 border-r border-slate-200 dark:border-slate-700 font-bold text-xs text-center text-teal-800 dark:text-teal-300 bg-teal-50/40 dark:bg-teal-950/20">
-                            <span className="flex items-center justify-center gap-1.5">
-                              <i className="fa-solid fa-eye text-teal-600 text-[10px]"></i>
-                              {row.eye}
-                            </span>
-                          </td>
+                    {/* Exact Prescription Grid Table Matrix (OD and OS) */}
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 dark:bg-[#141824] text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                            <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center w-28">
+                              Eye
+                            </th>
+                            <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center">
+                              Sph (Sphere)
+                            </th>
+                            <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center">
+                              Cyl (Cylinder)
+                            </th>
+                            <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center">
+                              Axis
+                            </th>
+                            <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-center">
+                              Add (Near)
+                            </th>
+                            <th className="p-2.5 border-b border-slate-200 dark:border-slate-700 text-center">
+                              PD (mm)
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+                          {rxGrid.map((row, idx) => (
+                            <tr
+                              key={row.eye}
+                              className={idx === 0 ? 'bg-white dark:bg-[#1a202c]' : 'bg-slate-50/50 dark:bg-[#161c27]'}
+                            >
+                              {/* Row 1/2 Eye indicator */}
+                              <td className="p-2.5 border-r border-slate-200 dark:border-slate-700 font-bold text-xs text-center text-teal-800 dark:text-teal-300 bg-teal-50/40 dark:bg-teal-950/20">
+                                <span className="flex items-center justify-center gap-1.5">
+                                  <i className="fa-solid fa-eye text-teal-600 text-[10px]"></i>
+                                  {row.eye}
+                                </span>
+                              </td>
 
-                          {/* Sph */}
-                          <td className="p-2 border-r border-slate-200 dark:border-slate-700">
-                            <input
-                              id={idx === 0 ? 'rx-od-sph' : 'rx-os-sph'}
-                              type="text"
-                              value={row.sph}
-                              onChange={(e) => handleRxChange(idx, 'sph', e.target.value)}
-                              placeholder="-0.00"
-                              className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
-                            />
-                          </td>
+                              {/* Sph */}
+                              <td className="p-2 border-r border-slate-200 dark:border-slate-700">
+                                <input
+                                  id={idx === 0 ? 'rx-od-sph' : 'rx-os-sph'}
+                                  type="text"
+                                  value={row.sph}
+                                  onChange={(e) => handleRxChange(idx, 'sph', e.target.value)}
+                                  placeholder="-0.00"
+                                  className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+                                />
+                              </td>
 
-                          {/* Cyl */}
-                          <td className="p-2 border-r border-slate-200 dark:border-slate-700">
-                            <input
-                              id={idx === 0 ? 'rx-od-cyl' : 'rx-os-cyl'}
-                              type="text"
-                              value={row.cyl}
-                              onChange={(e) => handleRxChange(idx, 'cyl', e.target.value)}
-                              placeholder="-0.00"
-                              className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
-                            />
-                          </td>
+                              {/* Cyl */}
+                              <td className="p-2 border-r border-slate-200 dark:border-slate-700">
+                                <input
+                                  id={idx === 0 ? 'rx-od-cyl' : 'rx-os-cyl'}
+                                  type="text"
+                                  value={row.cyl}
+                                  onChange={(e) => handleRxChange(idx, 'cyl', e.target.value)}
+                                  placeholder="-0.00"
+                                  className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+                                />
+                              </td>
 
-                          {/* Axis */}
-                          <td className="p-2 border-r border-slate-200 dark:border-slate-700">
-                            <input
-                              id={idx === 0 ? 'rx-od-axis' : 'rx-os-axis'}
-                              type="text"
-                              value={row.axis}
-                              onChange={(e) => handleRxChange(idx, 'axis', e.target.value)}
-                              placeholder="180°"
-                              className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
-                            />
-                          </td>
+                              {/* Axis */}
+                              <td className="p-2 border-r border-slate-200 dark:border-slate-700">
+                                <input
+                                  id={idx === 0 ? 'rx-od-axis' : 'rx-os-axis'}
+                                  type="text"
+                                  value={row.axis}
+                                  onChange={(e) => handleRxChange(idx, 'axis', e.target.value)}
+                                  placeholder="180°"
+                                  className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+                                />
+                              </td>
 
-                          {/* Add */}
-                          <td className="p-2 border-r border-slate-200 dark:border-slate-700">
-                            <input
-                              id={idx === 0 ? 'rx-od-add' : 'rx-os-add'}
-                              type="text"
-                              value={row.add}
-                              onChange={(e) => handleRxChange(idx, 'add', e.target.value)}
-                              placeholder="+0.00"
-                              className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
-                            />
-                          </td>
+                              {/* Add */}
+                              <td className="p-2 border-r border-slate-200 dark:border-slate-700">
+                                <input
+                                  id={idx === 0 ? 'rx-od-add' : 'rx-os-add'}
+                                  type="text"
+                                  value={row.add}
+                                  onChange={(e) => handleRxChange(idx, 'add', e.target.value)}
+                                  placeholder="+0.00"
+                                  className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+                                />
+                              </td>
 
-                          {/* PD */}
-                          <td className="p-2">
-                            <input
-                              id={idx === 0 ? 'rx-od-pd' : 'rx-os-pd'}
-                              type="text"
-                              value={row.pd}
-                              onChange={(e) => handleRxChange(idx, 'pd', e.target.value)}
-                              placeholder="31.5"
-                              className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 px-1">
-                  <span>* Total Binocular PD: {((Number(rxGrid[0].pd) || 31.5) + (Number(rxGrid[1].pd) || 31.5)).toFixed(1)} mm</span>
-                  <span className="text-teal-600 font-medium">Ready for Essilor Delta 200 Edger Processing</span>
-                </div>
+                              {/* PD */}
+                              <td className="p-2">
+                                <input
+                                  id={idx === 0 ? 'rx-od-pd' : 'rx-os-pd'}
+                                  type="text"
+                                  value={row.pd}
+                                  onChange={(e) => handleRxChange(idx, 'pd', e.target.value)}
+                                  placeholder="31.5"
+                                  className="w-full text-center py-1.5 bg-white dark:bg-[#141824] border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 px-1">
+                      <span>* Total Binocular PD: {((Number(rxGrid[0].pd) || 31.5) + (Number(rxGrid[1].pd) || 31.5)).toFixed(1)} mm</span>
+                      <span className="text-teal-600 font-medium">Ready for Essilor Delta 200 Edger Processing</span>
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-teal-300 dark:border-teal-800 bg-teal-50/70 dark:bg-teal-950/20 p-3">
+                      <label htmlFor="lens-negotiated-price" className="flex items-center justify-between gap-3 text-sm font-mono font-bold text-teal-800 dark:text-teal-200">
+                        <span className="shrink-0">{text('Negotiable Lens Price:', 'দরদামযোগ্য লেন্সের দাম:')} ৳</span>
+                        <input
+                          id="lens-negotiated-price"
+                          type="number"
+                          min="0"
+                          step="50"
+                          aria-label={text('Negotiated lens price in BDT', 'দরদাম করা লেন্সের দাম টাকা')}
+                          value={negotiatedLensPrice}
+                          onChange={(e) => setNegotiatedLensPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                          className="w-32 h-10 px-3 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-[#141824] text-right font-mono text-sm font-bold text-teal-800 dark:text-teal-200 outline-hidden focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                        />
+                      </label>
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="rounded-xl border border-teal-300 dark:border-teal-800 bg-teal-50/70 dark:bg-teal-950/20 p-3">
-                <label htmlFor="lens-negotiated-price" className="flex items-center justify-between gap-3 text-sm font-mono font-bold text-teal-800 dark:text-teal-200">
-                  <span className="shrink-0">{text('Negotiable Lens Price:', 'দরদামযোগ্য লেন্সের দাম:')} ৳</span>
-                  <input
-                    id="lens-negotiated-price"
-                    type="number"
-                    min="0"
-                    step="50"
-                    aria-label={text('Negotiated lens price in BDT', 'দরদাম করা লেন্সের দাম টাকা')}
-                    value={negotiatedLensPrice}
-                    onChange={(e) => setNegotiatedLensPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-32 h-10 px-3 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-[#141824] text-right font-mono text-sm font-bold text-teal-800 dark:text-teal-200 outline-hidden focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
-                  />
-                </label>
+              {/* SECTION 4: Paid Services & Eyewear Repair (পেইড সার্ভিস ও চশমা মেরামত বিলিং) */}
+              <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs transition-all hover:border-teal-200 dark:hover:border-teal-900">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4 gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#00c49f] text-white flex items-center justify-center text-lg shadow-sm">
+                      <i className="fa-solid fa-screwdriver-wrench"></i>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                          {text('Paid Services & Eyewear Repair Billing', 'পেইড সার্ভিস ও চশমা মেরামত বিলিং')}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-teal-50 dark:bg-teal-950/40 text-[#00a884] dark:text-[#00f5b4] border border-[#00c49f]/30 font-mono">
+                          SRV-3273
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {text('Nose pad, wash, super clean, ribbon, glass cleaner & side replacement', 'নোজ প্যাড, ওয়াশ, সুপার ক্লিন, রিবন, গ্লাস ক্লিনার ও সাইড পরিবর্তন')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {/* Markable checkbox/toggle for Step 4 */}
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={includePaidServices}
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          setIncludePaidServices(next);
+                          if (!next) {
+                            setSelectedPaidServices({});
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-teal-600"></div>
+                      <span className={`ml-2 text-xs font-bold transition-colors ${includePaidServices ? 'text-teal-700 dark:text-teal-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                        {includePaidServices ? text('Include Paid Services', 'সার্ভিস অন্তর্ভুক্ত') : text('No Paid Services', 'সার্ভিস প্রয়োজন নেই')}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {!includePaidServices ? (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-[#141824]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
+                      <i className="fa-solid fa-wrench text-slate-400 text-sm"></i>
+                      <span>
+                        {text(
+                          'No paid service included. Click to add ultrasonic super clean, wash, nose pads, ribbon, cleaner spray, or frame repairs.',
+                          'এই চালানে কোনো পেইড সার্ভিস যোগ করা হয়নি। সুপার ক্লিন, ওয়াশ, নোজ প্যাড, রিবন, ক্লিনার স্প্রে বা মেরামত যোগ করতে টিক দিন।'
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIncludePaidServices(true)}
+                      className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded-lg text-xs font-bold hover:bg-teal-100 transition-all cursor-pointer self-start sm:self-auto whitespace-nowrap"
+                    >
+                      + {text('Add Paid Services', 'পেইড সার্ভিস যোগ করুন')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Subheader bar inside section */}
+                    <div className="flex items-center justify-between text-xs pb-1">
+                      <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold">
+                        <span className="w-6 h-6 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 flex items-center justify-center text-[11px] border border-teal-200 dark:border-teal-800">
+                          <i className="fa-solid fa-wrench"></i>
+                        </span>
+                        <span>{text('Select Paid Services (Multiple Selectable)', 'পেইড সার্ভিস নির্বাচন করুন (এক বা একাধিক নির্বাচনযোগ্য)')}</span>
+                      </div>
+                      <span className="text-teal-700 dark:text-teal-400 font-bold text-[11px]">
+                        {text('As per specified rate', 'প্রদত্ত রেট অনুযায়ী')}
+                      </span>
+                    </div>
+
+                    {/* 6-Card Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                      {PAID_SERVICES_CATALOG.map((service) => {
+                        const selected = !!selectedPaidServices[service.id];
+                        const itemState = selectedPaidServices[service.id];
+                        const qty = itemState ? itemState.quantity : 1;
+                        const currentPrice = itemState ? itemState.price : service.defaultPrice;
+                        const itemTotal = currentPrice * qty;
+
+                        return (
+                          <div
+                            key={service.id}
+                            onClick={() => {
+                              if (!selected) {
+                                togglePaidService(service);
+                              }
+                            }}
+                            className={`rounded-2xl p-4 transition-all relative flex flex-col justify-between ${
+                              selected
+                                ? 'border-2 border-[#00c49f] bg-teal-50/20 dark:bg-teal-950/20 shadow-xs'
+                                : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#141824] hover:border-teal-300 dark:hover:border-teal-700 cursor-pointer'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div
+                                    className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm ${
+                                      selected
+                                        ? 'bg-[#00c49f] text-white shadow-xs'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    <i className={service.icon}></i>
+                                  </div>
+                                  <div>
+                                    <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm leading-tight">
+                                      {language === 'bn' ? service.nameBn : service.nameEn}
+                                    </h4>
+                                    <p className="text-[10px] text-slate-500 font-medium">
+                                      {language === 'bn' ? service.nameEn : service.nameBn}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <span
+                                  className={`px-2 py-0.5 rounded-lg text-xs font-bold font-mono whitespace-nowrap ${
+                                    selected
+                                      ? 'bg-[#00c49f] text-white'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-400 border border-slate-200 dark:border-slate-700'
+                                  }`}
+                                >
+                                  {service.priceBadge}
+                                </span>
+                              </div>
+
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mb-3">
+                                {service.descriptionBn}
+                              </p>
+                            </div>
+
+                            {selected ? (
+                              <div className="pt-2 border-t border-teal-200/60 dark:border-teal-900/60 flex items-center justify-between">
+                                {/* Quantity Stepper */}
+                                <div
+                                  className="flex items-center gap-1 border border-teal-300 dark:border-teal-700 rounded-lg bg-white dark:bg-[#1a202c] px-1 py-0.5 shadow-2xs"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePaidServiceQty(service.id, -1)}
+                                    className="w-5 h-5 rounded flex items-center justify-center text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 font-bold text-xs cursor-pointer"
+                                    title="Decrease quantity"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="w-6 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                                    {qty}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePaidServiceQty(service.id, 1)}
+                                    className="w-5 h-5 rounded flex items-center justify-center text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 font-bold text-xs cursor-pointer"
+                                    title="Increase quantity"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+
+                                {/* Line Total */}
+                                <div className="text-right">
+                                  <span className="text-[10px] text-slate-400 block leading-none">{text('Total', 'মোট')}</span>
+                                  <span className="font-mono font-bold text-xs sm:text-sm text-[#00a884] dark:text-[#00f5b4]">
+                                    ৳{itemTotal.toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="pt-2 text-right">
+                                <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">
+                                  + {text('Select Service', 'নির্বাচন করুন')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Bottom Summary Bar matching screenshot */}
+                    <div className="bg-teal-50/50 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/80 rounded-2xl p-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-bold text-teal-900 dark:text-teal-200">
+                        <span className="w-5 h-5 rounded-full bg-[#00c49f] text-white flex items-center justify-center text-[10px]">
+                          <i className="fa-solid fa-check"></i>
+                        </span>
+                        <span>
+                          {text(`Selected Paid Services: ${Object.keys(selectedPaidServices).length}`, `নির্বাচিত পেইড সার্ভিস: ${Object.keys(selectedPaidServices).length} টি`)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right text-xs">
+                          <span className="text-slate-600 dark:text-slate-400 font-medium mr-1.5">
+                            {text('Subtotal:', 'সাবটোটাল:')}
+                          </span>
+                          <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">
+                            ৳{paidServicesTotal.toLocaleString()}
+                          </span>
+                        </div>
+
+                        {Object.keys(selectedPaidServices).length > 0 && (
+                          <button
+                            type="button"
+                            onClick={resetPaidServices}
+                            className="text-rose-600 hover:text-rose-700 text-xs font-bold cursor-pointer transition-colors px-1"
+                          >
+                            {text('Reset', 'রিসেট')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* SECTION 4: Salesman Assignment & Live Commission (Now in Serial Top-to-Bottom Flow) */}
+              {/* SECTION 5: Salesman Assignment & Live Commission (Now in Serial Top-to-Bottom Flow) */}
               <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs transition-all hover:border-teal-200 dark:hover:border-teal-900">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
                   <div className="flex items-center gap-2 text-teal-700 dark:text-teal-400 font-bold text-sm">
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-id-badge"></i>
                     </span>
-                    <span>{text('4. Salesman Assignment & Live Commission', '৪. বিক্রয়কর্মী নিয়োগ ও লাইভ কমিশন')}</span>
+                    <span>{text('5. Salesman Assignment & Live Commission', '৫. বিক্রয়কর্মী নিয়োগ ও লাইভ কমিশন')}</span>
                   </div>
                   {onManageSalesmen && (
                     <button
@@ -1262,14 +1791,14 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* SECTION 5: Dynamic Price Calculation, Billing & Settlement */}
+              {/* SECTION 6: Dynamic Price Calculation, Billing & Settlement */}
               <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-teal-200 dark:border-teal-900/80 p-5 shadow-md">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
                   <div className="flex items-center gap-2 text-teal-700 dark:text-teal-400 font-bold text-sm">
                     <span className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-300 flex items-center justify-center text-xs">
                       <i className="fa-solid fa-calculator"></i>
                     </span>
-                    <span>5. Billing, Dynamic Calculation &amp; Settlement</span>
+                    <span>{text('6. Billing, Dynamic Calculation & Settlement', '৬. বিলিং, হিসাব-নিকাশ ও নিষ্পত্তি')}</span>
                   </div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Currency: BDT (৳)</span>
                 </div>
@@ -1278,22 +1807,35 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   {/* Left Column: Calculation Breakdown & Advance (7 cols) */}
                   <div className="lg:col-span-7 flex flex-col gap-3">
                     <div className="space-y-2 text-sm bg-slate-50/70 dark:bg-[#141824] p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                      <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                        <span>Negotiated Frame Price:</span>
-                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                          ৳{negotiatedPrice?.toLocaleString()}
-                        </span>
-                      </div>
+                      {includeFrame && (
+                        <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                          <span>{text('Negotiated Frame Price:', 'দরদাম করা ফ্রেমের মূল্য:')}</span>
+                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                            ৳{activeFramePrice.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
 
-                      <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                        <span>Lens Package Price:</span>
-                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                          ৳{lensPrice.toLocaleString()}
-                        </span>
-                      </div>
+                      {includeLens && (
+                        <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                          <span>{text('Lens Package Price:', 'লেন্স প্যাকেজ মূল্য:')}</span>
+                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                            ৳{activeLensPrice.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+
+                      {includePaidServices && (
+                        <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                          <span>{text('Paid Services Total:', 'পেইড সার্ভিস মোট:')}</span>
+                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                            ৳{paidServicesTotal.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
 
                       <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 pt-1.5 border-t border-slate-200 dark:border-slate-700">
-                        <span>Gross Subtotal:</span>
+                        <span>{text('Gross Subtotal:', 'সর্বমোট সাবটোটাল:')}</span>
                         <span className="font-mono font-bold text-slate-900 dark:text-white">
                           ৳{grossTotal?.toLocaleString()}
                         </span>
@@ -1451,14 +1993,16 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
               </div>
 
               {/* Action: Add New Salesman */}
-              <button
-                type="button"
-                onClick={() => setIsAddSalesmanModalOpen(true)}
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer"
-              >
-                <i className="fa-solid fa-user-plus"></i>
-                <span>Add New Salesman</span>
-              </button>
+              {canManageSalesmen && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddSalesmanModalOpen(true)}
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <i className="fa-solid fa-user-plus"></i>
+                  <span>Add New Salesman</span>
+                </button>
+              )}
             </div>
 
             {/* Sales Filter Tabs: Daily, Weekly, Monthly, Custom Range */}
@@ -1679,7 +2223,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       </div>
 
       {/* MODAL 1: ADD NEW SALESMAN MODAL */}
-      {isAddSalesmanModalOpen && (
+      {canManageSalesmen && isAddSalesmanModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-[#1a202c] rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
@@ -1773,7 +2317,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       )}
 
       {/* INVOICE SUMMARY REVIEW */}
-      {showInvoiceSummary && scannedFrame && currentSalesman && (
+      {showInvoiceSummary && currentSalesman && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-[#1a202c] rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
@@ -1781,25 +2325,58 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">{text('Invoice Summary', 'ইনভয়েস সারসংক্ষেপ')}</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{text('Review the details before generating and printing.', 'তৈরি ও প্রিন্ট করার আগে তথ্যগুলো যাচাই করুন।')}</p>
               </div>
-              <button type="button" onClick={() => setShowInvoiceSummary(false)} className="w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close summary">
+              <button type="button" onClick={() => setShowInvoiceSummary(false)} className="w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer" aria-label="Close summary">
                 &times;
               </button>
             </div>
-            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3 text-xs">
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3 text-xs max-h-[70vh] overflow-y-auto">
               <div><span className="block text-slate-500">{text('Patient', 'রোগী')}</span><strong className="text-slate-900 dark:text-white">{patientName}</strong></div>
               <div><span className="block text-slate-500">{text('Phone', 'ফোন')}</span><strong className="text-slate-900 dark:text-white">{patientPhone}</strong></div>
               <div><span className="block text-slate-500">{text('Salesman', 'বিক্রয়কর্মী')}</span><strong className="text-slate-900 dark:text-white">{currentSalesman.name}</strong></div>
               <div><span className="block text-slate-500">{text('Payment', 'পেমেন্ট')}</span><strong className="text-slate-900 dark:text-white">{paymentMethod}</strong></div>
-              <div className="sm:col-span-2"><span className="block text-slate-500">{text('Frame', 'ফ্রেম')}</span><strong className="text-slate-900 dark:text-white">{scannedFrame.brand} {scannedFrame.model}</strong></div>
-              <div className="sm:col-span-2"><span className="block text-slate-500">{text('Lens', 'লেন্স')}</span><strong className="text-slate-900 dark:text-white">{selectedLens.name}</strong></div>
+
+              {includeFrame && scannedFrame && (
+                <div className="sm:col-span-2 bg-slate-50 dark:bg-[#141824] p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <span className="block text-slate-500 text-[10px] uppercase font-bold">{text('Frame Selection', 'ফ্রেম সিলেকশন')}</span>
+                  <div className="flex justify-between font-bold text-slate-900 dark:text-white mt-0.5">
+                    <span>{scannedFrame.brand} {scannedFrame.model} ({scannedFrame.color})</span>
+                    <span className="font-mono">৳{activeFramePrice.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+
+              {includeLens && activeLensPrice > 0 && (
+                <div className="sm:col-span-2 bg-slate-50 dark:bg-[#141824] p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <span className="block text-slate-500 text-[10px] uppercase font-bold">{text('Ophthalmic Lens', 'অপথালমিক লেন্স')}</span>
+                  <div className="flex justify-between font-bold text-slate-900 dark:text-white mt-0.5">
+                    <span>{selectedLens.name}</span>
+                    <span className="font-mono">৳{activeLensPrice.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+
+              {includePaidServices && Object.keys(selectedPaidServices).length > 0 && (
+                <div className="sm:col-span-2 bg-slate-50 dark:bg-[#141824] p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <span className="block text-slate-500 text-[10px] uppercase font-bold">{text('Paid Services', 'পেইড সার্ভিস')}</span>
+                  <div className="space-y-1.5 mt-1.5">
+                    {Object.values(selectedPaidServices).map(({ service, quantity, price }) => (
+                      <div key={service.id} className="flex justify-between text-slate-700 dark:text-slate-300">
+                        <span>• {service.nameBn} ({service.nameEn}) × {quantity}</span>
+                        <span className="font-mono font-bold">৳{(price * quantity).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div><span className="block text-slate-500">{text('Advance Paid', 'পরিশোধিত অগ্রিম')}</span><strong className="text-slate-900 dark:text-white">৳{Number(advancePaid || 0).toLocaleString()}</strong></div>
               <div><span className="block text-slate-500">{text('Net Payable', 'নিট প্রদেয়')}</span><strong className="text-lg text-[#166534]">৳{netTotal.toLocaleString()}</strong></div>
             </div>
             <div className="px-5 py-4 border-t border-slate-200 dark:border-slate-800 flex justify-between gap-3">
-              <button type="button" onClick={() => setShowInvoiceSummary(false)} className="h-10 px-4 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200">
+              <button type="button" onClick={() => setShowInvoiceSummary(false)} className="h-10 px-4 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
                 {text('Back to Edit', 'সম্পাদনায় ফিরুন')}
               </button>
-              <button type="button" onClick={handleGenerateInvoice} className="h-10 px-4 rounded-lg bg-[#166534] hover:bg-[#14532d] text-white text-xs font-bold">
+              <button type="button" onClick={handleGenerateInvoice} className="h-10 px-4 rounded-lg bg-[#166534] hover:bg-[#14532d] text-white text-xs font-bold cursor-pointer">
                 {text('Confirm & Generate', 'নিশ্চিত ও তৈরি করুন')}
               </button>
             </div>
@@ -1809,23 +2386,23 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
       {/* MODAL 2: PRINTABLE INVOICE & JOB CARD / TRAY TICKET MODAL */}
       {showPrintModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white dark:bg-[#1a202c] rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 my-8">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-[#1a202c] rounded-2xl max-w-xl w-full max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain p-4 sm:p-5 shadow-2xl border border-slate-200 dark:border-slate-800 my-2">
             {/* Modal Header & Toggle (no-print) */}
-            <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4 mb-4">
-              <div className="flex items-center gap-2.5">
+            <div className="no-print flex flex-col gap-3 border-b border-slate-200 dark:border-slate-800 pb-4 mb-4">
+              <div className="flex min-w-0 items-center gap-2.5">
                 <div className="w-9 h-9 rounded-lg bg-teal-600 text-white flex items-center justify-center text-base">
                   <i className="fa-solid fa-receipt"></i>
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                <div className="min-w-0">
+                  <h3 className="break-words text-base font-bold text-slate-900 dark:text-white">
                     Order Document Generated ({currentInvoiceNumber})
                   </h3>
                   <p className="text-xs text-slate-500">Ready to print customer receipt or lab tray ticket</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
                   <button
                     type="button"
@@ -1905,29 +2482,41 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     <thead>
                       <tr className="bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300">
                         <th className="p-2 border-b border-slate-200 dark:border-slate-800">Item Description</th>
-                        <th className="p-2 border-b border-slate-200 dark:border-slate-800 text-center">Specs</th>
+                        <th className="p-2 border-b border-slate-200 dark:border-slate-800 text-center">Specs / Qty</th>
                         <th className="p-2 border-b border-slate-200 dark:border-slate-800 text-right">Amount</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      <tr>
-                        <td className="p-2">
-                          <span className="font-bold block">{scannedFrame.brand}</span>
-                          <span className="text-[10px] text-slate-500">{scannedFrame.model} ({scannedFrame.color})</span>
-                        </td>
-                        <td className="p-2 text-center text-slate-600 dark:text-slate-400">{scannedFrame.frameType}</td>
-                        <td className="p-2 text-right font-mono font-bold">৳{negotiatedPrice?.toLocaleString()}</td>
-                      </tr>
-                      {lensPrice > 0 && (
+                      {includeFrame && scannedFrame && (
+                        <tr>
+                          <td className="p-2">
+                            <span className="font-bold block">{scannedFrame.brand}</span>
+                            <span className="text-[10px] text-slate-500">{scannedFrame.model} ({scannedFrame.color})</span>
+                          </td>
+                          <td className="p-2 text-center text-slate-600 dark:text-slate-400">{scannedFrame.frameType}</td>
+                          <td className="p-2 text-right font-mono font-bold">৳{activeFramePrice?.toLocaleString()}</td>
+                        </tr>
+                      )}
+                      {includeLens && activeLensPrice > 0 && (
                         <tr>
                           <td className="p-2">
                             <span className="font-bold block">{selectedLens.name}</span>
                             <span className="text-[10px] text-slate-500">{selectedLens.coating}</span>
                           </td>
                           <td className="p-2 text-center text-slate-600 dark:text-slate-400">Index {selectedLens.index}</td>
-                          <td className="p-2 text-right font-mono font-bold">৳{lensPrice.toLocaleString()}</td>
+                          <td className="p-2 text-right font-mono font-bold">৳{activeLensPrice.toLocaleString()}</td>
                         </tr>
                       )}
+                      {includePaidServices && Object.values(selectedPaidServices).map(({ service, quantity, price }) => (
+                        <tr key={service.id}>
+                          <td className="p-2">
+                            <span className="font-bold block">{service.nameBn}</span>
+                            <span className="text-[10px] text-slate-500">{service.nameEn}</span>
+                          </td>
+                          <td className="p-2 text-center text-slate-600 dark:text-slate-400">পরিমাণ: {quantity} টি</td>
+                          <td className="p-2 text-right font-mono font-bold">৳{(price * quantity).toLocaleString()}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
 
@@ -1958,7 +2547,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   </div>
                 </div>
               ) : (
-                /* 2. OPTICAL WORKSHOP LAB TRAY TICKET / JOB CARD FORMAT */
+                /* 2. OPTICAL WORKSHOP LAB TRAY TICKET / SERVICE WORK ORDER FORMAT */
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b-2 border-teal-600 pb-3">
                     <div>
@@ -1966,11 +2555,15 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         MODINA LAB WORKSHOP
                       </span>
                       <h2 className="text-base font-black text-slate-900 dark:text-white">
-                        GLAZING CONVEYOR JOB TICKET
+                        {!includeFrame && !includeLens && includePaidServices
+                          ? 'SERVICE & REPAIR WORK ORDER'
+                          : 'GLAZING CONVEYOR JOB TICKET'}
                       </h2>
                     </div>
                     <div className="text-right flex flex-col items-end">
-                      <span className="text-xl font-mono font-black text-teal-600 block">TRAY #A-14</span>
+                      <span className="text-xl font-mono font-black text-teal-600 block">
+                        {!includeFrame && !includeLens && includePaidServices ? 'SRV #3273' : 'TRAY #A-14'}
+                      </span>
                       <div className="mt-1">
                         <Barcode value={currentInvoiceNumber} width={1.2} height={25} displayValue={false} margin={0} background="transparent" lineColor="#0f172a" />
                       </div>
@@ -1986,54 +2579,83 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                     <div>
                       <span className="text-slate-400 block text-[10px]">PATIENT &amp; DELIVERY</span>
                       <span className="font-bold text-slate-900 dark:text-white">{patientName}</span>
-                      <span className="text-[11px] text-slate-500 block">Target: {deliveryDate}</span>
+                      <span className="text-[11px] text-slate-500 block">Target: {deliveryDate || 'Same Day Service'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">FRAME SPECIFICATIONS</span>
-                      <span className="font-bold text-slate-900 dark:text-white">{scannedFrame.brand} • {scannedFrame.model}</span>
-                      <span className="text-[11px] text-teal-600 block font-semibold">{scannedFrame.frameType} ({scannedFrame.color})</span>
+                      <span className="text-slate-400 block text-[10px]">ORDER CLASSIFICATION</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {includeFrame && scannedFrame
+                          ? `${scannedFrame.brand} • ${scannedFrame.model}`
+                          : !includeFrame && !includeLens
+                          ? 'Optical Service & Repair Only'
+                          : 'Lens Glazing / Fitting Only'}
+                      </span>
+                      {includeFrame && scannedFrame && (
+                        <span className="text-[11px] text-teal-600 block font-semibold">{scannedFrame.frameType} ({scannedFrame.color})</span>
+                      )}
                     </div>
                   </div>
 
-                  {/* EXACT PRESCRIPTION MATRIX TABLE (OD and OS) */}
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                      EXACT OPTICAL REFRACTION SPECIFICATIONS:
-                    </span>
-                    <table className="w-full text-center border-collapse text-xs bg-white dark:bg-[#1a202c] rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden">
-                      <thead>
-                        <tr className="bg-teal-700 text-white font-bold text-[11px]">
-                          <th className="p-2">Eye</th>
-                          <th className="p-2">Sph</th>
-                          <th className="p-2">Cyl</th>
-                          <th className="p-2">Axis</th>
-                          <th className="p-2">Add</th>
-                          <th className="p-2">PD</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono font-bold">
-                        {rxGrid.map((r) => (
-                          <tr key={r.eye}>
-                            <td className="p-2 text-left font-sans bg-slate-100 dark:bg-slate-800 text-teal-800 dark:text-teal-300">
-                              {r.eye}
-                            </td>
-                            <td className="p-2">{r.sph || '0.00'}</td>
-                            <td className="p-2">{r.cyl || '0.00'}</td>
-                            <td className="p-2">{r.axis || '0°'}</td>
-                            <td className="p-2">{r.add || '0.00'}</td>
-                            <td className="p-2">{r.pd || '31.5'} mm</td>
+                  {/* EXACT PRESCRIPTION MATRIX TABLE (OD and OS) - only if lens is included */}
+                  {includeLens && (
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                        EXACT OPTICAL REFRACTION SPECIFICATIONS:
+                      </span>
+                      <table className="w-full text-center border-collapse text-xs bg-white dark:bg-[#1a202c] rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden">
+                        <thead>
+                          <tr className="bg-teal-700 text-white font-bold text-[11px]">
+                            <th className="p-2">Eye</th>
+                            <th className="p-2">Sph</th>
+                            <th className="p-2">Cyl</th>
+                            <th className="p-2">Axis</th>
+                            <th className="p-2">Add</th>
+                            <th className="p-2">PD</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono font-bold">
+                          {rxGrid.map((r) => (
+                            <tr key={r.eye}>
+                              <td className="p-2 text-left font-sans bg-slate-100 dark:bg-slate-800 text-teal-800 dark:text-teal-300">
+                                {r.eye}
+                              </td>
+                              <td className="p-2">{r.sph || '0.00'}</td>
+                              <td className="p-2">{r.cyl || '0.00'}</td>
+                              <td className="p-2">{r.axis || '0°'}</td>
+                              <td className="p-2">{r.add || '0.00'}</td>
+                              <td className="p-2">{r.pd || '31.5'} mm</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
 
-                  <div className="p-2.5 bg-teal-50 dark:bg-teal-950/30 rounded-lg border border-teal-200 dark:border-teal-900 text-xs">
-                    <span className="font-bold text-teal-900 dark:text-teal-200 block">Lens Specification:</span>
-                    <span className="text-teal-700 dark:text-teal-400 font-medium">
-                      {selectedLens.name} ({selectedLens.coating} • Index {selectedLens.index})
-                    </span>
-                  </div>
+                      {activeLensPrice > 0 && (
+                        <div className="mt-2 p-2.5 bg-teal-50 dark:bg-teal-950/30 rounded-lg border border-teal-200 dark:border-teal-900 text-xs">
+                          <span className="font-bold text-teal-900 dark:text-teal-200 block">Lens Specification:</span>
+                          <span className="text-teal-700 dark:text-teal-400 font-medium">
+                            {selectedLens.name} ({selectedLens.coating} • Index {selectedLens.index})
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Paid Services & Repair Operations List */}
+                  {includePaidServices && Object.keys(selectedPaidServices).length > 0 && (
+                    <div className="p-3 bg-teal-50 dark:bg-teal-950/30 rounded-lg border border-teal-200 dark:border-teal-900 text-xs">
+                      <span className="font-bold text-teal-900 dark:text-teal-200 block mb-1.5 uppercase text-[10px] tracking-wider">
+                        Required Service &amp; Repair Operations:
+                      </span>
+                      <div className="space-y-1">
+                        {Object.values(selectedPaidServices).map(({ service, quantity }) => (
+                          <div key={service.id} className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-semibold">
+                            <i className="fa-solid fa-check text-xs text-teal-600"></i>
+                            <span>{service.nameBn} ({service.nameEn}) — পরিমাণ: {quantity} টি</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <PrintFooterQuantum />
@@ -2250,7 +2872,18 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         </tr>
                       </thead>
                       <tbody>
-                        {invoiceCopyPrescription?.frameName && invoiceCopyPrescription.frameAmount !== undefined ? (
+                        {invoiceCopy.itemLines && invoiceCopy.itemLines.length > 0 ? (
+                          invoiceCopy.itemLines.map((line, idx) => (
+                            <tr key={idx}>
+                              <td className="p-2">
+                                <span className="block font-bold">{line.name}</span>
+                                {line.brand && <span className="text-[10px] text-slate-500">{line.brand}</span>}
+                              </td>
+                              <td className="p-2 text-center text-slate-600">{line.quantity > 1 ? `Qty: ${line.quantity}` : (line.category || 'Item')}</td>
+                              <td className="p-2 text-right font-mono font-bold whitespace-nowrap">৳{(line.unitPriceBDT * line.quantity).toLocaleString()}</td>
+                            </tr>
+                          ))
+                        ) : invoiceCopyPrescription?.frameName && invoiceCopyPrescription.frameAmount !== undefined ? (
                           <>
                             <tr>
                               <td className="p-2">
