@@ -87,6 +87,20 @@ app.use(
 
 app.use(express.json({ limit: "25mb" }));
 
+// Lazy database initializer for serverless environments (Vercel)
+let isDbInitialized = false;
+app.use(async (_req, _res, next) => {
+  if (!isDbInitialized) {
+    try {
+      await initializeDatabase();
+      isDbInitialized = true;
+    } catch (err: any) {
+      console.warn("[Database Notice] Lazy DB init warning:", err?.message || err);
+    }
+  }
+  next();
+});
+
 // Lazy Gemini client helper
 let aiClient: GoogleGenAI | null = null;
 function getAI(): GoogleGenAI {
@@ -1498,4 +1512,10 @@ async function startServer() {
   });
 }
 
-startServer();
+// Only start standalone HTTP listener if run directly (not under Vercel Serverless Function)
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  startServer();
+}
+
+export default app;
+export { app, startServer };
