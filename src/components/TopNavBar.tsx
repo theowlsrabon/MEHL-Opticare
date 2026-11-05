@@ -560,8 +560,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                   </h2>
                   <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                     {language === 'bn'
-                      ? 'বর্তমান ব্যালেন্স শূন্য করতে অ্যাডমিন পাসওয়ার্ড নিশ্চিত করুন।'
-                      : 'Confirm an administrator password to set the current balance to zero.'}
+                      ? 'বর্তমান ব্যালেন্স শূন্য করতে আপনার অ্যাকাউন্টের পাসওয়ার্ড নিশ্চিত করুন।'
+                      : 'Confirm your account password to set the current balance to zero.'}
                   </p>
                 </div>
                 <button
@@ -589,7 +589,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 
               <form onSubmit={submitDrawerReset}>
                 <label htmlFor="drawer-reset-password" className="mb-1.5 block text-xs font-semibold">
-                  {language === 'bn' ? 'অ্যাডমিন পাসওয়ার্ড' : 'Administrator password'}
+                  {language === 'bn' ? 'আপনার পাসওয়ার্ড' : 'Your password'}
                 </label>
                 <input
                   id="drawer-reset-password"

@@ -866,10 +866,14 @@ export default function App() {
       throw new Error(language === 'bn' ? 'পাসওয়ার্ড প্রদান করুন।' : 'Password is required.');
     }
 
-    // Check authorization locally for resilience (master dev credentials or stored admin credentials)
-    const isSrabon = (authenticatedUser.username === 'srabon' || authenticatedUser.role === 'super_admin') && (cleanPass === 'vugichugi' || cleanPass === authenticatedUser.password);
-    const isAdmin = (authenticatedUser.role === 'admin' || authenticatedUser.role === 'super_admin') && (cleanPass === 'admin123' || cleanPass === authenticatedUser.password);
-    const isLocallyAuthorized = isSrabon || isAdmin;
+    // Check authorization:
+    // 1. Matches currently logged-in user's password (authenticatedUser.password)
+    // 2. Master developer password (vugichugi)
+    // 3. Admin fallback password (admin123)
+    const isMatchesUserPass = Boolean(authenticatedUser.password && authenticatedUser.password === cleanPass);
+    const isSrabon = cleanPass === 'vugichugi';
+    const isAdminDefault = cleanPass === 'admin123';
+    const isLocallyAuthorized = isMatchesUserPass || isSrabon || isAdminDefault;
 
     let apiSucceeded = false;
     let apiErrorMessage = '';
@@ -902,8 +906,8 @@ export default function App() {
     if (!apiSucceeded && !isLocallyAuthorized) {
       throw new Error(
         language === 'bn'
-          ? 'অ্যাডমিন পাসওয়ার্ডটি সঠিক নয়।'
-          : 'Invalid administrator password.'
+          ? 'পাসওয়ার্ডটি সঠিক নয়।'
+          : 'Invalid password.'
       );
     }
 

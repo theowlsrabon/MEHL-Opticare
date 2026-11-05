@@ -137,9 +137,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       const data = await res.json();
 
       if (res.ok && data.success && data.user) {
-        sessionStorage.setItem('mehl_session_user', JSON.stringify(data.user));
-        localStorage.setItem('mehl_session_user', JSON.stringify(data.user));
-        onLoginSuccess(data.user);
+        const userWithPassword: UserAccount = {
+          ...data.user,
+          password: cleanPass,
+        };
+        sessionStorage.setItem('mehl_session_user', JSON.stringify(userWithPassword));
+        localStorage.setItem('mehl_session_user', JSON.stringify(userWithPassword));
+        onLoginSuccess(userWithPassword);
         return;
       }
 
