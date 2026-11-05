@@ -4,6 +4,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { API_BASE } from '../utils/apiConfig';
 import type { DueCollectionRecord } from './DueCollectionsView';
+import { syncDrawerClosingToDb } from '../utils/apiSync';
 
 interface DailyClosingSummaryModalProps {
   isOpen: boolean;
@@ -18,6 +19,13 @@ interface DailyClosingData {
   collections: DueCollectionRecord[];
   invoiceCollections: DueCollectionRecord[];
   completedJobs: OpticalJob[];
+  openingCash?: number;
+  yesterdayClosingCash?: number;
+  cashReceived?: number;
+  digitalReceived?: number;
+  cashOutflow?: number;
+  closingDrawerCash?: number;
+  savedClosing?: any;
 }
 
 export function toBengaliNumber(val: number | string): string {
@@ -77,6 +85,8 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
+  const [isClosingDrawer, setIsClosingDrawer] = useState(false);
+  const [closingSaveSuccess, setClosingSaveSuccess] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -111,8 +121,8 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
         'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
       ));
       if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const first = focusable[0] as HTMLElement;
+      const last = focusable[focusable.length - 1] as HTMLElement;
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -299,6 +309,32 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   // Direct print trigger
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSaveDailyClosing = async () => {
+    setIsClosingDrawer(true);
+    const opening = dailyData?.openingCash || 0;
+    const outflow = dailyData?.cashOutflow || 0;
+    const closingDrawerBalance = opening + cashReceived - outflow;
+    const payload = {
+      id: `closing-${selectedDate}`,
+      date: selectedDate,
+      openingCash: opening,
+      cashInflow: cashReceived,
+      cashOutflow: outflow,
+      closingDrawerCash: closingDrawerBalance,
+      actualCountedCash: closingDrawerBalance,
+      discrepancy: 0,
+      closedBy: currentUserRole || 'Admin',
+      notes: `Daily closing confirmed by ${currentUserRole} on ${new Date().toLocaleString()}`,
+    };
+    const success = await syncDrawerClosingToDb(payload);
+    setIsClosingDrawer(false);
+    if (success) {
+      setClosingSaveSuccess(true);
+      setTimeout(() => setClosingSaveSuccess(false), 3500);
+      setReloadToken((prev) => prev + 1);
+    }
   };
 
   if (!isOpen) return null;
@@ -645,9 +681,102 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 <span>{text('Accessories:', 'সামগ্রী:')} {totalAccessoriesSold}</span>
               </div>
             </div>
-            <p className="mt-3 break-words rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-              {text('Cash received is not the drawer balance. A true drawer reconciliation also needs opening cash and recorded cash expenses, refunds, and deposits.', 'নগদ আদায় মানেই ড্রয়ারের ব্যালেন্স নয়। সঠিক ড্রয়ার মিলের জন্য শুরুর নগদ এবং নগদ খরচ, রিফান্ড ও জমার হিসাবও দরকার।')}
-            </p>
+            {/* Reconciled Drawer Cash & Carryover Section */}
+            <div className="mt-5 rounded-xl border border-teal-200/90 bg-gradient-to-br from-teal-50/70 via-white to-emerald-50/50 p-4 sm:p-5 dark:border-teal-900/60 dark:from-[#111c24] dark:via-[#141a24] dark:to-[#12221e]">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[22px] text-teal-700 dark:text-teal-300">account_balance</span>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {text('Cash Drawer Reconciliation & Carryover', 'ক্যাশ ড্রয়ার ব্যালেন্স ও প্রারম্ভিক ক্যাশ সমন্বয়')}
+                  </h4>
+                </div>
+                {dailyData?.savedClosing ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300">
+                    <span aria-hidden="true" className="material-symbols-outlined text-[15px]">verified</span>
+                    <span>{text('Closed & Reconciled', 'ড্রয়ার ক্লোজড ও সংরক্ষিত')}</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/70 dark:text-amber-300">
+                    <span aria-hidden="true" className="material-symbols-outlined text-[15px]">schedule</span>
+                    <span>{text('Closing Pending', 'দৈনিক ক্লোজিং অপেক্ষমান')}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {/* 1. Opening Cash */}
+                <div className="rounded-lg bg-white/90 dark:bg-[#1a2230] p-3 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block">
+                    {text('Opening Float (Yesterday)', 'প্রারম্ভিক ক্যাশ (গতকালের সমাপনী)')}
+                  </span>
+                  <div className="mt-1 text-base sm:text-lg font-bold text-slate-800 dark:text-slate-100 font-data-rx">
+                    ৳{(dailyData?.openingCash || 0).toLocaleString('en-IN')}
+                  </div>
+                </div>
+
+                {/* 2. Today Cash Inflow */}
+                <div className="rounded-lg bg-white/90 dark:bg-[#1a2230] p-3 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 block">
+                    {text('Cash Inflow (+)', 'আজকের নগদ আদায় (+)')}
+                  </span>
+                  <div className="mt-1 text-base sm:text-lg font-bold text-emerald-700 dark:text-emerald-400 font-data-rx">
+                    +৳{cashReceived.toLocaleString('en-IN')}
+                  </div>
+                </div>
+
+                {/* 3. Cash Outflow */}
+                <div className="rounded-lg bg-white/90 dark:bg-[#1a2230] p-3 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-400 block">
+                    {text('Cash Outflows (-)', 'নগদ খরচ / রিফান্ড (-)')}
+                  </span>
+                  <div className="mt-1 text-base sm:text-lg font-bold text-rose-700 dark:text-rose-400 font-data-rx">
+                    -৳{(dailyData?.cashOutflow || 0).toLocaleString('en-IN')}
+                  </div>
+                </div>
+
+                {/* 4. Current / Closing Drawer Balance */}
+                <div className="rounded-lg bg-teal-800 text-white p-3 shadow-2xs dark:bg-teal-900/90 border border-teal-700">
+                  <span className="text-[11px] font-medium text-teal-100 block">
+                    {text('Closing Drawer Cash (=)', 'সমাপনী ড্রয়ার ব্যালেন্স (=)')}
+                  </span>
+                  <div className="mt-1 text-base sm:text-lg font-bold font-data-rx">
+                    ৳{((dailyData?.openingCash || 0) + cashReceived - (dailyData?.cashOutflow || 0)).toLocaleString('en-IN')}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-teal-100 dark:border-teal-900/50">
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
+                  {text(
+                    'Yesterday’s closing cash is automatically carried over as today’s opening cash so the physical drawer never resets to zero.',
+                    'গতকালের সমাপনী ক্যাশ স্বয়ংক্রিয়ভাবে আজকের প্রারম্ভিক ক্যাশ হিসেবে যুক্ত থাকে, ফলে পরের দিন ড্রয়ার ব্যালেন্স কখনও শূন্য হয় না।'
+                  )}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveDailyClosing}
+                  disabled={isClosingDrawer || Boolean(dailyData?.savedClosing)}
+                  className={`min-h-10 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed ${
+                    dailyData?.savedClosing
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                      : closingSaveSuccess
+                      ? 'bg-emerald-700 text-white'
+                      : 'bg-[#08745f] hover:bg-[#065f4e] text-white'
+                  }`}
+                >
+                  <span aria-hidden="true" className="material-symbols-outlined text-[16px]">
+                    {dailyData?.savedClosing ? 'check_circle' : closingSaveSuccess ? 'done' : 'save'}
+                  </span>
+                  <span>
+                    {dailyData?.savedClosing
+                      ? text('Closing Confirmed', 'ক্লোজিং সম্পন্ন হয়েছে')
+                      : closingSaveSuccess
+                      ? text('Closing Saved!', 'ক্লোজিং সংরক্ষিত!')
+                      : text('Confirm & Save Daily Closing', 'দৈনিক ড্রয়ার ক্লোজিং নিশ্চিত করুন')}
+                  </span>
+                </button>
+              </div>
+            </div>
           </section>
 
           {/* DETAIL TABS: Invoices / Completed Glazing Jobs */}

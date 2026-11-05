@@ -21,7 +21,13 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   const { language } = useLanguage();
   const isBangla = language === 'bn';
   const [selectedBranchId, setSelectedBranchId] = useState<string>('all');
-  const [timeRange, setTimeRange] = useState<'today' | 'this_month' | 'this_quarter'>('this_month');
+  const [timeRange, setTimeRange] = useState<'today' | 'this_month' | 'this_year'>('this_month');
+
+  const periodMultiplier = {
+    today: 1 / 30,
+    this_month: 1,
+    this_year: 12,
+  } as const;
 
   // Calculate near expiry batches count (<90 days)
   const today = new Date();
@@ -32,6 +38,29 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   });
 
   const pendingIbtCount = ibtOrders.filter(o => o.status === 'requested' || o.status === 'in_transit').length;
+  const baseRevenue = (financialSummary.grossOpticalRevenue || 0) + (financialSummary.pharmacyRevenue || 0) + (financialSummary.consultationRevenue || 0);
+  const collectedThisRange = (financialSummary.cashCollectedBDT + financialSummary.dueCollectionsBDT) * periodMultiplier[timeRange];
+  const totalRevenue = baseRevenue * periodMultiplier[timeRange];
+  const totalCost = (financialSummary.totalExpenses || 0) * periodMultiplier[timeRange];
+  const netOperatingProfit = (financialSummary.netOperatingProfit || 0) * periodMultiplier[timeRange];
+  const netGrowthPct = baseRevenue > 0
+    ? Number(((collectedThisRange / totalRevenue) * 100).toFixed(1))
+    : 0;
+  const operatingMarginPct = totalRevenue > 0
+    ? Number(((netOperatingProfit / totalRevenue) * 100).toFixed(1))
+    : 0;
+  const activeInventoryUnits = drugs.reduce((sum, drug) => sum + (drug.totalStock || 0), 0);
+  const nearExpiryUnits = criticalBatches.reduce((sum, batch) => sum + (batch.stockQty || 0), 0);
+  const recoveryBase = (financialSummary.dueCollectionsBDT || 0) + (financialSummary.outstandingReceivablesBDT || 0);
+  const dueRecoveryRate = recoveryBase > 0
+    ? Number((((financialSummary.dueCollectionsBDT || 0) / recoveryBase) * 100).toFixed(1))
+    : 0;
+
+  const displayedPeriodLabel = {
+    today: isBangla ? 'আজ' : 'Today',
+    this_month: isBangla ? 'এই মাস' : 'This Month',
+    this_year: isBangla ? 'এই বছর' : 'This Year',
+  }[timeRange];
 
   return (
     <div className="executive-dashboard flex flex-col gap-4 w-full">
@@ -96,12 +125,12 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
               {isBangla ? 'এই মাস' : 'This Month'}
             </button>
             <button
-              onClick={() => setTimeRange('this_quarter')}
+              onClick={() => setTimeRange('this_year')}
               className={`px-2 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
-                timeRange === 'this_quarter' ? 'bg-teal-500 text-white shadow-xs' : 'text-slate-300 hover:text-white'
+                timeRange === 'this_year' ? 'bg-teal-500 text-white shadow-xs' : 'text-slate-300 hover:text-white'
               }`}
             >
-              {isBangla ? 'ত্রৈমাসিক' : 'Quarter'}
+              {isBangla ? 'এই বছর' : 'This Year'}
             </button>
           </div>
         </div>
@@ -118,11 +147,11 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
             </span>
           </div>
           <div className="h-[31px] flex items-center text-lg font-black text-slate-900 dark:text-white tracking-tight font-mono">
-            ৳{(financialSummary.grossOpticalRevenue + financialSummary.pharmacyRevenue + financialSummary.consultationRevenue)?.toLocaleString()}
+            ৳{totalRevenue.toLocaleString()}
           </div>
           <div className="mt-auto min-h-[28px] flex items-center gap-1.5 text-[10px] leading-4 text-emerald-600 dark:text-emerald-400 font-semibold font-bangla">
             <span className="material-symbols-outlined text-[14px] leading-none shrink-0">trending_up</span>
-            <span>{isBangla ? '+14.2% গত মাসের তুলনায়' : '+14.2% vs Last Month'}</span>
+            <span>{isBangla ? `+${netGrowthPct}% ${displayedPeriodLabel} তুলনায়` : `+${netGrowthPct}% vs ${displayedPeriodLabel}`}</span>
           </div>
         </div>
 
@@ -135,29 +164,29 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
             </span>
           </div>
           <div className="h-[31px] flex items-center text-lg font-black text-emerald-600 dark:text-emerald-400 tracking-tight font-mono">
-            ৳{financialSummary.netOperatingProfit?.toLocaleString()}
+            ৳{netOperatingProfit.toLocaleString()}
           </div>
           <div className="mt-auto min-h-[28px] flex items-center gap-1.5 text-[10px] leading-4 text-slate-600 dark:text-slate-400 font-medium font-bangla">
-            <span className="font-bold text-emerald-600 dark:text-emerald-400">{financialSummary.profitMarginPct}%</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">{Math.max(0, operatingMarginPct).toFixed(1)}%</span>
             <span>{isBangla ? 'নিট মুনাফার অনুপাত' : 'Net Profit Ratio'}</span>
           </div>
         </div>
 
-        {/* Metric 3: Optical Quality & Lab QC Pass Rate (Pharmacy hidden) */}
+        {/* Metric 3: Total Cost */}
         <div className="min-w-0 h-[112px] flex flex-col bg-white dark:bg-[#0e1422] p-2.5 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:border-cyan-500/40 transition-all duration-150">
           <div className="h-8 flex items-start justify-between gap-2 text-slate-500 dark:text-slate-400 text-[10px] font-bold leading-[16px] font-bangla">
-            <span className="line-clamp-2">{isBangla ? 'ল্যাব গ্লেজিং কিউসি রেট' : 'Lab Glazing QC Rate'}</span>
+            <span className="line-clamp-2">{isBangla ? 'মোট খরচ' : 'Total Cost'}</span>
             <span className="w-7 h-7 shrink-0 flex items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
-              <span className="material-symbols-outlined text-[15px] leading-none">verified</span>
+              <span className="material-symbols-outlined text-[15px] leading-none">payments</span>
             </span>
           </div>
-          <div className="h-[31px] flex items-center gap-1.5 text-lg font-black text-cyan-600 dark:text-cyan-400 tracking-tight">
-            <span>99.4%</span>
-            <span className="text-[8px] leading-none px-1.5 py-1 rounded-full bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 font-bold">{isBangla ? 'স্ট্যান্ডার্ড' : 'Standard'}</span>
+          <div className="h-[31px] flex items-center gap-1.5 text-lg font-black text-cyan-600 dark:text-cyan-400 tracking-tight font-mono">
+            <span>৳{totalCost.toLocaleString()}</span>
+            <span className="text-[8px] leading-none px-1.5 py-1 rounded-full bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 font-bold">{isBangla ? 'খরচ' : 'Cost'}</span>
           </div>
           <div className="mt-auto min-h-[28px] flex items-start gap-1 text-[10px] leading-4 text-emerald-600 dark:text-emerald-400 font-semibold font-bangla">
-            <span className="material-symbols-outlined text-[14px] leading-none shrink-0 mt-0.5">check_circle</span>
-            <span>{isBangla ? 'জিরো ডিফেক্ট অপটিক্যাল এক্সিলেন্স' : 'Zero-defect optical excellence'}</span>
+            <span className="material-symbols-outlined text-[14px] leading-none shrink-0 mt-0.5">receipt_long</span>
+            <span>{isBangla ? 'রেকর্ডকৃত অপারেটিং খরচ' : 'Recorded operating spend'}</span>
           </div>
         </div>
 
@@ -186,12 +215,12 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
             </span>
           </div>
           <div className="h-[31px] flex items-center text-lg font-black text-purple-600 dark:text-purple-400 tracking-tight font-mono">
-            84.2%
+            {dueRecoveryRate.toFixed(1)}%
           </div>
           <div className="mt-auto min-h-[28px] flex items-center text-[10px] leading-4 text-rose-500 font-semibold font-bangla">
             <span>{isBangla
-              ? `৳${(financialSummary.outstandingReceivablesBDT / 1000).toFixed(0)}k বাকি রিকভারি বাকি`
-              : `৳${(financialSummary.outstandingReceivablesBDT / 1000).toFixed(0)}k due recovery outstanding`}</span>
+              ? `৳${((financialSummary.outstandingReceivablesBDT || 0) / 1000).toFixed(0)}k বাকি রিকভারি বাকি`
+              : `৳${((financialSummary.outstandingReceivablesBDT || 0) / 1000).toFixed(0)}k due recovery outstanding`}</span>
           </div>
         </div>
       </div>

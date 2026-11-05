@@ -6,12 +6,17 @@ import { PrintFooterQuantum } from './PrintFooterQuantum';
 
 interface PrescriptionsViewProps {
   onOpenGlazingAssistant: () => void;
+  prescriptions?: PrescriptionRecord[];
 }
 
 export const PrescriptionsView: React.FC<PrescriptionsViewProps> = ({
   onOpenGlazingAssistant,
+  prescriptions: externalPrescriptions,
 }) => {
-  const [prescriptions] = useState<PrescriptionRecord[]>(initialPrescriptions);
+  const [internalPrescriptions] = useState<PrescriptionRecord[]>(initialPrescriptions);
+  const prescriptions = externalPrescriptions && externalPrescriptions.length > 0
+    ? externalPrescriptions
+    : internalPrescriptions;
   const [selectedRx, setSelectedRx] = useState<PrescriptionRecord | null>(null);
 
   return (

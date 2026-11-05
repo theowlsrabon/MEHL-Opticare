@@ -13,7 +13,6 @@ import {
 import { UserAccount } from '../types';
 import { API_BASE } from '../utils/apiConfig';
 import { useLanguage } from '../context/LanguageContext';
-import { QuantumAboutTooltip } from './QuantumAboutTooltip';
 
 interface LoginPageProps {
   onLoginSuccess: (user: UserAccount) => void;
@@ -249,9 +248,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       </div>
 
       <section className="login-card login-dark-card w-full max-w-[420px] bg-white/95 rounded-[26px] border border-white p-6 sm:p-8 relative z-10 backdrop-blur-sm">
-        {/* About Quantum Info Popup */}
-        <QuantumAboutTooltip align="right" className="absolute top-5 right-5 z-20" />
-
         <div className="flex flex-col items-center text-center mb-7">
           <div className="login-dark-logo relative mb-5 h-[82px] w-[82px] rounded-[24px] flex items-center justify-center bg-gradient-to-br from-[#e3faf3] to-[#c8efe5] border border-[#70cdb8]/55 shadow-[0_12px_34px_rgba(0,169,141,0.18)]">
             <div className="absolute inset-[7px] rounded-[18px] border border-white/70 bg-white/45 shadow-inner" />

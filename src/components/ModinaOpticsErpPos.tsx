@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Barcode from 'react-barcode';
 import QRCode from 'qrcode';
-import { InventoryItem, OpticalJob, Salesman, SaleRecord } from '../types';
+import { InventoryItem, OpticalJob, Salesman, SaleRecord, SaleItemLine } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
@@ -430,7 +430,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
   const paidServicesTotal = useMemo(() => {
     if (!includePaidServices) return 0;
-    return Object.values(selectedPaidServices).reduce(
+    return (Object.values(selectedPaidServices) as Array<{ service: PaidServiceDef; quantity: number; price: number }>).reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
@@ -445,7 +445,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       frameName: includeFrame && scannedFrame ? `${scannedFrame.brand} ${scannedFrame.model}` : '',
       lensName: includeLens && activeLensPrice > 0 ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}` : '',
       paidServices: includePaidServices
-        ? Object.values(selectedPaidServices).map((s) => `${s.service.nameBn} x${s.quantity}`)
+        ? (Object.values(selectedPaidServices) as Array<{ service: PaidServiceDef; quantity: number; price: number }>).map((s) => `${s.service.nameBn} x${s.quantity}`)
         : [],
       rxGrid: includeLens ? rxGrid : [],
     })}`;
@@ -802,7 +802,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       summaryParts.push(selectedLens.name);
     }
     if (includePaidServices && Object.keys(selectedPaidServices).length > 0) {
-      const srvNames = Object.values(selectedPaidServices)
+      const srvNames = (Object.values(selectedPaidServices) as Array<{ service: PaidServiceDef; quantity: number; price: number }>)
         .map((s) => `${s.service.nameBn} (${s.quantity})`)
         .join(', ');
       summaryParts.push(`পেইড সার্ভিস: ${srvNames}`);
@@ -834,7 +834,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       });
     }
     if (includePaidServices) {
-      Object.values(selectedPaidServices).forEach(({ service, quantity, price }) => {
+      (Object.values(selectedPaidServices) as Array<{ service: PaidServiceDef; quantity: number; price: number }>).forEach(({ service, quantity, price }) => {
         const lineTotal = price * quantity;
         itemLines.push({
           sku: service.id.toUpperCase(),
@@ -848,7 +848,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     }
 
     const totalServiceUnits = includePaidServices
-      ? Object.values(selectedPaidServices).reduce((sum, s) => sum + s.quantity, 0)
+      ? (Object.values(selectedPaidServices) as Array<{ service: PaidServiceDef; quantity: number; price: number }>).reduce((sum, s) => sum + s.quantity, 0)
       : 0;
 
     const fullSaleRecord: SaleRecord = {
@@ -895,7 +895,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       lensSpecs: includeLens && selectedLens.price > 0 ? `Index ${selectedLens.index}` : '',
       lensAmount: activeLensPrice,
       paidServices: includePaidServices
-        ? Object.values(selectedPaidServices).map((s) => ({
+        ? (Object.values(selectedPaidServices) as Array<{ service: PaidServiceDef; quantity: number; price: number }>).map((s) => ({
             name: s.service.nameBn,
             nameEn: s.service.nameEn,
             quantity: s.quantity,
@@ -2112,7 +2112,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {Object.entries(groupedSalesHistory).map(([date, records]) => (
+                  {Object.entries(groupedSalesHistory).map(([date, records]: [string, SaleRecord[]]) => (
                     <React.Fragment key={date}>
                       <tr className="bg-teal-50 dark:bg-teal-950/30">
                         <td colSpan={10} className="p-3 font-bold text-teal-800 dark:text-teal-200">

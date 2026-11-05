@@ -29,10 +29,14 @@ export const QuantumAboutTooltip: React.FC<QuantumAboutTooltipProps> = ({
     };
   }, [isOpen]);
 
+  const containerClasses = className.includes('absolute')
+    ? `inline-flex items-center ${className}`
+    : `relative inline-flex items-center ${className}`;
+
   return (
     <div
       ref={containerRef}
-      className={`relative inline-flex items-center ${className}`}
+      className={containerClasses}
       onMouseEnter={() => setIsOpen(true)}
       onMouseLeave={() => setIsOpen(false)}
     >

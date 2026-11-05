@@ -529,7 +529,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               className="h-7.5 px-2.5 bg-gradient-to-r from-[#169b90] to-[#295559] hover:from-[#128279] hover:to-[#1e4043] text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-2xs cursor-pointer whitespace-nowrap"
               title={text('Add Frame & Barcode', 'ফ্রেম ও বারকোড যোগ করুন')}
             >
-              <span>{text('Add Frame', 'ফ্রেম যোগ করুন')}</span>
+              <span>{text('Add Frame/Lens', 'ফ্রেম ও লেন্স যোগ করুন')}</span>
             </button>
           )}
         </div>

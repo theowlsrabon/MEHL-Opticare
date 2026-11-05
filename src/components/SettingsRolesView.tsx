@@ -112,7 +112,7 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">manage_accounts</span>
-          <span>User Accounts &amp; Access (MySQL)</span>
+          <span>User Accounts &amp; Access</span>
         </button>
 
         <button

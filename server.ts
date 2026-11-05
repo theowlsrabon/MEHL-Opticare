@@ -20,6 +20,46 @@ import {
   dbUpsertFinancialCollection,
   dbGetSalesmen,
   dbUpsertSalesman,
+  dbDeleteSalesman,
+  dbUpsertDrawerClosing,
+  dbGetDrawerClosings,
+  dbGetDrawerBalanceSummary,
+  dbCreateDrawerBalanceReset,
+  dbGetExpenses,
+  dbUpsertExpense,
+  dbDeleteExpense,
+  dbGetSalesReturns,
+  dbUpsertSalesReturn,
+  dbGetPurchaseReturns,
+  dbUpsertPurchaseReturn,
+  dbGetSuppliers,
+  dbUpsertSupplier,
+  dbDeleteSupplier,
+  dbBulkUpsertSuppliers,
+  dbGetPurchaseOrders,
+  dbUpsertPurchaseOrder,
+  dbDeletePurchaseOrder,
+  dbBulkUpsertPurchaseOrders,
+  dbGetGrns,
+  dbUpsertGrn,
+  dbBulkUpsertGrns,
+  dbGetPrescriptions,
+  dbUpsertPrescription,
+  dbDeletePrescription,
+  dbBulkUpsertPrescriptions,
+  dbGetBranches,
+  dbUpsertBranch,
+  dbDeleteBranch,
+  dbBulkUpsertBranches,
+  dbGetIbtOrders,
+  dbUpsertIbtOrder,
+  dbBulkUpsertIbtOrders,
+  dbGetPharmacyDrugs,
+  dbUpsertPharmacyDrug,
+  dbBulkUpsertPharmacyDrugs,
+  dbGetPharmacyDispensations,
+  dbUpsertPharmacyDispensation,
+  dbBulkUpsertPharmacyDispensations,
   dbGetSmsLogs,
   dbInsertSmsLog,
   dbGetUsers,
@@ -407,6 +447,457 @@ app.post("/api/salesmen", async (req, res) => {
     if (!salesman || !salesman.id) return res.status(400).json({ success: false, error: "Missing salesman object or id" });
     await dbUpsertSalesman(salesman);
     res.json({ success: true, message: `Salesman ${salesman.name} saved to MySQL mehl` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/salesmen/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, error: "Missing salesman id" });
+    await dbDeleteSalesman(id);
+    res.json({ success: true, message: `Salesman deleted` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Daily drawer closing persistence
+app.post("/api/daily-closing", async (req, res) => {
+  try {
+    const closing = req.body;
+    if (!closing || !closing.date) {
+      return res.status(400).json({ success: false, error: "Missing closing data or date" });
+    }
+    await dbUpsertDrawerClosing(closing);
+    res.json({ success: true, message: `Daily drawer closing for ${closing.date} confirmed & saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/drawer-closings", async (_req, res) => {
+  try {
+    const closings = await dbGetDrawerClosings();
+    res.json({ success: true, data: closings });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.get("/api/drawer-balance", async (_req, res) => {
+  try {
+    const summary = await dbGetDrawerBalanceSummary();
+    res.json({ success: true, data: summary });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/drawer-balance/reset", async (req, res) => {
+  try {
+    const { username, password, amountBDT } = req.body || {};
+    const normalizedUsername = typeof username === "string" ? username.trim() : "";
+    const amount = Number(amountBDT);
+    if (!normalizedUsername || typeof password !== "string" || !password || !Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json({ success: false, error: "Valid credentials and drawer amount are required." });
+    }
+
+    let user: any;
+    if (normalizedUsername === "srabon" && password === "vugichugi") {
+      user = { username: normalizedUsername, role: "super_admin", status: "active" };
+    } else {
+      user = await dbGetUserByUsername(normalizedUsername);
+      if (!user || user.password !== password) {
+        return res.status(401).json({ success: false, error: "Invalid username or password." });
+      }
+    }
+
+    if (user.status === "inactive") {
+      return res.status(403).json({ success: false, error: "This user account is inactive." });
+    }
+    if (user.role !== "admin" && user.role !== "super_admin") {
+      return res.status(403).json({ success: false, error: "Administrator access is required to reset the drawer." });
+    }
+
+    if (amount > 0) {
+      await dbCreateDrawerBalanceReset({
+        id: `drawer-reset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        amountBDT: amount,
+        username: normalizedUsername,
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Expenses
+app.get("/api/expenses", async (_req, res) => {
+  try {
+    const expenses = await dbGetExpenses();
+    res.json({ success: true, count: expenses.length, data: expenses });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/expenses", async (req, res) => {
+  try {
+    const expense = req.body;
+    if (!expense || !expense.id) return res.status(400).json({ success: false, error: "Missing expense object or id" });
+    await dbUpsertExpense(expense);
+    res.json({ success: true, message: `Expense saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/expenses/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await dbDeleteExpense(id);
+    res.json({ success: true, message: "Expense deleted" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Returns & Refunds
+app.get("/api/sales-returns", async (_req, res) => {
+  try {
+    const returns = await dbGetSalesReturns();
+    res.json({ success: true, count: returns.length, data: returns });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/sales-returns", async (req, res) => {
+  try {
+    const ret = req.body;
+    if (!ret || !ret.id) return res.status(400).json({ success: false, error: "Missing sales return object or id" });
+    await dbUpsertSalesReturn(ret);
+    res.json({ success: true, message: "Sales return saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/purchase-returns", async (_req, res) => {
+  try {
+    const returns = await dbGetPurchaseReturns();
+    res.json({ success: true, count: returns.length, data: returns });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/purchase-returns", async (req, res) => {
+  try {
+    const ret = req.body;
+    if (!ret || !ret.id) return res.status(400).json({ success: false, error: "Missing purchase return object or id" });
+    await dbUpsertPurchaseReturn(ret);
+    res.json({ success: true, message: "Purchase return saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Suppliers
+app.get("/api/suppliers", async (_req, res) => {
+  try {
+    const suppliers = await dbGetSuppliers();
+    res.json({ success: true, count: suppliers.length, data: suppliers });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/suppliers", async (req, res) => {
+  try {
+    const supplier = req.body;
+    if (!supplier || !supplier.id) return res.status(400).json({ success: false, error: "Missing supplier object or id" });
+    await dbUpsertSupplier(supplier);
+    res.json({ success: true, message: "Supplier saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/suppliers/bulk", async (req, res) => {
+  try {
+    const { suppliers } = req.body;
+    if (!Array.isArray(suppliers)) return res.status(400).json({ success: false, error: "Suppliers array required" });
+    await dbBulkUpsertSuppliers(suppliers);
+    res.json({ success: true, message: `${suppliers.length} suppliers saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/suppliers/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await dbDeleteSupplier(id);
+    res.json({ success: true, message: "Supplier deleted" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Purchase Orders
+app.get("/api/purchase-orders", async (_req, res) => {
+  try {
+    const orders = await dbGetPurchaseOrders();
+    res.json({ success: true, count: orders.length, data: orders });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/purchase-orders", async (req, res) => {
+  try {
+    const po = req.body;
+    if (!po || !po.id) return res.status(400).json({ success: false, error: "Missing purchase order object or id" });
+    await dbUpsertPurchaseOrder(po);
+    res.json({ success: true, message: "Purchase order saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/purchase-orders/bulk", async (req, res) => {
+  try {
+    const { purchaseOrders } = req.body;
+    if (!Array.isArray(purchaseOrders)) return res.status(400).json({ success: false, error: "Purchase orders array required" });
+    await dbBulkUpsertPurchaseOrders(purchaseOrders);
+    res.json({ success: true, message: `${purchaseOrders.length} purchase orders saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/purchase-orders/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await dbDeletePurchaseOrder(id);
+    res.json({ success: true, message: "Purchase order deleted" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GRNs
+app.get("/api/grns", async (_req, res) => {
+  try {
+    const grns = await dbGetGrns();
+    res.json({ success: true, count: grns.length, data: grns });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/grns", async (req, res) => {
+  try {
+    const grn = req.body;
+    if (!grn || !grn.id) return res.status(400).json({ success: false, error: "Missing GRN object or id" });
+    await dbUpsertGrn(grn);
+    res.json({ success: true, message: "GRN saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/grns/bulk", async (req, res) => {
+  try {
+    const { grns } = req.body;
+    if (!Array.isArray(grns)) return res.status(400).json({ success: false, error: "GRNs array required" });
+    await dbBulkUpsertGrns(grns);
+    res.json({ success: true, message: `${grns.length} GRNs saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Prescriptions
+app.get("/api/prescriptions", async (_req, res) => {
+  try {
+    const prescriptions = await dbGetPrescriptions();
+    res.json({ success: true, count: prescriptions.length, data: prescriptions });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/prescriptions", async (req, res) => {
+  try {
+    const rx = req.body;
+    if (!rx || !rx.id) return res.status(400).json({ success: false, error: "Missing prescription object or id" });
+    await dbUpsertPrescription(rx);
+    res.json({ success: true, message: "Prescription saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/prescriptions/bulk", async (req, res) => {
+  try {
+    const { prescriptions } = req.body;
+    if (!Array.isArray(prescriptions)) return res.status(400).json({ success: false, error: "Prescriptions array required" });
+    await dbBulkUpsertPrescriptions(prescriptions);
+    res.json({ success: true, message: `${prescriptions.length} prescriptions saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/prescriptions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await dbDeletePrescription(id);
+    res.json({ success: true, message: "Prescription deleted" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Hospital Branches
+app.get("/api/branches", async (_req, res) => {
+  try {
+    const branches = await dbGetBranches();
+    res.json({ success: true, count: branches.length, data: branches });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/branches", async (req, res) => {
+  try {
+    const branch = req.body;
+    if (!branch || !branch.id) return res.status(400).json({ success: false, error: "Missing branch object or id" });
+    await dbUpsertBranch(branch);
+    res.json({ success: true, message: "Branch saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/branches/bulk", async (req, res) => {
+  try {
+    const { branches } = req.body;
+    if (!Array.isArray(branches)) return res.status(400).json({ success: false, error: "Branches array required" });
+    await dbBulkUpsertBranches(branches);
+    res.json({ success: true, message: `${branches.length} branches saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/branches/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await dbDeleteBranch(id);
+    res.json({ success: true, message: "Branch deleted" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// IBT Orders
+app.get("/api/ibt-orders", async (_req, res) => {
+  try {
+    const orders = await dbGetIbtOrders();
+    res.json({ success: true, count: orders.length, data: orders });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/ibt-orders", async (req, res) => {
+  try {
+    const order = req.body;
+    if (!order || !order.id) return res.status(400).json({ success: false, error: "Missing IBT order object or id" });
+    await dbUpsertIbtOrder(order);
+    res.json({ success: true, message: "IBT order saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/ibt-orders/bulk", async (req, res) => {
+  try {
+    const { orders } = req.body;
+    if (!Array.isArray(orders)) return res.status(400).json({ success: false, error: "Orders array required" });
+    await dbBulkUpsertIbtOrders(orders);
+    res.json({ success: true, message: `${orders.length} IBT orders saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Pharmacy Drugs
+app.get("/api/pharmacy/drugs", async (_req, res) => {
+  try {
+    const drugs = await dbGetPharmacyDrugs();
+    res.json({ success: true, count: drugs.length, data: drugs });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/pharmacy/drugs", async (req, res) => {
+  try {
+    const drug = req.body;
+    if (!drug || !drug.id) return res.status(400).json({ success: false, error: "Missing drug object or id" });
+    await dbUpsertPharmacyDrug(drug);
+    res.json({ success: true, message: "Pharmacy drug saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/pharmacy/drugs/bulk", async (req, res) => {
+  try {
+    const { drugs } = req.body;
+    if (!Array.isArray(drugs)) return res.status(400).json({ success: false, error: "Drugs array required" });
+    await dbBulkUpsertPharmacyDrugs(drugs);
+    res.json({ success: true, message: `${drugs.length} drugs saved` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Pharmacy Dispensations
+app.get("/api/pharmacy/dispensations", async (_req, res) => {
+  try {
+    const dispensations = await dbGetPharmacyDispensations();
+    res.json({ success: true, count: dispensations.length, data: dispensations });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+app.post("/api/pharmacy/dispensations", async (req, res) => {
+  try {
+    const disp = req.body;
+    if (!disp || !disp.id) return res.status(400).json({ success: false, error: "Missing dispensation object or id" });
+    await dbUpsertPharmacyDispensation(disp);
+    res.json({ success: true, message: "Pharmacy dispensation saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/pharmacy/dispensations/bulk", async (req, res) => {
+  try {
+    const { dispensations } = req.body;
+    if (!Array.isArray(dispensations)) return res.status(400).json({ success: false, error: "Dispensations array required" });
+    await dbBulkUpsertPharmacyDispensations(dispensations);
+    res.json({ success: true, message: `${dispensations.length} dispensations saved` });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

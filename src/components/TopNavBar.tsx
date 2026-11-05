@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   Search,
@@ -28,7 +29,6 @@ import {
 import { ViewMode, UserRole, UserAccount, UnifiedActivityLogItem } from '../types';
 import { MADINA_STAFF_PROFILES } from '../data/rolesData';
 import { useLanguage } from '../context/LanguageContext';
-import { QuantumAboutTooltip } from './QuantumAboutTooltip';
 
 interface TopNavBarProps {
   currentView: ViewMode;
@@ -44,6 +44,7 @@ interface TopNavBarProps {
   onToggleSidebar?: () => void;
   currentUserRole: UserRole;
   drawerBalanceBDT: number;
+  onResetDrawer: (password: string) => Promise<void>;
   onRoleChange: (role: UserRole) => void;
   onToggleCameraScanner?: () => void;
   isCameraScannerActive?: boolean;
@@ -72,6 +73,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   onOpenActivityFeed,
   activityLogs = [],
   drawerBalanceBDT,
+  onResetDrawer,
   authenticatedUser,
   onLogout,
 }) => {
@@ -84,6 +86,10 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const [showDrawerReset, setShowDrawerReset] = useState(false);
+  const [drawerResetPassword, setDrawerResetPassword] = useState('');
+  const [drawerResetError, setDrawerResetError] = useState('');
+  const [isDrawerResetting, setIsDrawerResetting] = useState(false);
 
   const { language, setLanguage, t } = useLanguage();
   const roleMenuRef = useRef<HTMLDivElement>(null);
@@ -169,6 +175,27 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     onOpenQuickScan(query);
     setShowSearchSuggestions(false);
     setActiveSuggestion(-1);
+  };
+
+  const submitDrawerReset = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setDrawerResetError('');
+    setIsDrawerResetting(true);
+    try {
+      await onResetDrawer(drawerResetPassword);
+      setShowDrawerReset(false);
+      setDrawerResetPassword('');
+    } catch (error) {
+      setDrawerResetError(error instanceof Error ? error.message : 'Could not reset the drawer balance.');
+    } finally {
+      setIsDrawerResetting(false);
+    }
+  };
+
+  const closeDrawerReset = () => {
+    setShowDrawerReset(false);
+    setDrawerResetPassword('');
+    setDrawerResetError('');
   };
 
   // Initialize theme from document or localStorage
@@ -492,7 +519,15 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
       {/* RIGHT SECTION: Drawer Cash, Scanner Shortcut, Alerts 3, Hotkeys, Theme, Lang, User */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Drawer Cash Pill (Glowing Green Amount) */}
-        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-xs">
+        <button
+          type="button"
+          onClick={() => {
+            setDrawerResetError('');
+            setShowDrawerReset(true);
+          }}
+          className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-xs hover:border-emerald-500/60 transition-colors cursor-pointer"
+          title={language === 'bn' ? 'পাসওয়ার্ড দিয়ে ড্রয়ার ব্যালেন্স রিসেট করুন' : 'Reset drawer balance with password'}
+        >
           <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
             {language === 'bn' ? 'ড্রয়ার ব্যালেন্স:' : 'Drawer Balance:'}
           </span>
@@ -502,7 +537,99 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
               maximumFractionDigits: 2,
             })}
           </span>
-        </div>
+        </button>
+
+        {showDrawerReset && createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-[2px]"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !isDrawerResetting) closeDrawerReset();
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="drawer-reset-title"
+              className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-[#111827] dark:text-white"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 id="drawer-reset-title" className="flex items-center gap-2 text-sm font-bold">
+                    <Lock size={16} className="text-emerald-600 dark:text-emerald-400" />
+                    {language === 'bn' ? 'ড্রয়ার ব্যালেন্স রিসেট' : 'Reset Drawer Balance'}
+                  </h2>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    {language === 'bn'
+                      ? 'বর্তমান ব্যালেন্স শূন্য করতে অ্যাডমিন পাসওয়ার্ড নিশ্চিত করুন।'
+                      : 'Confirm an administrator password to set the current balance to zero.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeDrawerReset}
+                  disabled={isDrawerResetting}
+                  className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
+                  aria-label={language === 'bn' ? 'বন্ধ করুন' : 'Close'}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="mb-4 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {language === 'bn' ? 'বর্তমান ব্যালেন্স' : 'Current balance'}
+                </span>
+                <div className="font-mono text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                  ৳{drawerBalanceBDT.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-BD', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </div>
+              </div>
+
+              <form onSubmit={submitDrawerReset}>
+                <label htmlFor="drawer-reset-password" className="mb-1.5 block text-xs font-semibold">
+                  {language === 'bn' ? 'অ্যাডমিন পাসওয়ার্ড' : 'Administrator password'}
+                </label>
+                <input
+                  id="drawer-reset-password"
+                  type="password"
+                  value={drawerResetPassword}
+                  onChange={(event) => setDrawerResetPassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                  autoFocus
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-950"
+                />
+                {drawerResetError && (
+                  <p role="alert" className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
+                    {drawerResetError}
+                  </p>
+                )}
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeDrawerReset}
+                    disabled={isDrawerResetting}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  >
+                    {language === 'bn' ? 'বাতিল' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isDrawerResetting || !drawerResetPassword}
+                    className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isDrawerResetting
+                      ? (language === 'bn' ? 'যাচাই হচ্ছে...' : 'Verifying...')
+                      : (language === 'bn' ? 'শূন্যে রিসেট' : 'Reset to ৳0')}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>,
+          document.body
+        )}
 
         {/* Scanner Shortcut Button */}
         <button
@@ -1238,8 +1365,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           )}
         </div>
 
-        {/* About Quantum Info Popup */}
-        <QuantumAboutTooltip align="right" />
       </div>
 
       {/* Notifications Modal */}

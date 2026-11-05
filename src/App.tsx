@@ -25,8 +25,9 @@ import {
   StageAuditEntry,
   AuditActionType,
   UnifiedActivityLogItem,
+  PrescriptionRecord,
 } from './types';
-import { initialJobs, initialInventory, initialSalesmen, initialSalesRecords } from './data/initialData';
+import { initialJobs, initialInventory, initialSalesmen, initialSalesRecords, initialPrescriptions } from './data/initialData';
 import {
   initialBranches,
   initialIBTOrders as initialIbtOrders,
@@ -83,8 +84,33 @@ import {
   bulkSyncInventoryToDb,
   syncSaleToDb,
   syncFinancialCollectionToDb,
+  syncSalesmanToDb,
+  deleteSalesmanFromDb,
+  syncExpenseToDb,
+  deleteExpenseFromDb,
+  syncSalesReturnToDb,
+  syncPurchaseReturnToDb,
+  syncSupplierToDb,
+  bulkSyncSuppliersToDb,
+  deleteSupplierFromDb,
+  syncPurchaseOrderToDb,
+  bulkSyncPurchaseOrdersToDb,
+  deletePurchaseOrderFromDb,
+  syncGrnToDb,
+  bulkSyncGrnsToDb,
+  syncBranchToDb,
+  bulkSyncBranchesToDb,
+  deleteBranchFromDb,
+  syncIbtOrderToDb,
+  bulkSyncIbtOrdersToDb,
+  syncPharmacyDrugToDb,
+  bulkSyncPharmacyDrugsToDb,
+  syncPharmacyDispensationToDb,
+  bulkSyncPharmacyDispensationsToDb,
+  bulkSyncPrescriptionsToDb,
 } from './utils/apiSync';
 import { useLanguage } from './context/LanguageContext';
+import { API_BASE } from './utils/apiConfig';
 
 export default function App() {
   const { language, t } = useLanguage();
@@ -226,6 +252,13 @@ export default function App() {
     }
     return initialGrns;
   });
+  const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>(() => {
+    const saved = localStorage.getItem('madina_prescriptions');
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return initialPrescriptions; }
+    }
+    return initialPrescriptions;
+  });
   const [expenses, setExpenses] = useState<ExpenseItem[]>(() => {
     const saved = localStorage.getItem('madina_expenses');
     if (saved) {
@@ -282,6 +315,7 @@ export default function App() {
   // Handlers for Enterprise Actions
   const handleAddIbtOrder = (order: InterBranchTransferOrder) => {
     setIbtOrders((prev) => [order, ...prev]);
+    void syncIbtOrderToDb(order);
     setAuditLogs((prev) => [
       {
         id: `aud-${Date.now()}`,
@@ -300,12 +334,20 @@ export default function App() {
 
   const handleUpdateIbtStatus = (orderId: string, status: any) => {
     setIbtOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status } : o))
+      prev.map((o) => {
+        if (o.id === orderId) {
+          const updated = { ...o, status };
+          void syncIbtOrderToDb(updated);
+          return updated;
+        }
+        return o;
+      })
     );
   };
 
   const handleDispenseDrug = (dispensation: DispensationRecord) => {
     setDispensations((prev) => [dispensation, ...prev]);
+    void syncPharmacyDispensationToDb(dispensation);
     // Deduct batches from FEFO
     setDrugs((prevDrugs) =>
       prevDrugs.map((d) => {
@@ -321,11 +363,13 @@ export default function App() {
           return b;
         });
         const newTotalStock = remainingBatches.reduce((acc, b) => acc + b.stockQty, 0);
-        return {
+        const updatedDrug = {
           ...d,
           totalStock: newTotalStock,
           batches: remainingBatches,
         };
+        void syncPharmacyDrugToDb(updatedDrug);
+        return updatedDrug;
       })
     );
     setAuditLogs((prev) => [
@@ -348,6 +392,7 @@ export default function App() {
     const paidAmountBDT = po.paidAmountBDT ?? 0;
     if (paidAmountBDT > financialSummary.cashCollectedBDT) return false;
     setPurchaseOrders((prev) => [po, ...prev]);
+    void syncPurchaseOrderToDb(po);
     if (paidAmountBDT > 0) {
       setFinancialSummary((prev) => ({
         ...prev,
@@ -368,15 +413,15 @@ export default function App() {
       return;
     }
 
-    setPurchaseOrders((prev) => prev.map((item) => item.id === poId
-      ? {
-          ...item,
-          paidAmountBDT: paidAmountBDT + dueAmountBDT,
-          dueAmountBDT: 0,
-          paymentStatus: 'paid',
-        }
-      : item
-    ));
+    const updatedPo: PurchaseOrder = {
+      ...po,
+      paidAmountBDT: paidAmountBDT + dueAmountBDT,
+      dueAmountBDT: 0,
+      paymentStatus: 'paid',
+    };
+    void syncPurchaseOrderToDb(updatedPo);
+
+    setPurchaseOrders((prev) => prev.map((item) => item.id === poId ? updatedPo : item));
     setFinancialSummary((prev) => ({
       ...prev,
       cashCollectedBDT: prev.cashCollectedBDT - dueAmountBDT,
@@ -385,10 +430,16 @@ export default function App() {
 
   const handleReceiveGrn = (grn: GoodsReceivedNote) => {
     setGrns((prev) => [grn, ...prev]);
+    void syncGrnToDb(grn);
     setPurchaseOrders((prev) =>
-      prev.map((po) =>
-        po.poNumber === grn.poNumber ? { ...po, status: 'completed' as const } : po
-      )
+      prev.map((po) => {
+        if (po.poNumber === grn.poNumber) {
+          const completedPo = { ...po, status: 'completed' as const };
+          void syncPurchaseOrderToDb(completedPo);
+          return completedPo;
+        }
+        return po;
+      })
     );
     setAuditLogs((prev) => [
       {
@@ -408,6 +459,7 @@ export default function App() {
 
   const handleAddExpense = (expense: ExpenseItem) => {
     setExpenses((prev) => [expense, ...prev]);
+    void syncExpenseToDb(expense);
     setFinancialSummary((prev) => ({
       ...prev,
       totalExpenses: prev.totalExpenses + expense.amountBDT,
@@ -420,6 +472,7 @@ export default function App() {
     const expense = expenses.find((item) => item.id === expenseId);
     if (!expense) return;
     setExpenses((prev) => prev.filter((item) => item.id !== expenseId));
+    void deleteExpenseFromDb(expenseId);
     setFinancialSummary((prev) => ({
       ...prev,
       totalExpenses: Math.max(0, prev.totalExpenses - expense.amountBDT),
@@ -453,6 +506,7 @@ export default function App() {
 
   const handleAddSalesReturn = (ret: SalesReturn) => {
     setSalesReturns((prev) => [ret, ...prev]);
+    void syncSalesReturnToDb(ret);
     if (ret.refundMethod === 'Cash Refund') {
       setFinancialSummary((prev) => ({
         ...prev,
@@ -477,6 +531,7 @@ export default function App() {
 
   const handleAddPurchaseReturn = (ret: PurchaseReturn) => {
     setPurchaseReturns((prev) => [ret, ...prev]);
+    void syncPurchaseReturnToDb(ret);
     setAuditLogs((prev) => [
       {
         id: `aud-${Date.now()}`,
@@ -560,13 +615,158 @@ export default function App() {
       setFinancialCollections(mergedCollections);
       localStorage.setItem('madina_financial_collections', JSON.stringify(mergedCollections));
 
-      setSalesRecords((currentSales) => {
-        const mergedSales = new Map<string, SaleRecord>();
-        [...localSales, ...currentSales, ...databaseSales].forEach((sale) => mergedSales.set(sale.id, sale));
-        return [...mergedSales.values()].sort((a, b) =>
-          (b.timestamp || b.date).localeCompare(a.timestamp || a.date)
-        );
+      const mergedSalesMap = new Map<string, SaleRecord>();
+      [...localSales, ...salesRecords, ...databaseSales].forEach((sale) => mergedSalesMap.set(sale.id, sale));
+      const sortedSales = [...mergedSalesMap.values()].sort((a, b) =>
+        (b.timestamp || b.date).localeCompare(a.timestamp || a.date)
+      );
+      setSalesRecords(sortedSales);
+
+      // Hydrate & Merge Salesmen from database & local cache
+      const localSalesmen = (() => {
+        try {
+          const raw = localStorage.getItem('madina_salesmen');
+          return raw ? (JSON.parse(raw) as Salesman[]) : [];
+        } catch {
+          return [];
+        }
+      })();
+      const databaseSalesmen = dbData.salesmen || [];
+      const salesmenById = new Map<string, Salesman>();
+      [...salesmen, ...localSalesmen, ...databaseSalesmen].forEach((sm) => {
+        if (sm && sm.id) salesmenById.set(sm.id, sm);
       });
+      const mergedSalesmen = [...salesmenById.values()];
+      if (mergedSalesmen.length > 0) {
+        setSalesmen(mergedSalesmen);
+        localStorage.setItem('madina_salesmen', JSON.stringify(mergedSalesmen));
+        // Sync any local salesmen to the database if not yet present
+        const dbSalesmenIds = new Set(databaseSalesmen.map((sm) => sm.id));
+        mergedSalesmen.forEach((sm) => {
+          if (!dbSalesmenIds.has(sm.id)) {
+            void syncSalesmanToDb(sm);
+          }
+        });
+      }
+
+      // Reconcile Drawer Cash Balance (Carryover from all cash collections minus outflows)
+      setFinancialSummary((prev) => {
+        const totalCashInflow = mergedCollections
+          .filter((c) => c.tenderMode === 'Cash')
+          .reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0);
+
+        const totalCashExpenses = expenses
+          .filter((e) => e.paymentMode === 'Cash')
+          .reduce((sum, e) => sum + (Number(e.amountBDT) || 0), 0);
+
+        const totalCashRefunds = salesReturns
+          .filter((r) => r.refundMethod === 'Cash Refund')
+          .reduce((sum, r) => sum + (Number(r.totalRefundBDT) || 0), 0);
+
+        const totalCashPo = purchaseOrders
+          .reduce((sum, po) => sum + (Number(po.paidAmountBDT) || 0), 0);
+
+        const reconciledCashInDrawer = Math.max(0, totalCashInflow - totalCashExpenses - totalCashRefunds - totalCashPo);
+
+        const totalDigital = mergedCollections
+          .filter((c) => c.tenderMode !== 'Cash')
+          .reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0);
+
+        const totalExpensesSum = expenses.reduce((sum, e) => sum + (Number(e.amountBDT) || 0), 0);
+        const totalOpticalRev = sortedSales.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
+
+        const resetOffset = Number(dbData.drawerBalanceSummary?.resetOffset) || 0;
+        const effectiveCash = Math.max(
+          0,
+          Math.max(prev.cashCollectedBDT, reconciledCashInDrawer) - resetOffset
+        );
+
+        return {
+          ...prev,
+          cashCollectedBDT: effectiveCash,
+          digitalPaymentsBDT: totalDigital,
+          totalExpenses: Math.max(prev.totalExpenses, totalExpensesSum),
+          grossOpticalRevenue: Math.max(prev.grossOpticalRevenue, totalOpticalRev),
+          dueCollectionsBDT: mergedCollections.reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0),
+        };
+      });
+
+      // Hydrate Expenses from Neon DB
+      if (dbData.expenses && dbData.expenses.length > 0) {
+        setExpenses(dbData.expenses);
+      } else if (expenses.length > 0) {
+        expenses.forEach((e) => void syncExpenseToDb(e));
+      }
+
+      // Hydrate Sales Returns from Neon DB
+      if (dbData.salesReturns && dbData.salesReturns.length > 0) {
+        setSalesReturns(dbData.salesReturns);
+      } else if (salesReturns.length > 0) {
+        salesReturns.forEach((r) => void syncSalesReturnToDb(r));
+      }
+
+      // Hydrate Purchase Returns from Neon DB
+      if (dbData.purchaseReturns && dbData.purchaseReturns.length > 0) {
+        setPurchaseReturns(dbData.purchaseReturns);
+      } else if (purchaseReturns.length > 0) {
+        purchaseReturns.forEach((r) => void syncPurchaseReturnToDb(r));
+      }
+
+      // Hydrate Suppliers from Neon DB
+      if (dbData.suppliers && dbData.suppliers.length > 0) {
+        setSuppliers(dbData.suppliers);
+      } else if (suppliers.length > 0) {
+        void bulkSyncSuppliersToDb(suppliers);
+      }
+
+      // Hydrate Purchase Orders from Neon DB
+      if (dbData.purchaseOrders && dbData.purchaseOrders.length > 0) {
+        setPurchaseOrders(dbData.purchaseOrders);
+      } else if (purchaseOrders.length > 0) {
+        void bulkSyncPurchaseOrdersToDb(purchaseOrders);
+      }
+
+      // Hydrate GRNs from Neon DB
+      if (dbData.grns && dbData.grns.length > 0) {
+        setGrns(dbData.grns);
+      } else if (grns.length > 0) {
+        void bulkSyncGrnsToDb(grns);
+      }
+
+      // Hydrate Hospital Branches from Neon DB
+      if (dbData.branches && dbData.branches.length > 0) {
+        setBranches(dbData.branches);
+      } else if (branches.length > 0) {
+        void bulkSyncBranchesToDb(branches);
+      }
+
+      // Hydrate IBT Orders from Neon DB
+      if (dbData.ibtOrders && dbData.ibtOrders.length > 0) {
+        setIbtOrders(dbData.ibtOrders);
+      } else if (ibtOrders.length > 0) {
+        void bulkSyncIbtOrdersToDb(ibtOrders);
+      }
+
+      // Hydrate Pharmacy Drugs from Neon DB
+      if (dbData.drugs && dbData.drugs.length > 0) {
+        setDrugs(dbData.drugs);
+      } else if (drugs.length > 0) {
+        void bulkSyncPharmacyDrugsToDb(drugs);
+      }
+
+      // Hydrate Pharmacy Dispensations from Neon DB
+      if (dbData.dispensations && dbData.dispensations.length > 0) {
+        setDispensations(dbData.dispensations);
+      } else if (dispensations.length > 0) {
+        void bulkSyncPharmacyDispensationsToDb(dispensations);
+      }
+
+      // Hydrate Prescriptions from Neon DB
+      if (dbData.prescriptions && dbData.prescriptions.length > 0) {
+        setPrescriptions(dbData.prescriptions);
+      } else if (prescriptions.length > 0) {
+        void bulkSyncPrescriptionsToDb(prescriptions);
+      }
     });
   }, []);
 
@@ -656,6 +856,31 @@ export default function App() {
     }
   };
 
+  const handleDrawerBalanceReset = async (password: string) => {
+    if (!authenticatedUser) throw new Error('You must be signed in to reset the drawer.');
+
+    const response = await fetch(`${API_BASE}/api/drawer-balance/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: authenticatedUser.username,
+        password,
+        amountBDT: financialSummary.cashCollectedBDT,
+      }),
+    });
+    let result: { success?: boolean; error?: string };
+    try {
+      result = JSON.parse(await response.text());
+    } catch {
+      throw new Error('The API server returned an invalid response. Restart the backend and try again.');
+    }
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Could not reset the drawer balance.');
+    }
+
+    setFinancialSummary((previous) => ({ ...previous, cashCollectedBDT: 0 }));
+  };
+
   const handleLogout = () => {
     sessionStorage.removeItem('mehl_session_user');
     localStorage.removeItem('mehl_session_user');
@@ -696,10 +921,12 @@ export default function App() {
 
   const handleDeleteBranch = (id: string) => {
     setBranches((prev) => prev.filter((b) => b.id !== id));
+    void deleteBranchFromDb(id);
   };
 
   const handleDeletePurchaseOrder = (id: string) => {
     setPurchaseOrders((prev) => prev.filter((po) => po.id !== id));
+    void deletePurchaseOrderFromDb(id);
   };
 
   const handleClearHistory = (id?: string) => {
@@ -1010,22 +1237,30 @@ export default function App() {
 
   const handleAddSalesman = (newSm: Salesman) => {
     setSalesmen((prev) => [...prev, newSm]);
+    void syncSalesmanToDb(newSm);
   };
 
   const handleUpdateSalesman = (updatedSm: Salesman) => {
     setSalesmen((prev) => prev.map((s) => (s.id === updatedSm.id ? updatedSm : s)));
+    void syncSalesmanToDb(updatedSm);
   };
 
   const handleToggleSalesmanStatus = (id: string) => {
     setSalesmen((prev) =>
-      prev.map((s) =>
-        s.id === id ? { ...s, status: s.status === 'active' ? 'inactive' : 'active' } : s
-      )
+      prev.map((s) => {
+        if (s.id === id) {
+          const updated = { ...s, status: s.status === 'active' ? ('inactive' as const) : ('active' as const) };
+          void syncSalesmanToDb(updated);
+          return updated;
+        }
+        return s;
+      })
     );
   };
 
   const handleRemoveSalesman = (id: string) => {
     setSalesmen((prev) => prev.filter((salesman) => salesman.id !== id));
+    void deleteSalesmanFromDb(id);
   };
 
   const handleInvoiceCreated = (invoice: any) => {
@@ -1504,6 +1739,7 @@ export default function App() {
         onSearchChange={setSearchQuery}
         onSearchSubmit={() => setCurrentView('stock-master')}
         drawerBalanceBDT={financialSummary.cashCollectedBDT}
+        onResetDrawer={handleDrawerBalanceReset}
         isMobileMenuOpen={isMobileMenuOpen}
         onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
@@ -1944,6 +2180,7 @@ export default function App() {
 
         {currentView === 'prescriptions' && (
           <PrescriptionsView
+            prescriptions={prescriptions}
             onOpenGlazingAssistant={() => setIsGlazingAssistantOpen(true)}
           />
         )}
@@ -2025,10 +2262,14 @@ export default function App() {
             onUpdateIbtOrders={setIbtOrders}
             onAddIbtOrder={handleAddIbtOrder}
             onUpdateIbtStatus={handleUpdateIbtStatus}
-            onAddBranch={(newBranch) => setBranches([...branches, newBranch])}
-            onUpdateBranch={(updatedBranch) =>
-              setBranches((prev) => prev.map((b) => (b.id === updatedBranch.id ? updatedBranch : b)))
-            }
+            onAddBranch={(newBranch) => {
+              setBranches([...branches, newBranch]);
+              void syncBranchToDb(newBranch);
+            }}
+            onUpdateBranch={(updatedBranch) => {
+              setBranches((prev) => prev.map((b) => (b.id === updatedBranch.id ? updatedBranch : b)));
+              void syncBranchToDb(updatedBranch);
+            }}
             onDeleteBranch={isSuperAdmin ? handleDeleteBranch : undefined}
           />
         )}
@@ -2036,11 +2277,17 @@ export default function App() {
         {currentView === 'supplier-grn' && (
           <SupplierGrnView
             suppliers={suppliers}
-            onUpdateSuppliers={setSuppliers}
+            onUpdateSuppliers={(updated) => {
+              setSuppliers(updated);
+              void bulkSyncSuppliersToDb(updated);
+            }}
             purchaseOrders={purchaseOrders}
             grns={grns}
             cashAvailableBDT={financialSummary.cashCollectedBDT}
-            onUpdateGrns={setGrns}
+            onUpdateGrns={(updated) => {
+              setGrns(updated);
+              void bulkSyncGrnsToDb(updated);
+            }}
             onCreatePo={handleCreatePurchaseOrder}
             onPayPurchaseOrderDue={handlePayPurchaseOrderDue}
             onReceiveGrn={handleReceiveGrn}

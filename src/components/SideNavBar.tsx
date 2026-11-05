@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -55,6 +55,7 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
   onToggleSidebar
 }) => {
   const { language } = useLanguage();
+  const [showDeveloperInfo, setShowDeveloperInfo] = useState(false);
   const isAdmin = currentUserRole === 'admin' || authenticatedUser?.role === 'admin' || authenticatedUser?.username === 'admin';
   const isSuperAdmin = currentUserRole === 'super_admin' || authenticatedUser?.username === 'srabon' || authenticatedUser?.role === 'super_admin';
   const hasFullAccess = isAdmin || isSuperAdmin;
@@ -359,13 +360,43 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
 
         {/* Sidebar Bottom: Expiring / Low Stock Box & Terminal Footer */}
         <div className="flex flex-col gap-2 pt-2 border-t border-[#e2e8f0] dark:border-[#182531]">
-          {/* Terminal Version & Active Staff Status */}
-          <div className="flex items-center justify-between px-1 text-[10px] text-[#64748b] dark:text-[#7d91a3]">
-            {isSidebarOpen && <span className="font-mono">Terminal v4.12</span>}
-            <span className="flex items-center gap-1.5 text-[#00c49f] font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00c49f] animate-pulse"></span>
-              Online
-            </span>
+          {/* Project attribution and developer credit */}
+          <div className="flex items-center justify-between px-1 text-[10px] text-[#64748b] dark:text-[#7d91a3] gap-2">
+            {isSidebarOpen && (
+              <span className="font-mono uppercase tracking-[0.16em] text-[#08745f] font-extrabold">
+                A Quantum Project
+              </span>
+            )}
+
+            <div className="relative">
+              <button
+                type="button"
+                onMouseEnter={() => setShowDeveloperInfo(true)}
+                onMouseLeave={() => setShowDeveloperInfo(false)}
+                onFocus={() => setShowDeveloperInfo(true)}
+                onBlur={() => setShowDeveloperInfo(false)}
+                onClick={() => setShowDeveloperInfo((prev) => !prev)}
+                className="inline-flex items-center gap-1 rounded-full border border-[#d8f4eb] bg-[#f0fbf8] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-[#0b6a58] shadow-sm transition-all duration-200 hover:border-[#78d7b7] hover:bg-[#e8faf4] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#00c49f]/30 cursor-pointer"
+                aria-label="Developer information"
+              >
+                <span className="w-1 h-1 rounded-full bg-[#00c49f] animate-pulse"></span>
+                Developer
+              </button>
+
+              {showDeveloperInfo && (
+                <div
+                  role="tooltip"
+                  className="absolute right-0 bottom-full z-50 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#dfeae5] bg-white/95 p-3 text-left shadow-[0_16px_40px_rgba(11,27,22,0.14)] backdrop-blur-sm dark:border-[#20313c] dark:bg-[#0d141b]/95"
+                >
+                  <div className="mb-1 text-[8px] font-black uppercase tracking-[0.18em] text-[#008f76] dark:text-[#37d9ae]">
+                    Developer
+                  </div>
+                  <p className="text-[11px] leading-relaxed font-medium text-[#1f2937] dark:text-[#e2e8f0]">
+                    This web application is developed by Mahmodul Hasan also known as Srabon Hassan.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Staff Profile Bar */}
