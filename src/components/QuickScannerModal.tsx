@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { Component, useState, useEffect, useRef, useMemo } from 'react';
 import {
   InventoryItem,
   OpticalJob,
@@ -55,14 +55,25 @@ interface QuickScannerModalProps {
   autoStartCamera?: boolean;
 }
 
+interface ScannerErrorBoundaryProps {
+  children: React.ReactNode;
+  onClose?: () => void;
+}
+
+interface ScannerErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
 // Error Boundary to prevent any child render failure from blanking the page
-class ScannerErrorBoundary extends React.Component<
-  { children: React.ReactNode; onClose?: () => void },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: any) {
+class ScannerErrorBoundary extends Component<ScannerErrorBoundaryProps, ScannerErrorBoundaryState> {
+  state: ScannerErrorBoundaryState = { hasError: false, error: null };
+  props: ScannerErrorBoundaryProps;
+  setState: any;
+
+  constructor(props: ScannerErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.props = props;
   }
 
   static getDerivedStateFromError(error: Error) {
@@ -1013,11 +1024,11 @@ const QuickScannerModalInner: React.FC<QuickScannerModalProps> = ({
                     {matchedSale.itemLines.map((line, idx) => (
                       <div key={idx} className="flex items-center justify-between text-xs">
                         <span className="text-slate-700 dark:text-slate-300">
-                          {line.qty || 1}x {line.name || 'Optical Item'}{' '}
+                          {(line as any).qty || (line as any).quantity || 1}x {line.name || 'Optical Item'}{' '}
                           {line.sku && <span className="text-[10px] font-mono text-slate-400">({line.sku})</span>}
                         </span>
                         <span className="font-mono font-bold text-slate-900 dark:text-white">
-                          ৳{Number(line.lineTotal || 0).toLocaleString()} BDT
+                          ৳{Number((line as any).lineTotal || (line as any).total || 0).toLocaleString()} BDT
                         </span>
                       </div>
                     ))}

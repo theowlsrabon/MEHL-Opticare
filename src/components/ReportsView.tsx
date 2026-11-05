@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Salesman, SaleRecord, InventoryItem, OpticalJob } from '../types';
+import type { DueCollectionRecord } from './DueCollectionsView';
 import { SalesmanReportsSection } from './SalesmanReportsSection';
 import { ItemWiseSalesSection } from './ItemWiseSalesSection';
 import { DailyClosingSummaryModal } from './DailyClosingSummaryModal';
@@ -11,6 +12,7 @@ interface ReportsViewProps {
   salesRecords?: SaleRecord[];
   inventory?: InventoryItem[];
   jobs?: OpticalJob[];
+  financialCollections?: DueCollectionRecord[];
   initialTab?: 'production' | 'salesmen' | 'item_sales';
   onNavigateToSalesmen?: () => void;
   onNavigateToStock?: () => void;
@@ -23,6 +25,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   salesRecords = [],
   inventory = [],
   jobs = [],
+  financialCollections = [],
   initialTab = 'salesmen',
   onNavigateToSalesmen,
   onNavigateToStock,
@@ -322,6 +325,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         currentUserRole={currentUserRole}
         initialDate={closingInitialDate}
         onViewJob={onViewJob}
+        fallbackSales={salesRecords}
+        fallbackCollections={financialCollections}
+        fallbackJobs={jobs}
       />
     </div>
   );
