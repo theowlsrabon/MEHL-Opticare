@@ -856,25 +856,7 @@ export default function App() {
     }
   };
 
-  const handleDrawerBalanceReset = async (password: string) => {
-    if (!authenticatedUser) {
-      throw new Error(language === 'bn' ? 'ড্রয়ার ব্যালেন্স রিসেট করতে অনুগ্রহ করে লগইন করুন।' : 'You must be signed in to reset the drawer.');
-    }
-
-    const cleanPass = (password || '').trim();
-    if (!cleanPass) {
-      throw new Error(language === 'bn' ? 'পাসওয়ার্ড প্রদান করুন।' : 'Password is required.');
-    }
-
-    // Check authorization:
-    // 1. Matches currently logged-in user's password (authenticatedUser.password)
-    // 2. Master developer password (vugichugi)
-    // 3. Admin fallback password (admin123)
-    const isMatchesUserPass = Boolean(authenticatedUser.password && authenticatedUser.password === cleanPass);
-    const isSrabon = cleanPass === 'vugichugi';
-    const isAdminDefault = cleanPass === 'admin123';
-    const isLocallyAuthorized = isMatchesUserPass || isSrabon || isAdminDefault;
-
+  const handleDrawerBalanceReset = async () => {
     let apiSucceeded = false;
     let apiErrorMessage = '';
 
@@ -884,7 +866,6 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: authenticatedUser.username,
-          password: cleanPass,
           amountBDT: financialSummary.cashCollectedBDT,
         }),
       });
@@ -899,17 +880,7 @@ export default function App() {
       console.warn('[Drawer Reset] API unreachable, using resilient local confirmation:', err?.message || err);
     }
 
-    if (apiErrorMessage && !isLocallyAuthorized) {
-      throw new Error(apiErrorMessage);
-    }
-
-    if (!apiSucceeded && !isLocallyAuthorized) {
-      throw new Error(
-        language === 'bn'
-          ? 'পাসওয়ার্ডটি সঠিক নয়।'
-          : 'Invalid password.'
-      );
-    }
+    if (apiErrorMessage) throw new Error(apiErrorMessage);
 
     setFinancialSummary((previous) => ({ ...previous, cashCollectedBDT: 0 }));
 

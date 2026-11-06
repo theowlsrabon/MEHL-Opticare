@@ -728,12 +728,12 @@ export async function dbGetDrawerBalanceSummary(): Promise<{
 export async function dbCreateDrawerBalanceReset(reset: {
   id: string;
   amountBDT: number;
-  username: string;
+  resetBy: string;
 }): Promise<void> {
   const p = getDbPool();
   await p.query(
     'INSERT INTO drawer_balance_resets (id, reset_amount, reset_by) VALUES ($1, $2, $3)',
-    [reset.id, reset.amountBDT, reset.username]
+    [reset.id, reset.amountBDT, reset.resetBy]
   );
 }
 

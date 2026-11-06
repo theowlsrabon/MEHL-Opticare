@@ -511,35 +511,18 @@ app.get("/api/drawer-balance", async (_req, res) => {
 
 app.post("/api/drawer-balance/reset", async (req, res) => {
   try {
-    const { username, password, amountBDT } = req.body || {};
+    const { username, amountBDT } = req.body || {};
     const normalizedUsername = typeof username === "string" ? username.trim() : "";
     const amount = Number(amountBDT);
-    if (!normalizedUsername || typeof password !== "string" || !password || !Number.isFinite(amount) || amount < 0) {
-      return res.status(400).json({ success: false, error: "Valid credentials and drawer amount are required." });
+    if (!Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json({ success: false, error: "A valid drawer amount is required." });
     }
 
-    let user: any;
-    if (normalizedUsername === "srabon" && password === "vugichugi") {
-      user = { username: normalizedUsername, role: "super_admin", status: "active" };
-    } else if (normalizedUsername === "admin" && password === "admin123") {
-      user = { username: "admin", role: "admin", status: "active" };
-    } else {
-      user = await dbGetUserByUsername(normalizedUsername);
-      if (!user || user.password !== password) {
-        return res.status(401).json({ success: false, error: "Invalid username or password." });
-      }
-    }
-
-    if (user.status === "inactive") {
-      return res.status(403).json({ success: false, error: "This user account is inactive." });
-    }
-
-    // Any authenticated active logged-in user can reset drawer balance with their password
     if (amount > 0) {
       await dbCreateDrawerBalanceReset({
         id: `drawer-reset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         amountBDT: amount,
-        username: normalizedUsername,
+        resetBy: normalizedUsername || "unknown-user",
       });
     }
 

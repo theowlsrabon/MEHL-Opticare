@@ -44,7 +44,7 @@ interface TopNavBarProps {
   onToggleSidebar?: () => void;
   currentUserRole: UserRole;
   drawerBalanceBDT: number;
-  onResetDrawer: (password: string) => Promise<void>;
+  onResetDrawer: () => Promise<void>;
   onRoleChange: (role: UserRole) => void;
   onToggleCameraScanner?: () => void;
   isCameraScannerActive?: boolean;
@@ -87,7 +87,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [showDrawerReset, setShowDrawerReset] = useState(false);
-  const [drawerResetPassword, setDrawerResetPassword] = useState('');
   const [drawerResetError, setDrawerResetError] = useState('');
   const [isDrawerResetting, setIsDrawerResetting] = useState(false);
 
@@ -182,9 +181,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     setDrawerResetError('');
     setIsDrawerResetting(true);
     try {
-      await onResetDrawer(drawerResetPassword);
+      await onResetDrawer();
       setShowDrawerReset(false);
-      setDrawerResetPassword('');
     } catch (error) {
       setDrawerResetError(error instanceof Error ? error.message : 'Could not reset the drawer balance.');
     } finally {
@@ -194,7 +192,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 
   const closeDrawerReset = () => {
     setShowDrawerReset(false);
-    setDrawerResetPassword('');
     setDrawerResetError('');
   };
 
@@ -526,7 +523,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             setShowDrawerReset(true);
           }}
           className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-xs hover:border-emerald-500/60 transition-colors cursor-pointer"
-          title={language === 'bn' ? 'পাসওয়ার্ড দিয়ে ড্রয়ার ব্যালেন্স রিসেট করুন' : 'Reset drawer balance with password'}
+          title={language === 'bn' ? 'ড্রয়ার ব্যালেন্স রিসেট করুন' : 'Reset drawer balance'}
         >
           <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
             {language === 'bn' ? 'ড্রয়ার ব্যালেন্স:' : 'Drawer Balance:'}
@@ -560,8 +557,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                   </h2>
                   <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                     {language === 'bn'
-                      ? 'বর্তমান ব্যালেন্স শূন্য করতে আপনার অ্যাকাউন্টের পাসওয়ার্ড নিশ্চিত করুন।'
-                      : 'Confirm your account password to set the current balance to zero.'}
+                      ? 'বর্তমান ড্রয়ার ব্যালেন্স শূন্য করতে নিশ্চিত করুন।'
+                      : 'Confirm to set the current drawer balance to zero.'}
                   </p>
                 </div>
                 <button
@@ -588,19 +585,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
               </div>
 
               <form onSubmit={submitDrawerReset}>
-                <label htmlFor="drawer-reset-password" className="mb-1.5 block text-xs font-semibold">
-                  {language === 'bn' ? 'আপনার পাসওয়ার্ড' : 'Your password'}
-                </label>
-                <input
-                  id="drawer-reset-password"
-                  type="password"
-                  value={drawerResetPassword}
-                  onChange={(event) => setDrawerResetPassword(event.target.value)}
-                  autoComplete="current-password"
-                  required
-                  autoFocus
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-950"
-                />
                 {drawerResetError && (
                   <p role="alert" className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
                     {drawerResetError}
@@ -617,12 +601,12 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                   </button>
                   <button
                     type="submit"
-                    disabled={isDrawerResetting || !drawerResetPassword}
+                    disabled={isDrawerResetting}
                     className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isDrawerResetting
-                      ? (language === 'bn' ? 'যাচাই হচ্ছে...' : 'Verifying...')
-                      : (language === 'bn' ? 'শূন্যে রিসেট' : 'Reset to ৳0')}
+                      ? (language === 'bn' ? 'রিসেট হচ্ছে...' : 'Resetting...')
+                      : (language === 'bn' ? 'নিশ্চিত করুন' : 'Confirm Reset')}
                   </button>
                 </div>
               </form>
