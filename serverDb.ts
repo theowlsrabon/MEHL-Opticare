@@ -479,8 +479,18 @@ export async function dbGetDailyClosingData(date: string): Promise<{
   cashReceived?: number;
   digitalReceived?: number;
   cashOutflow?: number;
+  cashOutflowBreakdown?: {
+    expenses: number;
+    refunds: number;
+    purchaseOrders: number;
+    other: number;
+  };
+  netCashDifference?: number;
   closingDrawerCash?: number;
   savedClosing?: any;
+  expenses?: any[];
+  refunds?: any[];
+  purchaseOrders?: any[];
 }> {
   const p = getDbPool();
   const salesResult = await p.query(
@@ -580,8 +590,46 @@ export async function dbGetDailyClosingData(date: string): Promise<{
     .filter((c: any) => c.tenderMode !== 'Cash')
     .reduce((sum: number, c: any) => sum + (Number(c.amountBDT) || 0), 0);
 
-  const cashOutflow = savedClosing?.cashOutflow || 0;
-  const closingDrawerCash = openingCash + cashReceived - cashOutflow;
+  const [expensesResult, refundsResult, purchaseOrdersResult] = await Promise.all([
+    p.query(
+      'SELECT data_json FROM expenses WHERE expense_date = $1::date AND payment_mode = $2',
+      [date, 'Cash']
+    ),
+    p.query(
+      "SELECT data_json FROM sales_returns WHERE return_date = $1::date AND refund_method = 'Cash Refund' AND status IN ('approved', 'completed')",
+      [date]
+    ),
+    p.query(
+      'SELECT data_json FROM purchase_orders WHERE po_date <= $1::date',
+      [date]
+    ),
+  ]);
+  const dailyExpenses = expensesResult.rows.map((row: any) => JSON.parse(row.data_json));
+  const dailyCashRefunds = refundsResult.rows.map((row: any) => JSON.parse(row.data_json));
+  const purchaseOrders = purchaseOrdersResult.rows.map((row: any) => JSON.parse(row.data_json));
+  const expenseOutflow = dailyExpenses.reduce((sum: number, expense: any) => sum + (Number(expense.amountBDT) || 0), 0);
+  const refundOutflow = dailyCashRefunds.reduce((sum: number, refund: any) => sum + (Number(refund.totalRefundBDT) || 0), 0);
+  const purchaseOrderOutflow = purchaseOrders.reduce((sum: number, po: any) => {
+    const payments = Array.isArray(po.paymentHistory)
+      ? po.paymentHistory.filter((payment: any) =>
+          payment.date === date && (!payment.paymentMode || payment.paymentMode === 'Cash')
+        )
+      : po.date === date
+        ? [{ amountBDT: po.paidAmountBDT, paymentMode: 'Cash' }]
+        : [];
+    return sum + payments.reduce((paymentSum: number, payment: any) => paymentSum + (Number(payment.amountBDT) || 0), 0);
+  }, 0);
+  const trackedOutflow = expenseOutflow + refundOutflow + purchaseOrderOutflow;
+  const otherOutflow = Math.max(0, (Number(savedClosing?.cashOutflow) || 0) - trackedOutflow);
+  const cashOutflowBreakdown = {
+    expenses: expenseOutflow,
+    refunds: refundOutflow,
+    purchaseOrders: purchaseOrderOutflow,
+    other: otherOutflow,
+  };
+  const cashOutflow = trackedOutflow + otherOutflow;
+  const netCashDifference = cashReceived - cashOutflow;
+  const closingDrawerCash = openingCash + netCashDifference;
 
   return {
     sales,
@@ -593,8 +641,13 @@ export async function dbGetDailyClosingData(date: string): Promise<{
     cashReceived,
     digitalReceived,
     cashOutflow,
+    cashOutflowBreakdown,
+    netCashDifference,
     closingDrawerCash,
     savedClosing,
+    expenses: dailyExpenses,
+    refunds: dailyCashRefunds,
+    purchaseOrders,
   };
 }
 
@@ -686,6 +739,30 @@ export async function dbUpsertDrawerClosing(closing: any): Promise<void> {
     closing.closedBy || 'Admin',
     JSON.stringify(closing),
   ]);
+}
+
+export async function dbInsertDrawerClosingIfAbsent(closing: any): Promise<boolean> {
+  const p = getDbPool();
+  const result = await p.query(
+    `INSERT INTO drawer_closings (
+      id, closing_date, opening_cash, cash_inflow, cash_outflow, closing_drawer_cash,
+      actual_counted_cash, discrepancy, closed_by, data_json, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+    ON CONFLICT (closing_date) DO NOTHING`,
+    [
+      closing.id || `closing-${closing.date}`,
+      closing.date,
+      closing.openingCash || 0,
+      closing.cashInflow || 0,
+      closing.cashOutflow || 0,
+      closing.closingDrawerCash || 0,
+      closing.actualCountedCash !== undefined ? closing.actualCountedCash : null,
+      closing.discrepancy !== undefined ? closing.discrepancy : 0,
+      closing.closedBy || 'System (Auto)',
+      JSON.stringify(closing),
+    ]
+  );
+  return result.rowCount === 1;
 }
 
 export async function dbGetDrawerClosings(): Promise<any[]> {
@@ -975,12 +1052,8 @@ export async function dbUpsertPurchaseReturn(ret: any): Promise<void> {
 // ----------------- SUPPLIERS & PROCUREMENT -----------------
 export async function dbGetSuppliers(): Promise<any[]> {
   const p = getDbPool();
-  try {
-    const res = await p.query('SELECT data_json FROM suppliers ORDER BY name ASC');
-    return res.rows.map((r: any) => JSON.parse(r.data_json));
-  } catch {
-    return [];
-  }
+  const res = await p.query('SELECT data_json FROM suppliers ORDER BY name ASC');
+  return res.rows.map((r: any) => JSON.parse(r.data_json));
 }
 
 export async function dbUpsertSupplier(supplier: any): Promise<void> {
@@ -1155,12 +1228,8 @@ export async function dbBulkUpsertPrescriptions(rxs: any[]): Promise<void> {
 // ----------------- HOSPITAL BRANCHES & IBT -----------------
 export async function dbGetBranches(): Promise<any[]> {
   const p = getDbPool();
-  try {
-    const res = await p.query('SELECT data_json FROM hospital_branches ORDER BY name ASC');
-    return res.rows.map((r: any) => JSON.parse(r.data_json));
-  } catch {
-    return [];
-  }
+  const res = await p.query('SELECT data_json FROM hospital_branches ORDER BY name ASC');
+  return res.rows.map((r: any) => JSON.parse(r.data_json));
 }
 
 export async function dbUpsertBranch(branch: any): Promise<void> {

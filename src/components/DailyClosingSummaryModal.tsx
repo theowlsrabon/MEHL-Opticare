@@ -38,6 +38,9 @@ interface DailyClosingData {
   netCashDifference?: number;
   closingDrawerCash?: number;
   savedClosing?: any;
+  expenses?: ExpenseItem[];
+  refunds?: SalesReturn[];
+  purchaseOrders?: PurchaseOrder[];
 }
 
 export function toBengaliNumber(val: number | string): string {
@@ -171,6 +174,15 @@ export function computeLocalDailyClosingData(
   const netCashDifference = cashReceived - cashOutflow;
   const closingDrawerCash = openingCash + netCashDifference;
 
+  const filteredExpenses = expenses.filter((e) => e.date === date);
+  const filteredRefunds = salesReturns.filter((r) => r.date === date && r.status !== 'pending');
+  const filteredPOs = purchaseOrders.filter((po) => {
+    if (po.paymentHistory?.length) {
+      return po.paymentHistory.some((p) => p.date === date);
+    }
+    return po.date === date;
+  });
+
   return {
     sales: filteredSales,
     collections: mergedDateCollections,
@@ -185,6 +197,9 @@ export function computeLocalDailyClosingData(
     netCashDifference,
     closingDrawerCash,
     savedClosing,
+    expenses: filteredExpenses,
+    refunds: filteredRefunds,
+    purchaseOrders: filteredPOs,
   };
 }
 
@@ -235,7 +250,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   }, [initialDate, todayIso]);
 
   const [selectedDate, setSelectedDate] = useState<string>(defaultSelectedDate);
-  const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'jobs' | 'payment_audit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'costs' | 'jobs' | 'payment_audit'>('invoices');
   const [copySuccess, setCopySuccess] = useState(false);
   const [dailyData, setDailyData] = useState<DailyClosingData | null>(null);
   const [dataSource, setDataSource] = useState<'database' | 'synced-local'>('database');
@@ -427,6 +442,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   const cashOutflow = dailyData?.cashOutflow || 0;
   const cashOutflowBreakdown = dailyData?.cashOutflowBreakdown || { expenses: 0, refunds: 0, purchaseOrders: 0, other: 0 };
   const netCashDifference = dailyData?.netCashDifference ?? (cashReceived - cashOutflow);
+  const openingCash = dailyData?.openingCash || 0;
   const digitalMfsCardTotal =
     paymentBreakdown.bKash.total + paymentBreakdown.Card.total + paymentBreakdown.Nagad.total + paymentBreakdown.Other.total;
 
@@ -442,6 +458,102 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       (Number(sale.totalAmount) || 0) - getPaidToDate(sale, paidByInvoice) > 0
     )).length;
   }, [selectedSales, paidByInvoice]);
+
+  // Combined itemized costs list (direct expenses, refunds, supplier payments)
+  const dailyCostsList = useMemo(() => {
+    const list: Array<{
+      id: string;
+      refNumber: string;
+      type: 'Expense' | 'Refund' | 'Supplier PO' | 'Other';
+      title: string;
+      category: string;
+      paymentMode: string;
+      amountBDT: number;
+      beneficiary: string;
+      timeOrDate: string;
+    }> = [];
+
+    // 1. Direct operating and lab expenses
+    const currentExpenses = dailyData?.expenses?.length
+      ? dailyData.expenses
+      : fallbackExpenses.filter((e) => e.date === selectedDate);
+
+    currentExpenses.forEach((exp) => {
+      list.push({
+        id: `exp-${exp.id}`,
+        refNumber: exp.voucherNumber || exp.id,
+        type: 'Expense',
+        title: exp.description || text('General Operating Expense', 'সাধারণ পরিচালন ব্যয়'),
+        category: exp.category || text('Expense', 'খরচ'),
+        paymentMode: exp.paymentMode || 'Cash',
+        amountBDT: Number(exp.amountBDT) || 0,
+        beneficiary: exp.paidTo || exp.approvedBy || '-',
+        timeOrDate: exp.date,
+      });
+    });
+
+    // 2. Customer Sales Returns / Refunds
+    const currentRefunds = dailyData?.refunds?.length
+      ? dailyData.refunds
+      : fallbackSalesReturns.filter((r) => r.date === selectedDate && r.status !== 'pending');
+
+    currentRefunds.forEach((ref) => {
+      list.push({
+        id: `ref-${ref.id}`,
+        refNumber: ref.returnNumber || ref.id,
+        type: 'Refund',
+        title: `${text('Refund for', 'রিফান্ড:')} ${ref.originalInvoiceNumber} (${ref.patientName})`,
+        category: text('Customer Refund', 'কাস্টমার রিফান্ড'),
+        paymentMode: ref.refundMethod || 'Cash Refund',
+        amountBDT: Number(ref.totalRefundBDT) || 0,
+        beneficiary: ref.patientName || '-',
+        timeOrDate: ref.date,
+      });
+    });
+
+    // 3. Supplier Purchase Orders
+    const currentPOs = dailyData?.purchaseOrders?.length
+      ? dailyData.purchaseOrders
+      : fallbackPurchaseOrders;
+
+    currentPOs.forEach((po) => {
+      if (po.paymentHistory?.length) {
+        po.paymentHistory.forEach((payment) => {
+          if (payment.date === selectedDate && Number(payment.amountBDT) > 0) {
+            list.push({
+              id: `po-${po.id}-${payment.id}`,
+              refNumber: po.poNumber || po.id,
+              type: 'Supplier PO',
+              title: `${text('Supplier payment:', 'সাপ্লায়ার পেমেন্ট:')} ${po.supplierName}`,
+              category: text('Supplier Purchase', 'সাপ্লায়ার ক্রয়'),
+              paymentMode: payment.paymentMode || 'Cash',
+              amountBDT: Number(payment.amountBDT) || 0,
+              beneficiary: po.supplierName || '-',
+              timeOrDate: payment.date,
+            });
+          }
+        });
+      } else if (po.date === selectedDate && Number(po.paidAmountBDT) > 0) {
+        list.push({
+          id: `po-${po.id}`,
+          refNumber: po.poNumber || po.id,
+          type: 'Supplier PO',
+          title: `${text('Supplier payment:', 'সাপ্লায়ার পেমেন্ট:')} ${po.supplierName}`,
+          category: text('Supplier Purchase', 'সাপ্লায়ার ক্রয়'),
+          paymentMode: 'Cash',
+          amountBDT: Number(po.paidAmountBDT) || 0,
+          beneficiary: po.supplierName || '-',
+          timeOrDate: po.date,
+        });
+      }
+    });
+
+    return list;
+  }, [dailyData, fallbackExpenses, fallbackSalesReturns, fallbackPurchaseOrders, selectedDate, language]);
+
+  const totalCostsSum = useMemo(() => {
+    return dailyCostsList.reduce((sum, item) => sum + item.amountBDT, 0);
+  }, [dailyCostsList]);
 
   // 4. Number of Glazing Jobs Completed (সম্পন্ন গ্লেজিং জব)
   const completedGlazingCount = completedGlazingJobs.length;
@@ -540,19 +652,19 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                     : text('Live synchronized report', 'লাইভ সিঙ্কড ডাটা')}
                 </span>
               </div>
-              <h2 id="closing-modal-title" className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mt-1">
+              <h2 id="closing-modal-title" className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mt-0.5">
                 {text('Daily Closing Summary', 'দৈনিক ক্লোজিং সারসংক্ষেপ')}
               </h2>
-              <p className="mt-1 break-words text-sm text-slate-600 dark:text-slate-300">
-                {formattedDateTitle} • {text('Sales, collections, outstanding balances, and glazing lab output for the selected date', 'নির্বাচিত তারিখের মোট বিক্রয়, আদায়, বকেয়া ও গ্লেজিং ল্যাবের কাজের হিসাব')}
+              <p className="mt-0.5 break-words text-xs text-slate-500 dark:text-slate-400">
+                {formattedDateTitle} • {text('Sales, collections, costs, and glazing output for the selected date', 'নির্বাচিত তারিখের মোট বিক্রয়, আদায়, খরচ ও গ্লেজিং ল্যাবের কাজের হিসাব')}
               </p>
             </div>
           </div>
 
-          {/* Date Picker & Controls */}
+          {/* Date Picker & Controls (Close button only; top print/copy buttons removed) */}
           <div className="flex items-center gap-2 self-start lg:self-auto flex-wrap">
-            <div className="flex min-h-11 items-center gap-2 bg-slate-50 dark:bg-[#1b202c] border border-slate-200 dark:border-[#2a3242] rounded-xl px-3 py-2">
-              <span aria-hidden="true" className="material-symbols-outlined text-[20px] text-teal-700 dark:text-teal-300">calendar_month</span>
+            <div className="flex min-h-10 items-center gap-2 bg-slate-50 dark:bg-[#1b202c] border border-slate-200 dark:border-[#2a3242] rounded-xl px-3 py-1.5">
+              <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-teal-700 dark:text-teal-300">calendar_month</span>
               <label htmlFor="closing-date-input" className="sr-only">
                 {text('Select closing date', 'ক্লোজিং তারিখ নির্বাচন করুন')}
               </label>
@@ -562,46 +674,18 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="text-sm font-semibold text-slate-800 dark:text-slate-100 bg-transparent focus:outline-hidden cursor-pointer"
+                className="text-xs font-semibold text-slate-800 dark:text-slate-100 bg-transparent focus:outline-hidden cursor-pointer"
                 title={text('Select date for daily closing', 'দৈনিক ক্লোজিংয়ের তারিখ নির্বাচন করুন')}
               />
             </div>
 
             <button
               type="button"
-              onClick={handlePrint}
-              disabled={!dailyData || isLoading}
-              className="min-h-11 px-3.5 py-2 bg-white dark:bg-[#1b202c] hover:bg-slate-50 dark:hover:bg-[#242b3a] border border-slate-200 dark:border-[#2a3242] rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              title={text('Print closing statement', 'ক্লোজিং বিবরণী প্রিন্ট করুন')}
-            >
-              <span aria-hidden="true" className="material-symbols-outlined text-[18px]">print</span>
-              <span>{text('Print', 'প্রিন্ট')}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopySummary}
-              disabled={!dailyData || isLoading}
-              className={`min-h-11 px-3.5 py-2 border rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                copySuccess
-                  ? 'bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-white dark:bg-[#1b202c] hover:bg-slate-50 dark:hover:bg-[#242b3a] border-slate-200 dark:border-[#2a3242] text-slate-800 dark:text-slate-100'
-              }`}
-              title={text('Copy summary for WhatsApp or SMS', 'বার্তা পাঠাতে সারসংক্ষেপ কপি করুন')}
-            >
-              <span aria-hidden="true" className="material-symbols-outlined text-[18px]">
-                {copySuccess ? 'check' : 'content_copy'}
-              </span>
-              <span>{copySuccess ? text('Copied!', 'কপি হয়েছে!') : text('Copy', 'কপি')}</span>
-            </button>
-
-            <button
-              type="button"
               onClick={onClose}
-              className="w-11 h-11 rounded-xl bg-white dark:bg-[#1b202c] hover:bg-slate-50 dark:hover:bg-[#242b3a] border border-slate-200 dark:border-[#2a3242] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              className="w-10 h-10 rounded-xl bg-white dark:bg-[#1b202c] hover:bg-slate-50 dark:hover:bg-[#242b3a] border border-slate-200 dark:border-[#2a3242] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer"
               aria-label={text('Close modal', 'মডাল বন্ধ করুন')}
             >
-              <span aria-hidden="true" className="material-symbols-outlined text-[20px]">close</span>
+              <span aria-hidden="true" className="material-symbols-outlined text-[18px]">close</span>
             </button>
           </div>
         </div>
@@ -669,23 +753,23 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
           {!isLoading && dailyData && (
           <div className="min-w-0 space-y-5">
           {/* Daily sales and operational KPI cards */}
-          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {/* 1. Total Sales (মোট বিক্রয়) */}
-            <div className="flex min-h-36 min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 dark:border-[#283142] dark:bg-[#171c27]">
+            <div className="flex min-h-32 min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-[#283142] dark:bg-[#171c27]">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  <span aria-hidden="true" className="material-symbols-outlined text-[20px] text-teal-700 dark:text-teal-300">trending_up</span>
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-teal-700 dark:text-teal-300">trending_up</span>
                   <span>{text('Net invoice sales', 'নিট ইনভয়েস বিক্রি')}</span>
                 </span>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-[#242b3a] dark:text-slate-300">
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-[#242b3a] dark:text-slate-300">
                   {selectedSales.length} {text('invoices', 'টি ইনভয়েস')}
                 </span>
               </div>
-              <div className="mt-3 min-w-0">
-                <div className="text-2xl font-bold text-slate-950 dark:text-white font-data-rx">
+              <div className="mt-2 min-w-0">
+                <div className="text-xl font-bold text-slate-950 dark:text-white font-data-rx">
                   ৳{totalSales.toLocaleString('en-IN')}
                 </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
                   <span>{text('Gross:', 'মোট:')} ৳{grossSubtotal.toLocaleString('en-IN')}</span>
                   {totalDiscount > 0 && (
                     <span className="font-semibold text-amber-700 dark:text-amber-300">
@@ -697,71 +781,66 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
             </div>
 
             {/* 2. Total Collections */}
-            <div className="flex min-h-36 min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 dark:border-[#283142] dark:bg-[#171c27]">
+            <div className="flex min-h-32 min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-[#283142] dark:bg-[#171c27]">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  <span aria-hidden="true" className="material-symbols-outlined text-[20px] text-emerald-700 dark:text-emerald-300">payments</span>
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-emerald-700 dark:text-emerald-300">payments</span>
                   <span>{text('Payments received today', 'আজকের আদায়')}</span>
                 </span>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
                   {selectedCollections.length} {text('receipts', 'টি রসিদ')}
                 </span>
               </div>
-              <div className="mt-3 min-w-0">
-                <div className="text-2xl font-bold text-slate-950 dark:text-white font-data-rx">
+              <div className="mt-2 min-w-0">
+                <div className="text-xl font-bold text-slate-950 dark:text-white font-data-rx">
                   ৳{totalCashCollected.toLocaleString('en-IN')}
                 </div>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-1 text-xs text-slate-500 dark:text-slate-400">
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500 dark:text-slate-400">
                   <span>{text('Cash:', 'নগদ:')} ৳{cashReceived.toLocaleString('en-IN')}</span>
                   <span>{text('Digital:', 'ডিজিটাল:')} ৳{digitalMfsCardTotal.toLocaleString('en-IN')}</span>
                 </div>
               </div>
             </div>
 
-            {/* 3. Current outstanding on invoices issued on this date */}
-            <div className="flex min-h-36 min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 dark:border-[#283142] dark:bg-[#171c27]">
+            {/* 3. Total Expenses & Costs (মোট খরচ ও ব্যয় - replaces Outstanding balance card) */}
+            <div className="flex min-h-32 min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-[#283142] dark:bg-[#171c27]">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  <span aria-hidden="true" className="material-symbols-outlined text-[20px] text-amber-700 dark:text-amber-300">pending_actions</span>
-                  <span>{text('Outstanding balance', 'বর্তমান বকেয়া')}</span>
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-rose-700 dark:text-rose-400">account_balance_wallet</span>
+                  <span>{text('Total Expenses & Costs', 'মোট খরচ ও ব্যয়')}</span>
                 </span>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    totalDueAmounts > 0
-                      ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
-                      : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
-                  }`}
-                >
-                  {dueOrdersCount} {text('open invoices', 'টি বকেয়া ইনভয়েস')}
+                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
+                  {dailyCostsList.length} {text('items', 'টি খাত')}
                 </span>
               </div>
-              <div className="mt-3 min-w-0">
-                <div className="text-2xl font-bold text-slate-950 dark:text-white font-data-rx">
-                  ৳{totalDueAmounts.toLocaleString('en-IN')}
+              <div className="mt-2 min-w-0">
+                <div className="text-xl font-bold text-rose-700 dark:text-rose-400 font-data-rx">
+                  ৳{totalCostsSum.toLocaleString('en-IN')}
                 </div>
-                <div className="mt-2 break-words text-xs text-slate-500 dark:text-slate-400">
-                  {text('Remaining on invoices issued this date, based on recorded receipts to date', 'এই তারিখের ইনভয়েসে রেকর্ডকৃত পেমেন্ট বাদে বর্তমান বকেয়া')}
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>{text('Cash out:', 'নগদ খরচ:')} ৳{cashOutflow.toLocaleString('en-IN')}</span>
+                  <span>{text('Other:', 'অন্যান্য:')} ৳{Math.max(0, totalCostsSum - cashOutflow).toLocaleString('en-IN')}</span>
                 </div>
               </div>
             </div>
 
             {/* 4. Completed glazing jobs */}
-            <div className="flex min-h-36 min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 dark:border-[#283142] dark:bg-[#171c27]">
+            <div className="flex min-h-32 min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-[#283142] dark:bg-[#171c27]">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  <span aria-hidden="true" className="material-symbols-outlined text-[20px] text-indigo-700 dark:text-indigo-300">precision_manufacturing</span>
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-indigo-700 dark:text-indigo-300">precision_manufacturing</span>
                   <span>{text('Glazing completed', 'সম্পন্ন গ্লেজিং')}</span>
                 </span>
-                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300">
-                  {text('Stage 5 audit', 'স্টেজ ৫ অডিট')}
+                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300">
+                  {text('Stage 5', 'স্টেজ ৫')}
                 </span>
               </div>
-              <div className="mt-3 min-w-0">
-                <div className="text-2xl font-bold text-slate-950 dark:text-white font-data-rx">
+              <div className="mt-2 min-w-0">
+                <div className="text-xl font-bold text-slate-950 dark:text-white font-data-rx">
                   {completedGlazingCount}{' '}
-                  <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 font-sans">{text('jobs', 'টি কাজ')}</span>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">{text('jobs', 'টি কাজ')}</span>
                 </div>
-                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                   {text('Stage 5 completion recorded on this date', 'এই তারিখে স্টেজ ৫ সম্পন্ন হিসেবে রেকর্ড')}
                 </div>
               </div>
@@ -944,36 +1023,52 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
           {/* DETAIL TABS: Invoices / Completed Glazing Jobs */}
           <div className="min-w-0 bg-white dark:bg-[#161a25] border border-slate-200 dark:border-[#252b38] rounded-2xl overflow-hidden shadow-xs">
             {/* Tabs Bar */}
-            <div className="px-4 py-2.5 bg-surface-container-low dark:bg-[#1a1f2c] border-b border-outline-variant/70 dark:border-[#252b38] flex min-w-0 flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
-              <div className="grid min-w-0 grid-cols-1 gap-2 sm:flex sm:items-center">
+            <div className="px-4 py-2 bg-surface-container-low dark:bg-[#1a1f2c] border-b border-outline-variant/70 dark:border-[#252b38] flex min-w-0 flex-col items-stretch justify-between gap-2.5 sm:flex-row sm:items-center">
+              <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:flex sm:items-center">
+                {/* 1. Invoices & Sales */}
                 <button
                   type="button"
                   onClick={() => setActiveTab('invoices')}
-                  className={`min-h-10 w-full min-w-0 justify-start rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer sm:w-auto ${
+                  className={`min-h-9 w-full min-w-0 justify-start rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer sm:w-auto ${
                     activeTab === 'invoices' || activeTab === 'overview'
                       ? 'bg-teal-800 text-white'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-[#262d3c] dark:hover:text-white'
                   }`}
                 >
-                  <span aria-hidden="true" className="material-symbols-outlined text-[19px]">receipt_long</span>
-                  <span className="min-w-0 break-words text-left">{text('Invoices & Sales', 'ইনভয়েস ও বিক্রয় তালিকা')} ({selectedSales.length})</span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-[17px]">receipt_long</span>
+                  <span className="min-w-0 break-words text-left">{text('Invoices & Sales', 'ইনভয়েস ও বিক্রয়')} ({selectedSales.length})</span>
                 </button>
 
+                {/* 2. Expenses & Costs (Middle Tab) */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('costs')}
+                  className={`min-h-9 w-full min-w-0 justify-start rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer sm:w-auto ${
+                    activeTab === 'costs'
+                      ? 'bg-teal-800 text-white'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-[#262d3c] dark:hover:text-white'
+                  }`}
+                >
+                  <span aria-hidden="true" className="material-symbols-outlined text-[17px]">payments</span>
+                  <span className="min-w-0 break-words text-left">{text('Expenses & Costs', 'খরচ ও ব্যয়ের হিসাব')} ({dailyCostsList.length})</span>
+                </button>
+
+                {/* 3. Completed Glazing Jobs */}
                 <button
                   type="button"
                   onClick={() => setActiveTab('jobs')}
-                  className={`min-h-10 w-full min-w-0 justify-start rounded-lg px-3 py-2 text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer sm:w-auto ${
+                  className={`min-h-9 w-full min-w-0 justify-start rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer sm:w-auto ${
                     activeTab === 'jobs'
                       ? 'bg-teal-800 text-white'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-[#262d3c] dark:hover:text-white'
                   }`}
                 >
-                  <span aria-hidden="true" className="material-symbols-outlined text-[19px]">precision_manufacturing</span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-[17px]">precision_manufacturing</span>
                   <span className="min-w-0 break-words text-left">{text('Completed Glazing Jobs', 'সম্পন্ন গ্লেজিং কাজ')} ({completedGlazingCount})</span>
                 </button>
               </div>
 
-              <span className="self-end text-xs text-slate-500 dark:text-slate-400 font-medium sm:self-auto">
+              <span className="self-end text-[11px] text-slate-500 dark:text-slate-400 font-medium sm:self-auto">
                 {text('Date:', 'তারিখ:')} <strong className="text-on-surface font-sans">{selectedDate}</strong>
               </span>
             </div>
@@ -1084,7 +1179,85 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               </div>
             )}
 
-            {/* TAB CONTENT 2: Completed Glazing Jobs Table */}
+            {/* TAB CONTENT 2: Expenses & Costs Table (Middle Section) */}
+            {activeTab === 'costs' && (
+              <div className="overflow-x-auto max-h-72">
+                {dailyCostsList.length === 0 ? (
+                  <div className="py-10 text-center text-outline">
+                    <span className="material-symbols-outlined text-[32px] text-outline/50 mb-2 block">
+                      money_off
+                    </span>
+                    <p className="text-xs font-semibold">{text('No expense or cost records found for the selected date.', 'নির্বাচিত তারিখে কোনো খরচ বা ব্যয়ের রেকর্ড নেই।')}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {text('All operating expenses, cash refunds, and purchase order disbursements appear here.', 'সব পরিচালন ব্যয়, নগদ রিফান্ড ও পারচেজ পেমেন্ট এখানে প্রদর্শিত হবে।')}
+                    </p>
+                  </div>
+                ) : (
+                  <table className="min-w-[900px] w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-600 text-[11px] uppercase tracking-wide border-b border-slate-200 dark:bg-[#1b202c] dark:text-slate-300 dark:border-[#252b38]">
+                        <th className="py-2 px-3 font-bold">{text('Voucher / Ref #', 'ভাউচার / রেফারেন্স')}</th>
+                        <th className="py-2 px-3 font-bold">{text('Description / Particulars', 'বিবরণ')}</th>
+                        <th className="py-2 px-3 font-bold">{text('Cost Category', 'ব্যয়ের খাত')}</th>
+                        <th className="py-2 px-3 font-bold">{text('Beneficiary / Paid To', 'প্রাপক')}</th>
+                        <th className="py-2 px-3 font-bold text-center">{text('Payment Mode', 'পেমেন্ট মাধ্যম')}</th>
+                        <th className="py-2 px-3 font-bold text-right text-rose-700 dark:text-rose-400">{text('Amount', 'পরিমাণ')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-[#252b38] text-xs">
+                      {dailyCostsList.map((cost) => (
+                        <tr
+                          key={cost.id}
+                          className="hover:bg-slate-50 dark:hover:bg-[#1b202c]/50 transition-colors"
+                        >
+                          <td className="py-2 px-3 font-bold text-rose-700 dark:text-rose-400 font-sans">
+                            {cost.refNumber}
+                            <span className="block text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                              {cost.type}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className="font-semibold text-slate-800 dark:text-slate-100 block">{cost.title}</span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 dark:bg-[#252c3c] text-slate-700 dark:text-slate-300">
+                              {cost.category}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-slate-700 dark:text-slate-200 font-medium">
+                            {cost.beneficiary}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              cost.paymentMode.toLowerCase().includes('cash')
+                                ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
+                                : 'bg-blue-500/15 text-blue-800 dark:text-blue-300'
+                            }`}>
+                              {cost.paymentMode}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-extrabold text-rose-700 dark:text-rose-400 font-data-rx">
+                            ৳{cost.amountBDT.toLocaleString('en-IN')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50 dark:bg-[#1a1f2c] font-bold text-slate-900 dark:text-white border-t-2 border-slate-200 dark:border-[#252b38]">
+                        <td colSpan={5} className="py-2 px-3 text-right uppercase tracking-wider text-[11px]">
+                          {text('Total Recorded Costs & Expenses:', 'দৈনিক মোট খরচ ও ব্যয়:')}
+                        </td>
+                        <td className="py-2 px-3 text-right font-extrabold text-rose-700 dark:text-rose-400 font-data-rx">
+                          ৳{totalCostsSum.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* TAB CONTENT 3: Completed Glazing Jobs Table */}
             {activeTab === 'jobs' && (
               <div className="overflow-x-auto max-h-72">
                 {completedGlazingJobs.length === 0 ? (
@@ -1208,6 +1381,281 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
             >
               {text('Close', 'বন্ধ করুন')}
             </button>
+          </div>
+        </div>
+
+        {/* ================= DEDICATED PRINTABLE 1-PAGE SUMMARY SHEET ================= */}
+        <div id="daily-closing-printable-sheet" className="hidden print:block bg-white text-slate-900">
+          <style>{`
+            @media print {
+              @page {
+                size: A4 portrait;
+                margin: 8mm 10mm;
+              }
+              body * {
+                visibility: hidden !important;
+              }
+              #daily-closing-printable-sheet,
+              #daily-closing-printable-sheet * {
+                visibility: visible !important;
+              }
+              #daily-closing-printable-sheet {
+                display: block !important;
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 4mm 6mm !important;
+                background: #ffffff !important;
+                color: #0f172a !important;
+                box-sizing: border-box !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                font-size: 10px !important;
+                line-height: 1.3 !important;
+              }
+            }
+          `}</style>
+
+          {/* 1. Header with Hospital Branding & Top-Corner Date/Time */}
+          <div className="border-b-2 border-slate-900 pb-2 mb-2 flex items-start justify-between">
+            <div>
+              <h1 className="text-xl font-black tracking-tight text-slate-950 uppercase leading-none">
+                MODINA EYE HOSPITAL LTD.
+              </h1>
+              <p className="text-[11px] font-bold text-teal-800 uppercase tracking-wider mt-0.5">
+                Optical Department & Glazing Lab
+              </p>
+              <p className="text-[9px] text-slate-600">
+                Official Daily Financial Closing & Audit Statement
+              </p>
+            </div>
+            <div className="text-right border border-slate-300 rounded p-1.5 bg-slate-50 text-[9px] leading-tight min-w-[170px]">
+              <div className="font-bold text-slate-900">
+                REPORT DATE: <span className="font-mono text-[10px]">{selectedDate}</span>
+              </div>
+              <div className="text-slate-600 mt-0.5">
+                PRINTED: {new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+              <div className="text-slate-600">
+                AUDITOR: <span className="font-semibold text-slate-900">{currentUserRole}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Top KPI Summary Strip */}
+          <div className="grid grid-cols-4 gap-2 mb-2 text-center">
+            <div className="border border-slate-300 rounded p-1.5 bg-slate-50">
+              <span className="text-[9px] uppercase font-bold text-slate-600 block">Total Invoiced Sales</span>
+              <span className="text-sm font-black text-slate-900 font-mono">৳{totalSales.toLocaleString('en-IN')}</span>
+              <span className="text-[8px] text-slate-500 block">{selectedSales.length} invoices issued</span>
+            </div>
+            <div className="border border-emerald-300 rounded p-1.5 bg-emerald-50/50">
+              <span className="text-[9px] uppercase font-bold text-emerald-800 block">Total Cash Inflow</span>
+              <span className="text-sm font-black text-emerald-800 font-mono">+৳{cashReceived.toLocaleString('en-IN')}</span>
+              <span className="text-[8px] text-emerald-700 block">{selectedCollections.length} receipts today</span>
+            </div>
+            <div className="border border-rose-300 rounded p-1.5 bg-rose-50/50">
+              <span className="text-[9px] uppercase font-bold text-rose-800 block">Total Cash Outflow</span>
+              <span className="text-sm font-black text-rose-800 font-mono">-৳{cashOutflow.toLocaleString('en-IN')}</span>
+              <span className="text-[8px] text-rose-700 block">{dailyCostsList.length} expenses/costs</span>
+            </div>
+            <div className={`border rounded p-1.5 ${netCashDifference >= 0 ? 'border-teal-400 bg-teal-50/60' : 'border-rose-400 bg-rose-50/60'}`}>
+              <span className="text-[9px] uppercase font-bold text-slate-700 block">Net Drawer Balance</span>
+              <span className={`text-sm font-black font-mono ${netCashDifference >= 0 ? 'text-teal-900' : 'text-rose-900'}`}>
+                {netCashDifference >= 0 ? '+' : '-'}৳{Math.abs(netCashDifference).toLocaleString('en-IN')}
+              </span>
+              <span className="text-[8px] text-slate-600 block">Inflow minus outflow</span>
+            </div>
+          </div>
+
+          {/* 3. Dual Balanced Financial Columns */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            {/* Column 1: Income Breakdown */}
+            <div className="border border-slate-300 rounded p-2">
+              <h2 className="text-[10px] font-black uppercase text-slate-900 border-b border-slate-200 pb-0.5 mb-1 flex justify-between">
+                <span>1. Income & Inflows Summary</span>
+                <span className="text-teal-800">৳{totalCashCollected.toLocaleString('en-IN')}</span>
+              </h2>
+              <table className="w-full text-[9px] border-collapse">
+                <tbody>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 text-slate-600">Net Invoiced Sales Value</td>
+                    <td className="py-0.5 text-right font-mono font-bold">৳{totalSales.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 text-slate-600">Total Payments Received Today</td>
+                    <td className="py-0.5 text-right font-mono font-bold text-emerald-800">৳{totalCashCollected.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr className="bg-slate-50 font-bold">
+                    <td colSpan={2} className="py-0.5 pt-1 text-slate-700 uppercase text-[8px]">Receipts by Payment Method:</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 pl-2 text-slate-700">• Cash Receipts</td>
+                    <td className="py-0.5 text-right font-mono font-semibold">৳{paymentBreakdown.Cash.total.toLocaleString('en-IN')} ({paymentBreakdown.Cash.count})</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 pl-2 text-slate-700">• bKash MFS</td>
+                    <td className="py-0.5 text-right font-mono font-semibold">৳{paymentBreakdown.bKash.total.toLocaleString('en-IN')} ({paymentBreakdown.bKash.count})</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 pl-2 text-slate-700">• Card / POS Merchant</td>
+                    <td className="py-0.5 text-right font-mono font-semibold">৳{paymentBreakdown.Card.total.toLocaleString('en-IN')} ({paymentBreakdown.Card.count})</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 pl-2 text-slate-700">• Nagad MFS</td>
+                    <td className="py-0.5 text-right font-mono font-semibold">৳{paymentBreakdown.Nagad.total.toLocaleString('en-IN')} ({paymentBreakdown.Nagad.count})</td>
+                  </tr>
+                  {paymentBreakdown.Other.total > 0 && (
+                    <tr className="border-b border-slate-100">
+                      <td className="py-0.5 pl-2 text-slate-700">• Other / Bank Transfer</td>
+                      <td className="py-0.5 text-right font-mono font-semibold">৳{paymentBreakdown.Other.total.toLocaleString('en-IN')} ({paymentBreakdown.Other.count})</td>
+                    </tr>
+                  )}
+                  <tr className="font-bold border-t border-slate-200">
+                    <td className="py-0.5 text-slate-900">Total Digital & Non-Cash Receipts</td>
+                    <td className="py-0.5 text-right font-mono text-blue-900">৳{digitalMfsCardTotal.toLocaleString('en-IN')}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Column 2: Expense Breakdown */}
+            <div className="border border-slate-300 rounded p-2">
+              <h2 className="text-[10px] font-black uppercase text-slate-900 border-b border-slate-200 pb-0.5 mb-1 flex justify-between">
+                <span>2. Outflows & Expenses Summary</span>
+                <span className="text-rose-800">৳{cashOutflow.toLocaleString('en-IN')}</span>
+              </h2>
+              <table className="w-full text-[9px] border-collapse">
+                <tbody>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 text-slate-600">Operating & Lab Expenses</td>
+                    <td className="py-0.5 text-right font-mono font-bold text-rose-800">৳{cashOutflowBreakdown.expenses.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 text-slate-600">Patient Sales Refunds (Cash)</td>
+                    <td className="py-0.5 text-right font-mono font-bold text-rose-800">৳{cashOutflowBreakdown.refunds.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 text-slate-600">Supplier / PO Payments (Cash)</td>
+                    <td className="py-0.5 text-right font-mono font-bold text-rose-800">৳{cashOutflowBreakdown.purchaseOrders.toLocaleString('en-IN')}</td>
+                  </tr>
+                  {cashOutflowBreakdown.other > 0 && (
+                    <tr className="border-b border-slate-100">
+                      <td className="py-0.5 text-slate-600">Other Recorded Outflows</td>
+                      <td className="py-0.5 text-right font-mono font-bold text-rose-800">৳{cashOutflowBreakdown.other.toLocaleString('en-IN')}</td>
+                    </tr>
+                  )}
+                  <tr className="bg-slate-50 font-bold">
+                    <td colSpan={2} className="py-0.5 pt-1 text-slate-700 uppercase text-[8px]">Department Operational Metrics:</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 pl-2 text-slate-700">• Completed Glazing Jobs (Stage 5)</td>
+                    <td className="py-0.5 text-right font-mono font-semibold">{completedGlazingCount} pairs</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 pl-2 text-slate-700">• Total Frames Sold</td>
+                    <td className="py-0.5 text-right font-mono font-semibold">{totalFramesSold} units</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-0.5 pl-2 text-slate-700">• Total Lenses Sold</td>
+                    <td className="py-0.5 text-right font-mono font-semibold">{totalLensesSold} pairs</td>
+                  </tr>
+                  <tr className="font-bold border-t border-slate-200">
+                    <td className="py-0.5 text-slate-900">Total Recorded Outflow (Cash)</td>
+                    <td className="py-0.5 text-right font-mono text-rose-900">৳{cashOutflow.toLocaleString('en-IN')}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 4. Itemized Expense & Cost Vouchers List (Compact table) */}
+          <div className="border border-slate-300 rounded mb-2">
+            <div className="bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-800 uppercase flex justify-between border-b border-slate-300">
+              <span>Itemized Expenses & Disbursements ({dailyCostsList.length})</span>
+              <span>Total Costs: ৳{totalCostsSum.toLocaleString('en-IN')}</span>
+            </div>
+            {dailyCostsList.length === 0 ? (
+              <div className="p-1.5 text-center text-slate-500 text-[9px] italic">
+                No expense vouchers or disbursements recorded for this date.
+              </div>
+            ) : (
+              <table className="w-full text-[8.5px] border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-slate-700 font-bold uppercase">
+                    <th className="py-0.5 px-1.5 text-left">Voucher/Ref</th>
+                    <th className="py-0.5 px-1.5 text-left">Category</th>
+                    <th className="py-0.5 px-1.5 text-left">Description</th>
+                    <th className="py-0.5 px-1.5 text-left">Beneficiary</th>
+                    <th className="py-0.5 px-1.5 text-center">Mode</th>
+                    <th className="py-0.5 px-1.5 text-right">Amount (BDT)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dailyCostsList.slice(0, 8).map((cost) => (
+                    <tr key={cost.id}>
+                      <td className="py-0.5 px-1.5 font-mono font-bold text-slate-900">{cost.refNumber}</td>
+                      <td className="py-0.5 px-1.5 text-slate-700">{cost.category}</td>
+                      <td className="py-0.5 px-1.5 text-slate-900 truncate max-w-[200px]">{cost.title}</td>
+                      <td className="py-0.5 px-1.5 text-slate-700">{cost.beneficiary}</td>
+                      <td className="py-0.5 px-1.5 text-center font-mono">{cost.paymentMode}</td>
+                      <td className="py-0.5 px-1.5 text-right font-mono font-bold">৳{cost.amountBDT.toLocaleString('en-IN')}</td>
+                    </tr>
+                  ))}
+                  {dailyCostsList.length > 8 && (
+                    <tr>
+                      <td colSpan={6} className="py-0.5 px-1.5 text-center italic text-slate-500">
+                        ...and {dailyCostsList.length - 8} additional expense records.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* 5. Cash Drawer Reconciliation Summary */}
+          <div className="border border-slate-300 rounded p-1.5 bg-slate-50 mb-3 flex items-center justify-between text-[9px]">
+            <div>
+              <span className="font-bold text-slate-900 uppercase">Cash Drawer Reconciliation: </span>
+              <span className="text-slate-700 font-mono">
+                Opening Cash (৳{openingCash.toLocaleString('en-IN')}) + Inflow (৳{cashReceived.toLocaleString('en-IN')}) - Outflow (৳{cashOutflow.toLocaleString('en-IN')})
+              </span>
+            </div>
+            <div className="font-bold font-mono text-slate-950 text-[10px]">
+              Expected Net Drawer: ৳{netCashDifference.toLocaleString('en-IN')}
+            </div>
+          </div>
+
+          {/* 6. Signatures Row */}
+          <div className="grid grid-cols-3 gap-6 pt-5 mt-2 border-t border-slate-300 text-center text-[9px]">
+            <div>
+              <div className="border-t border-dashed border-slate-500 pt-0.5 font-bold text-slate-900">
+                Prepared By (Cashier / Staff)
+              </div>
+              <div className="text-slate-500 text-[8px]">{currentUserRole}</div>
+            </div>
+            <div>
+              <div className="border-t border-dashed border-slate-500 pt-0.5 font-bold text-slate-900">
+                Checked By (Lab Manager / Accounts)
+              </div>
+              <div className="text-slate-500 text-[8px]">Optical Department</div>
+            </div>
+            <div>
+              <div className="border-t border-dashed border-slate-500 pt-0.5 font-bold text-slate-900">
+                Approved By (Hospital Administrator)
+              </div>
+              <div className="text-slate-500 text-[8px]">Modina Eye Hospital Ltd.</div>
+            </div>
+          </div>
+
+          {/* 7. Bottom Print Footer */}
+          <div className="mt-3 pt-1 border-t border-slate-200 text-center text-[7.5px] text-slate-500 uppercase tracking-widest">
+            MODINA EYE HOSPITAL LTD. • INTEGRATED ERP & OPTICAL DISPENSARY MANAGEMENT SYSTEM • CONFIDENTIAL AUDIT DOCUMENT
           </div>
         </div>
       </div>
