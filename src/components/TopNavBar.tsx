@@ -45,6 +45,7 @@ interface TopNavBarProps {
   currentUserRole: UserRole;
   drawerBalanceBDT: number;
   onResetDrawer: () => Promise<void>;
+  onOpenDailyClosing?: () => void;
   onRoleChange: (role: UserRole) => void;
   onToggleCameraScanner?: () => void;
   isCameraScannerActive?: boolean;
@@ -60,6 +61,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   onSelectView,
   onOpenNewInvoice,
   onOpenQuickScan,
+  onOpenShiftSummary,
   searchQuery,
   onSearchChange,
   isMobileMenuOpen,
@@ -74,6 +76,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   activityLogs = [],
   drawerBalanceBDT,
   onResetDrawer,
+  onOpenDailyClosing,
   authenticatedUser,
   onLogout,
 }) => {
@@ -366,9 +369,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           <span className="text-sm font-black tracking-tight text-[#0f172a] dark:text-[#f0f6fc] font-headline-md">
             Modina Eye Hospital
           </span>
-          <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#64748b] dark:text-[#7d91a3]">
-            HOSPITAL &amp; RETAIL OS
-          </span>
         </div>
 
         {/* Hamburger Menu Toggle */}
@@ -519,11 +519,23 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         <button
           type="button"
           onClick={() => {
-            setDrawerResetError('');
-            setShowDrawerReset(true);
+            if (isDevSuperAdmin) {
+              setDrawerResetError('');
+              setShowDrawerReset(true);
+            } else {
+              if (onOpenDailyClosing) {
+                onOpenDailyClosing();
+              } else {
+                onOpenShiftSummary();
+              }
+            }
           }}
           className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-xs hover:border-emerald-500/60 transition-colors cursor-pointer"
-          title={language === 'bn' ? 'ড্রয়ার ব্যালেন্স রিসেট করুন' : 'Reset drawer balance'}
+          title={
+            isDevSuperAdmin
+              ? (language === 'bn' ? 'ড্রয়ার ব্যালেন্স রিসেট করুন' : 'Reset drawer balance')
+              : (language === 'bn' ? 'দৈনিক ক্লোজিং সারসংক্ষেপ দেখুন' : 'View daily closing summary')
+          }
         >
           <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
             {language === 'bn' ? 'ড্রয়ার ব্যালেন্স:' : 'Drawer Balance:'}
@@ -536,7 +548,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           </span>
         </button>
 
-        {showDrawerReset && createPortal(
+        {isDevSuperAdmin && showDrawerReset && createPortal(
           <div
             className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-[2px]"
             onMouseDown={(event) => {

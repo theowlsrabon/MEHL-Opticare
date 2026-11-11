@@ -29,12 +29,9 @@ import {
 } from './types';
 import { initialJobs, initialInventory, initialSalesmen, initialSalesRecords, initialPrescriptions } from './data/initialData';
 import {
-  initialBranches,
   initialIBTOrders as initialIbtOrders,
   initialPharmacyDrugs as initialDrugs,
   initialDispensations,
-  initialSuppliers,
-  initialPOs as initialPurchaseOrders,
   initialGRNs as initialGrns,
   initialExpenses,
   initialFinancialSummary,
@@ -74,12 +71,15 @@ import { CameraBarcodeScanner } from './components/CameraBarcodeScanner';
 import { PosTerminalView } from './components/PosTerminalView';
 import { ModinaOpticsErpPos } from './components/ModinaOpticsErpPos';
 import { PrescriptionsView } from './components/PrescriptionsView';
+import { DailyClosingSummaryModal, computeLocalDailyClosingData } from './components/DailyClosingSummaryModal';
 import { SmsNotificationModal } from './components/SmsNotificationModal';
 import { ActivityFeed, ActivityFeedItem } from './components/ActivityFeed';
 import { triggerAutomatedStage5Sms, buildReadyForPickupMessage } from './utils/smsNotificationService';
 import { createStageTransitionEntry, formatAuditTimestamp, STAGE_CONFIG } from './utils/auditTrailUtils';
 import {
   fetchInitialDataFromDb,
+  fetchBranchesFromDb,
+  fetchSuppliersFromDb,
   bulkSyncJobsToDb,
   bulkSyncInventoryToDb,
   syncSaleToDb,
@@ -91,15 +91,12 @@ import {
   syncSalesReturnToDb,
   syncPurchaseReturnToDb,
   syncSupplierToDb,
-  bulkSyncSuppliersToDb,
   deleteSupplierFromDb,
   syncPurchaseOrderToDb,
-  bulkSyncPurchaseOrdersToDb,
   deletePurchaseOrderFromDb,
   syncGrnToDb,
   bulkSyncGrnsToDb,
   syncBranchToDb,
-  bulkSyncBranchesToDb,
   deleteBranchFromDb,
   syncIbtOrderToDb,
   bulkSyncIbtOrdersToDb,
@@ -226,25 +223,18 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Enterprise ERP State
-  const [branches, setBranches] = useState<HospitalBranch[]>(initialBranches);
+  const [branches, setBranches] = useState<HospitalBranch[]>([]);
+  const [branchesLoading, setBranchesLoading] = useState(true);
+  const [branchesLoadError, setBranchesLoadError] = useState<string | null>(null);
   const [ibtOrders, setIbtOrders] = useState<InterBranchTransferOrder[]>(initialIbtOrders);
   const [drugs, setDrugs] = useState<PharmacyDrug[]>(initialDrugs);
   const [dispensations, setDispensations] = useState<DispensationRecord[]>(initialDispensations);
-  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
-    try {
-      const saved = localStorage.getItem('madina_suppliers');
-      return saved ? JSON.parse(saved) as Supplier[] : initialSuppliers;
-    } catch {
-      return initialSuppliers;
-    }
-  });
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => {
-    const saved = localStorage.getItem('madina_purchase_orders');
-    if (saved) {
-      try { return JSON.parse(saved); } catch { return initialPurchaseOrders; }
-    }
-    return initialPurchaseOrders;
-  });
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(true);
+  const [suppliersLoadError, setSuppliersLoadError] = useState<string | null>(null);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(true);
+  const [purchaseOrdersLoadError, setPurchaseOrdersLoadError] = useState<string | null>(null);
   const [grns, setGrns] = useState<GoodsReceivedNote[]>(() => {
     const saved = localStorage.getItem('madina_grns');
     if (saved) {
@@ -391,8 +381,18 @@ export default function App() {
   const handleCreatePurchaseOrder = (po: PurchaseOrder) => {
     const paidAmountBDT = po.paidAmountBDT ?? 0;
     if (paidAmountBDT > financialSummary.cashCollectedBDT) return false;
-    setPurchaseOrders((prev) => [po, ...prev]);
-    void syncPurchaseOrderToDb(po);
+    const paymentHistory = [...(po.paymentHistory || [])];
+    if (paidAmountBDT > 0 && paymentHistory.length === 0) {
+      paymentHistory.push({
+        id: `${po.id}-payment-initial`,
+        date: po.date,
+        amountBDT: paidAmountBDT,
+        paymentMode: 'Cash',
+      });
+    }
+    const purchaseOrder = { ...po, paymentHistory };
+    setPurchaseOrders((prev) => [purchaseOrder, ...prev]);
+    void syncPurchaseOrderToDb(purchaseOrder);
     if (paidAmountBDT > 0) {
       setFinancialSummary((prev) => ({
         ...prev,
@@ -418,6 +418,24 @@ export default function App() {
       paidAmountBDT: paidAmountBDT + dueAmountBDT,
       dueAmountBDT: 0,
       paymentStatus: 'paid',
+      paymentHistory: [
+        ...(po.paymentHistory?.length
+          ? po.paymentHistory
+          : paidAmountBDT > 0
+            ? [{
+                id: `${po.id}-payment-legacy`,
+                date: po.date,
+                amountBDT: paidAmountBDT,
+                paymentMode: 'Cash' as const,
+              }]
+            : []),
+        {
+          id: `${po.id}-payment-${Date.now()}`,
+          date: new Date().toISOString().slice(0, 10),
+          amountBDT: dueAmountBDT,
+          paymentMode: 'Cash',
+        },
+      ],
     };
     void syncPurchaseOrderToDb(updatedPo);
 
@@ -712,32 +730,21 @@ export default function App() {
         purchaseReturns.forEach((r) => void syncPurchaseReturnToDb(r));
       }
 
-      // Hydrate Suppliers from Neon DB
-      if (dbData.suppliers && dbData.suppliers.length > 0) {
-        setSuppliers(dbData.suppliers);
-      } else if (suppliers.length > 0) {
-        void bulkSyncSuppliersToDb(suppliers);
-      }
-
       // Hydrate Purchase Orders from Neon DB
-      if (dbData.purchaseOrders && dbData.purchaseOrders.length > 0) {
+      if (Array.isArray(dbData.purchaseOrders)) {
         setPurchaseOrders(dbData.purchaseOrders);
-      } else if (purchaseOrders.length > 0) {
-        void bulkSyncPurchaseOrdersToDb(purchaseOrders);
+      } else {
+        const error = new Error('Purchase order database request failed.');
+        console.error('[Purchase Orders] Could not load purchase orders from the database:', error);
+        setPurchaseOrdersLoadError(error.message);
       }
+      setPurchaseOrdersLoading(false);
 
       // Hydrate GRNs from Neon DB
       if (dbData.grns && dbData.grns.length > 0) {
         setGrns(dbData.grns);
       } else if (grns.length > 0) {
         void bulkSyncGrnsToDb(grns);
-      }
-
-      // Hydrate Hospital Branches from Neon DB
-      if (dbData.branches && dbData.branches.length > 0) {
-        setBranches(dbData.branches);
-      } else if (branches.length > 0) {
-        void bulkSyncBranchesToDb(branches);
       }
 
       // Hydrate IBT Orders from Neon DB
@@ -768,6 +775,50 @@ export default function App() {
         void bulkSyncPrescriptionsToDb(prescriptions);
       }
     });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchSuppliersFromDb()
+      .then((databaseSuppliers) => {
+        if (!cancelled) setSuppliers(databaseSuppliers);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[Suppliers] Could not load suppliers from the database:', error);
+        setSuppliersLoadError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setSuppliersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchBranchesFromDb()
+      .then((databaseBranches) => {
+        if (!cancelled) setBranches(databaseBranches);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[Branches] Could not load branches from the database:', error);
+        setBranchesLoadError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setBranchesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Persist state to localStorage and the application database
@@ -812,14 +863,6 @@ export default function App() {
   }, [salesRecords]);
 
   useEffect(() => {
-    localStorage.setItem('madina_purchase_orders', JSON.stringify(purchaseOrders));
-  }, [purchaseOrders]);
-
-  useEffect(() => {
-    localStorage.setItem('madina_suppliers', JSON.stringify(suppliers));
-  }, [suppliers]);
-
-  useEffect(() => {
     localStorage.setItem('madina_grns', JSON.stringify(grns));
   }, [grns]);
 
@@ -856,6 +899,46 @@ export default function App() {
     }
   };
 
+  const todayIso = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  const [drawerResetAmount, setDrawerResetAmount] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('madina_drawer_reset_today');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const today = `${year}-${month}-${day}`;
+        if (parsed.date === today) return Number(parsed.amount) || 0;
+      }
+    } catch {}
+    return 0;
+  });
+
+  // Exactly matches Daily Closing Summary -> Cash Drawer Reconciliation & Carryover -> Net Difference
+  const todayNetCashDifference = useMemo(() => {
+    const summary = computeLocalDailyClosingData(
+      todayIso,
+      salesRecords,
+      financialCollections,
+      jobs,
+      expenses,
+      salesReturns,
+      purchaseOrders
+    );
+    return summary.netCashDifference ?? (Number(summary.cashReceived || 0) - Number(summary.cashOutflow || 0));
+  }, [todayIso, salesRecords, financialCollections, jobs, expenses, salesReturns, purchaseOrders]);
+
+  const effectiveDrawerBalance = Math.max(0, todayNetCashDifference - drawerResetAmount);
+
   const handleDrawerBalanceReset = async () => {
     let apiSucceeded = false;
     let apiErrorMessage = '';
@@ -866,7 +949,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: authenticatedUser.username,
-          amountBDT: financialSummary.cashCollectedBDT,
+          amountBDT: effectiveDrawerBalance,
         }),
       });
 
@@ -882,6 +965,14 @@ export default function App() {
 
     if (apiErrorMessage) throw new Error(apiErrorMessage);
 
+    setDrawerResetAmount(todayNetCashDifference);
+    try {
+      localStorage.setItem('madina_drawer_reset_today', JSON.stringify({
+        date: todayIso,
+        amount: todayNetCashDifference,
+      }));
+    } catch {}
+
     setFinancialSummary((previous) => ({ ...previous, cashCollectedBDT: 0 }));
 
     try {
@@ -890,7 +981,7 @@ export default function App() {
         id: `drawer-reset-${Date.now()}`,
         timestamp: new Date().toISOString(),
         username: authenticatedUser.username,
-        amountBDT: financialSummary.cashCollectedBDT,
+        amountBDT: effectiveDrawerBalance,
         synced: apiSucceeded,
       });
       localStorage.setItem('madina_drawer_balance_resets', JSON.stringify(resets.slice(0, 50)));
@@ -937,9 +1028,10 @@ export default function App() {
     setSalesRecords((prev) => prev.filter((s) => s.id !== invoiceId && s.invoiceNumber !== invoiceId));
   };
 
-  const handleDeleteBranch = (id: string) => {
+  const handleDeleteBranch = async (id: string) => {
+    await deleteBranchFromDb(id);
     setBranches((prev) => prev.filter((b) => b.id !== id));
-    void deleteBranchFromDb(id);
+    setBranchesLoadError(null);
   };
 
   const handleDeletePurchaseOrder = (id: string) => {
@@ -983,6 +1075,7 @@ export default function App() {
   const [isQuickScanOpen, setIsQuickScanOpen] = useState(false);
   const [isGlazingAssistantOpen, setIsGlazingAssistantOpen] = useState(false);
   const [isEyewearStudioOpen, setIsEyewearStudioOpen] = useState(false);
+  const [isGlobalDailyClosingOpen, setIsGlobalDailyClosingOpen] = useState(false);
   const [barcodeItemToPrint, setBarcodeItemToPrint] = useState<InventoryItem | null>(null);
   const [isAddGlassesOpen, setIsAddGlassesOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -1756,8 +1849,9 @@ export default function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onSearchSubmit={() => setCurrentView('stock-master')}
-        drawerBalanceBDT={financialSummary.cashCollectedBDT}
+        drawerBalanceBDT={effectiveDrawerBalance}
         onResetDrawer={handleDrawerBalanceReset}
+        onOpenDailyClosing={() => setIsGlobalDailyClosingOpen(true)}
         isMobileMenuOpen={isMobileMenuOpen}
         onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
@@ -2238,6 +2332,9 @@ export default function App() {
             inventory={inventory}
             jobs={jobs}
             financialCollections={financialCollections}
+            expenses={expenses}
+            salesReturns={salesReturns}
+            purchaseOrders={purchaseOrders}
             onNavigateToSalesmen={() => setCurrentView('salesmen')}
             onNavigateToStock={() => setCurrentView('stock-master')}
             currentUserRole={currentUser.role}
@@ -2276,18 +2373,22 @@ export default function App() {
         {currentView === 'multi-branch-ibt' && (
           <MultiBranchIbtView
             branches={branches}
+            branchesLoading={branchesLoading}
+            branchesLoadError={branchesLoadError}
             ibtOrders={ibtOrders}
             inventory={inventory}
             onUpdateIbtOrders={setIbtOrders}
             onAddIbtOrder={handleAddIbtOrder}
             onUpdateIbtStatus={handleUpdateIbtStatus}
-            onAddBranch={(newBranch) => {
-              setBranches([...branches, newBranch]);
-              void syncBranchToDb(newBranch);
+            onAddBranch={async (newBranch) => {
+              await syncBranchToDb(newBranch);
+              setBranches((prev) => [...prev, newBranch]);
+              setBranchesLoadError(null);
             }}
-            onUpdateBranch={(updatedBranch) => {
+            onUpdateBranch={async (updatedBranch) => {
+              await syncBranchToDb(updatedBranch);
               setBranches((prev) => prev.map((b) => (b.id === updatedBranch.id ? updatedBranch : b)));
-              void syncBranchToDb(updatedBranch);
+              setBranchesLoadError(null);
             }}
             onDeleteBranch={isSuperAdmin ? handleDeleteBranch : undefined}
           />
@@ -2296,9 +2397,27 @@ export default function App() {
         {currentView === 'supplier-grn' && (
           <SupplierGrnView
             suppliers={suppliers}
-            onUpdateSuppliers={(updated) => {
+            suppliersLoading={suppliersLoading}
+            suppliersLoadError={suppliersLoadError}
+            purchaseOrdersLoading={purchaseOrdersLoading}
+            purchaseOrdersLoadError={purchaseOrdersLoadError}
+            onUpdateSuppliers={async (updated) => {
+              const nextIds = new Set(updated.map((supplier) => supplier.id));
+              const removedSuppliers = suppliers.filter((supplier) => !nextIds.has(supplier.id));
+              const changedSuppliers = updated.filter((supplier) => {
+                const current = suppliers.find((item) => item.id === supplier.id);
+                return !current || JSON.stringify(current) !== JSON.stringify(supplier);
+              });
+
+              for (const supplier of changedSuppliers) {
+                await syncSupplierToDb(supplier);
+              }
+              for (const supplier of removedSuppliers) {
+                await deleteSupplierFromDb(supplier.id);
+              }
+
               setSuppliers(updated);
-              void bulkSyncSuppliersToDb(updated);
+              setSuppliersLoadError(null);
             }}
             purchaseOrders={purchaseOrders}
             grns={grns}
@@ -2725,6 +2844,23 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Global Daily Closing Summary Modal triggered from Drawer Cash Pill for non-superadmin */}
+      <DailyClosingSummaryModal
+        isOpen={isGlobalDailyClosingOpen}
+        onClose={() => setIsGlobalDailyClosingOpen(false)}
+        currentUserRole={currentUser.role}
+        onViewJob={(jobId) => {
+          setSelectedJobId(jobId);
+          setCurrentView('lab-pipeline');
+        }}
+        fallbackSales={salesRecords}
+        fallbackCollections={financialCollections}
+        fallbackJobs={jobs}
+        fallbackExpenses={expenses}
+        fallbackSalesReturns={salesReturns}
+        fallbackPurchaseOrders={purchaseOrders}
+      />
     </div>
   );
 }

@@ -1,10 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { SaleRecord, OpticalJob } from '../types';
+import { SaleRecord, OpticalJob, ExpenseItem, SalesReturn, PurchaseOrder } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { API_BASE, fetchJsonSafe } from '../utils/apiConfig';
 import type { DueCollectionRecord } from './DueCollectionsView';
-import { syncDrawerClosingToDb } from '../utils/apiSync';
 
 interface DailyClosingSummaryModalProps {
   isOpen: boolean;
@@ -15,6 +14,9 @@ interface DailyClosingSummaryModalProps {
   fallbackSales?: SaleRecord[];
   fallbackCollections?: DueCollectionRecord[];
   fallbackJobs?: OpticalJob[];
+  fallbackExpenses?: ExpenseItem[];
+  fallbackSalesReturns?: SalesReturn[];
+  fallbackPurchaseOrders?: PurchaseOrder[];
 }
 
 interface DailyClosingData {
@@ -27,6 +29,13 @@ interface DailyClosingData {
   cashReceived?: number;
   digitalReceived?: number;
   cashOutflow?: number;
+  cashOutflowBreakdown?: {
+    expenses: number;
+    refunds: number;
+    purchaseOrders: number;
+    other: number;
+  };
+  netCashDifference?: number;
   closingDrawerCash?: number;
   savedClosing?: any;
 }
@@ -46,11 +55,14 @@ const getPaidToDate = (sale: SaleRecord, paymentsByInvoice: Map<string, number>)
  * Computes exact daily closing metrics from synchronized in-memory/localStorage stores
  * when the remote API server is sleeping (Render cold-start), unconfigured, or offline.
  */
-function computeLocalDailyClosingData(
+export function computeLocalDailyClosingData(
   date: string,
   sales: SaleRecord[] = [],
   collections: DueCollectionRecord[] = [],
-  jobs: OpticalJob[] = []
+  jobs: OpticalJob[] = [],
+  expenses: ExpenseItem[] = [],
+  salesReturns: SalesReturn[] = [],
+  purchaseOrders: PurchaseOrder[] = []
 ): DailyClosingData {
   // 1. Sales matching date
   const filteredSales = sales.filter((s) => {
@@ -133,8 +145,31 @@ function computeLocalDailyClosingData(
     .filter((c) => c.tenderMode && c.tenderMode !== 'Cash')
     .reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0);
 
-  const cashOutflow = savedClosing?.cashOutflow || 0;
-  const closingDrawerCash = openingCash + cashReceived - cashOutflow;
+  const expenseOutflow = expenses
+    .filter((expense) => expense.date === date && expense.paymentMode === 'Cash')
+    .reduce((sum, expense) => sum + (Number(expense.amountBDT) || 0), 0);
+  const refundOutflow = salesReturns
+    .filter((refund) => refund.date === date && refund.refundMethod === 'Cash Refund' && refund.status !== 'pending')
+    .reduce((sum, refund) => sum + (Number(refund.totalRefundBDT) || 0), 0);
+  const purchaseOrderOutflow = purchaseOrders.reduce((sum, po) => {
+    const payments = po.paymentHistory?.length
+      ? po.paymentHistory.filter((payment) => payment.date === date && (!payment.paymentMode || payment.paymentMode === 'Cash'))
+      : po.date === date && Number(po.paidAmountBDT) > 0
+        ? [{ amountBDT: Number(po.paidAmountBDT), paymentMode: 'Cash' as const }]
+        : [];
+    return sum + payments.reduce((paymentSum, payment) => paymentSum + (Number(payment.amountBDT) || 0), 0);
+  }, 0);
+  const trackedOutflow = expenseOutflow + refundOutflow + purchaseOrderOutflow;
+  const otherOutflow = Math.max(0, (Number(savedClosing?.cashOutflow) || 0) - trackedOutflow);
+  const cashOutflowBreakdown = {
+    expenses: expenseOutflow,
+    refunds: refundOutflow,
+    purchaseOrders: purchaseOrderOutflow,
+    other: otherOutflow,
+  };
+  const cashOutflow = trackedOutflow + otherOutflow;
+  const netCashDifference = cashReceived - cashOutflow;
+  const closingDrawerCash = openingCash + netCashDifference;
 
   return {
     sales: filteredSales,
@@ -146,6 +181,8 @@ function computeLocalDailyClosingData(
     cashReceived,
     digitalReceived,
     cashOutflow,
+    cashOutflowBreakdown,
+    netCashDifference,
     closingDrawerCash,
     savedClosing,
   };
@@ -160,6 +197,9 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   fallbackSales = [],
   fallbackCollections = [],
   fallbackJobs = [],
+  fallbackExpenses = [],
+  fallbackSalesReturns = [],
+  fallbackPurchaseOrders = [],
 }) => {
   const { language } = useLanguage();
   const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
@@ -202,8 +242,6 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
-  const [isClosingDrawer, setIsClosingDrawer] = useState(false);
-  const [closingSaveSuccess, setClosingSaveSuccess] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -289,7 +327,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
             selectedDate,
             fallbackSales,
             fallbackCollections,
-            fallbackJobs
+            fallbackJobs,
+            fallbackExpenses,
+            fallbackSalesReturns,
+            fallbackPurchaseOrders
           );
           setDataSource('synced-local');
           setDailyData(localData);
@@ -303,7 +344,10 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
           selectedDate,
           fallbackSales,
           fallbackCollections,
-          fallbackJobs
+          fallbackJobs,
+          fallbackExpenses,
+          fallbackSalesReturns,
+          fallbackPurchaseOrders
         );
         setDataSource('synced-local');
         setDailyData(localData);
@@ -314,7 +358,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       });
 
     return () => controller.abort();
-  }, [isOpen, selectedDate, reloadToken, fallbackSales, fallbackCollections, fallbackJobs]);
+  }, [isOpen, selectedDate, reloadToken, fallbackSales, fallbackCollections, fallbackJobs, fallbackExpenses, fallbackSalesReturns, fallbackPurchaseOrders]);
 
   const selectedSales = dailyData?.sales || [];
   const selectedCollections = dailyData?.collections || [];
@@ -380,6 +424,9 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
 
   // Cash receipts are not the same as the full drawer balance.
   const cashReceived = paymentBreakdown.Cash.total;
+  const cashOutflow = dailyData?.cashOutflow || 0;
+  const cashOutflowBreakdown = dailyData?.cashOutflowBreakdown || { expenses: 0, refunds: 0, purchaseOrders: 0, other: 0 };
+  const netCashDifference = dailyData?.netCashDifference ?? (cashReceived - cashOutflow);
   const digitalMfsCardTotal =
     paymentBreakdown.bKash.total + paymentBreakdown.Card.total + paymentBreakdown.Nagad.total + paymentBreakdown.Other.total;
 
@@ -433,6 +480,11 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       `   • ${text('bKash', 'বিকাশ')}: ৳${paymentBreakdown.bKash.total.toLocaleString('en-IN')}`,
       `   • ${text('Card', 'কার্ড')}: ৳${paymentBreakdown.Card.total.toLocaleString('en-IN')}`,
       `   • ${text('Nagad', 'নগদ')}: ৳${paymentBreakdown.Nagad.total.toLocaleString('en-IN')}`,
+      `💸 ${text('Cash outflows', 'নগদ খরচ')}: ৳${cashOutflow.toLocaleString('en-IN')}`,
+      `   • ${text('Expenses', 'খরচ')}: ৳${cashOutflowBreakdown.expenses.toLocaleString('en-IN')}`,
+      `   • ${text('Cash refunds', 'নগদ রিফান্ড')}: ৳${cashOutflowBreakdown.refunds.toLocaleString('en-IN')}`,
+      `   • ${text('Supplier / PO payments', 'সাপ্লায়ার / পিও পেমেন্ট')}: ৳${cashOutflowBreakdown.purchaseOrders.toLocaleString('en-IN')}`,
+      `➕ ${text('Net cash difference (received - outflows)', 'নিট নগদ পার্থক্য (আদায় - খরচ)')}: ৳${netCashDifference.toLocaleString('en-IN')}`,
       `💳 ${text('Current outstanding on this date’s invoices', 'এই তারিখের ইনভয়েসে বর্তমান বকেয়া')}: ৳${totalDueAmounts.toLocaleString('en-IN')} (${dueOrdersCount}${text(' invoices due', 'টি চালানে বকেয়া')})`,
       `👓 ${text('Completed Glazing Jobs', 'সম্পন্ন গ্লেজিং কাজ')}: ${completedGlazingCount}${text(' pairs', 'টি জোড়া')}`,
       `📦 ${text('Items Sold', 'বিক্রিত পণ্য')}: ${text(`Frames ${totalFramesSold} | Lenses ${totalLensesSold} | Accessories ${totalAccessoriesSold}`, `ফ্রেম ${totalFramesSold} | লেন্স ${totalLensesSold} | সামগ্রী ${totalAccessoriesSold}`)}`,
@@ -450,33 +502,6 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   // Direct print trigger
   const handlePrint = () => {
     window.print();
-  };
-
-  const handleSaveDailyClosing = async () => {
-    setIsClosingDrawer(true);
-    const opening = dailyData?.openingCash || 0;
-    const outflow = dailyData?.cashOutflow || 0;
-    const closingDrawerBalance = opening + cashReceived - outflow;
-    const payload = {
-      id: `closing-${selectedDate}`,
-      date: selectedDate,
-      openingCash: opening,
-      cashInflow: cashReceived,
-      cashOutflow: outflow,
-      closingDrawerCash: closingDrawerBalance,
-      actualCountedCash: closingDrawerBalance,
-      discrepancy: 0,
-      closedBy: currentUserRole || 'Admin',
-      notes: `Daily closing confirmed by ${currentUserRole} on ${new Date().toLocaleString()}`,
-    };
-    try {
-      localStorage.setItem(`madina_drawer_closing_${selectedDate}`, JSON.stringify(payload));
-    } catch {}
-    const success = await syncDrawerClosingToDb(payload);
-    setIsClosingDrawer(false);
-    setClosingSaveSuccess(true);
-    setTimeout(() => setClosingSaveSuccess(false), 3500);
-    setReloadToken((prev) => prev + 1);
   };
 
   if (!isOpen) return null;
@@ -853,18 +878,8 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                 )}
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {/* 1. Opening Cash */}
-                <div className="rounded-lg bg-white/90 dark:bg-[#1a2230] p-3 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block">
-                    {text('Opening Float (Yesterday)', 'প্রারম্ভিক ক্যাশ (গতকালের সমাপনী)')}
-                  </span>
-                  <div className="mt-1 text-base sm:text-lg font-bold text-slate-800 dark:text-slate-100 font-data-rx">
-                    ৳{(dailyData?.openingCash || 0).toLocaleString('en-IN')}
-                  </div>
-                </div>
-
-                {/* 2. Today Cash Inflow */}
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {/* 1. Today Cash Inflow */}
                 <div className="rounded-lg bg-white/90 dark:bg-[#1a2230] p-3 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
                   <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 block">
                     {text('Cash Inflow (+)', 'আজকের নগদ আদায় (+)')}
@@ -874,56 +889,53 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
                   </div>
                 </div>
 
-                {/* 3. Cash Outflow */}
-                <div className="rounded-lg bg-white/90 dark:bg-[#1a2230] p-3 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                {/* 2. Cash Outflow Breakdown */}
+                <div className="min-w-0 rounded-lg bg-white/90 dark:bg-[#1a2230] p-3 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
                   <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-400 block">
-                    {text('Cash Outflows (-)', 'নগদ খরচ / রিফান্ড (-)')}
+                    {text('Cash Outflows (-)', 'নগদ খরচ (-)')}
                   </span>
                   <div className="mt-1 text-base sm:text-lg font-bold text-rose-700 dark:text-rose-400 font-data-rx">
-                    -৳{(dailyData?.cashOutflow || 0).toLocaleString('en-IN')}
+                    -৳{cashOutflow.toLocaleString('en-IN')}
+                  </div>
+                  <div className="mt-1 grid grid-cols-2 gap-x-2 text-[9px] leading-4 text-slate-500 dark:text-slate-400">
+                    <span>{text('Expenses', 'খরচ')}: ৳{cashOutflowBreakdown.expenses.toLocaleString('en-IN')}</span>
+                    <span>{text('Refunds', 'রিফান্ড')}: ৳{cashOutflowBreakdown.refunds.toLocaleString('en-IN')}</span>
+                    <span>{text('Supplier orders', 'সাপ্লায়ার অর্ডার')}: ৳{cashOutflowBreakdown.purchaseOrders.toLocaleString('en-IN')}</span>
+                    {cashOutflowBreakdown.other > 0 && (
+                      <span>{text('Other', 'অন্যান্য')}: ৳{cashOutflowBreakdown.other.toLocaleString('en-IN')}</span>
+                    )}
                   </div>
                 </div>
 
-                {/* 4. Current / Closing Drawer Balance */}
-                <div className="rounded-lg bg-teal-800 text-white p-3 shadow-2xs dark:bg-teal-900/90 border border-teal-700">
-                  <span className="text-[11px] font-medium text-teal-100 block">
-                    {text('Closing Drawer Cash (=)', 'সমাপনী ড্রয়ার ব্যালেন্স (=)')}
+                {/* 3. Net Cash Difference */}
+                <div className="rounded-lg bg-white/90 dark:bg-[#1a2230] p-3 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block">
+                    {text('Net Difference', 'নিট পার্থক্য')}
                   </span>
-                  <div className="mt-1 text-base sm:text-lg font-bold font-data-rx">
-                    ৳{((dailyData?.openingCash || 0) + cashReceived - (dailyData?.cashOutflow || 0)).toLocaleString('en-IN')}
+                  <div className={`mt-1 text-base sm:text-lg font-bold font-data-rx ${netCashDifference >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+                    {netCashDifference >= 0 ? '+' : '-'}৳{Math.abs(netCashDifference).toLocaleString('en-IN')}
                   </div>
+                  <span className="text-[9px] leading-4 text-slate-500 dark:text-slate-400">
+                    {text('Received minus outflows', 'আদায় থেকে খরচ বাদ')}
+                  </span>
                 </div>
               </div>
 
               <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-teal-100 dark:border-teal-900/50">
                 <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
                   {text(
-                    'Yesterday’s closing cash is automatically carried over as today’s opening cash so the physical drawer never resets to zero.',
-                    'গতকালের সমাপনী ক্যাশ স্বয়ংক্রিয়ভাবে আজকের প্রারম্ভিক ক্যাশ হিসেবে যুক্ত থাকে, ফলে পরের দিন ড্রয়ার ব্যালেন্স কখনও শূন্য হয় না।'
+                    'Closing saves automatically every day at 11:59 PM Bangladesh time. Expected cash = opening cash + cash received - recorded outflows.',
+                    'বাংলাদেশ সময় প্রতিদিন রাত ১১:৫৯-এ ক্লোজিং স্বয়ংক্রিয়ভাবে সংরক্ষিত হবে। প্রত্যাশিত ক্যাশ = প্রারম্ভিক ক্যাশ + নগদ আদায় - রেকর্ডকৃত খরচ।'
                   )}
                 </p>
                 <button
                   type="button"
-                  onClick={handleSaveDailyClosing}
-                  disabled={isClosingDrawer || Boolean(dailyData?.savedClosing)}
-                  className={`min-h-10 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed ${
-                    dailyData?.savedClosing
-                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
-                      : closingSaveSuccess
-                      ? 'bg-emerald-700 text-white'
-                      : 'bg-[#08745f] hover:bg-[#065f4e] text-white'
-                  }`}
+                  onClick={handlePrint}
+                  disabled={!dailyData || isLoading}
+                  className="min-h-10 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed bg-[#08745f] hover:bg-[#065f4e] text-white"
                 >
-                  <span aria-hidden="true" className="material-symbols-outlined text-[16px]">
-                    {dailyData?.savedClosing ? 'check_circle' : closingSaveSuccess ? 'done' : 'save'}
-                  </span>
-                  <span>
-                    {dailyData?.savedClosing
-                      ? text('Closing Confirmed', 'ক্লোজিং সম্পন্ন হয়েছে')
-                      : closingSaveSuccess
-                      ? text('Closing Saved!', 'ক্লোজিং সংরক্ষিত!')
-                      : text('Confirm & Save Daily Closing', 'দৈনিক ড্রয়ার ক্লোজিং নিশ্চিত করুন')}
-                  </span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-[16px]">print</span>
+                  <span>{text('Print Summary', 'সারসংক্ষেপ প্রিন্ট')}</span>
                 </button>
               </div>
             </div>
