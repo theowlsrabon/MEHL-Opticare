@@ -3,7 +3,7 @@
  * Provides non-blocking background synchronization with graceful offline resilience.
  */
 
-import { API_BASE } from './apiConfig';
+import { API_BASE, fetchJsonSafe } from './apiConfig';
 import type {
   SaleRecord,
   Salesman,
@@ -242,38 +242,35 @@ export async function syncPurchaseReturnToDb(ret: PurchaseReturn): Promise<boole
 }
 
 // Suppliers sync
-export async function syncSupplierToDb(supplier: Supplier): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/suppliers`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(supplier),
-    });
-    return res.ok;
-  } catch {
-    return false;
+export async function fetchSuppliersFromDb(): Promise<Supplier[]> {
+  const response = await fetchJsonSafe<{ success: boolean; data: Supplier[]; error?: string }>(
+    `${API_BASE}/api/suppliers`,
+    { cache: 'no-store' }
+  );
+  if (!response.ok || !response.data?.success || !Array.isArray(response.data.data)) {
+    throw new Error(response.error || response.data?.error || 'Supplier database request failed.');
+  }
+  return response.data.data;
+}
+
+export async function syncSupplierToDb(supplier: Supplier): Promise<void> {
+  const response = await fetchJsonSafe<{ success: boolean; error?: string }>(`${API_BASE}/api/suppliers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(supplier),
+  });
+  if (!response.ok || !response.data?.success) {
+    throw new Error(response.error || response.data?.error || 'Supplier could not be saved to the database.');
   }
 }
 
-export async function bulkSyncSuppliersToDb(suppliers: Supplier[]): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/suppliers/bulk`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ suppliers }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function deleteSupplierFromDb(id: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/suppliers/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    return res.ok;
-  } catch {
-    return false;
+export async function deleteSupplierFromDb(id: string): Promise<void> {
+  const response = await fetchJsonSafe<{ success: boolean; error?: string }>(
+    `${API_BASE}/api/suppliers/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok || !response.data?.success) {
+    throw new Error(response.error || response.data?.error || 'Supplier could not be deleted from the database.');
   }
 }
 
@@ -377,38 +374,35 @@ export async function deletePrescriptionFromDb(id: string): Promise<boolean> {
 }
 
 // Branches sync
-export async function syncBranchToDb(branch: HospitalBranch): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/branches`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(branch),
-    });
-    return res.ok;
-  } catch {
-    return false;
+export async function fetchBranchesFromDb(): Promise<HospitalBranch[]> {
+  const response = await fetchJsonSafe<{ success: boolean; data: HospitalBranch[]; error?: string }>(
+    `${API_BASE}/api/branches`,
+    { cache: 'no-store' }
+  );
+  if (!response.ok || !response.data?.success || !Array.isArray(response.data.data)) {
+    throw new Error(response.error || response.data?.error || 'Branch database request failed.');
+  }
+  return response.data.data;
+}
+
+export async function syncBranchToDb(branch: HospitalBranch): Promise<void> {
+  const response = await fetchJsonSafe<{ success: boolean; error?: string }>(`${API_BASE}/api/branches`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(branch),
+  });
+  if (!response.ok || !response.data?.success) {
+    throw new Error(response.error || response.data?.error || 'Branch could not be saved to the database.');
   }
 }
 
-export async function bulkSyncBranchesToDb(branches: HospitalBranch[]): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/branches/bulk`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ branches }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function deleteBranchFromDb(id: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/branches/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    return res.ok;
-  } catch {
-    return false;
+export async function deleteBranchFromDb(id: string): Promise<void> {
+  const response = await fetchJsonSafe<{ success: boolean; error?: string }>(
+    `${API_BASE}/api/branches/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok || !response.data?.success) {
+    throw new Error(response.error || response.data?.error || 'Branch could not be deleted from the database.');
   }
 }
 
@@ -502,11 +496,9 @@ export async function fetchInitialDataFromDb(): Promise<{
   expenses?: ExpenseItem[];
   salesReturns?: SalesReturn[];
   purchaseReturns?: PurchaseReturn[];
-  suppliers?: Supplier[];
   purchaseOrders?: PurchaseOrder[];
   grns?: GoodsReceivedNote[];
   prescriptions?: PrescriptionRecord[];
-  branches?: HospitalBranch[];
   ibtOrders?: InterBranchTransferOrder[];
   drugs?: PharmacyDrug[];
   dispensations?: DispensationRecord[];
@@ -528,11 +520,9 @@ export async function fetchInitialDataFromDb(): Promise<{
       expensesRes,
       salesReturnsRes,
       purchaseReturnsRes,
-      suppliersRes,
       posRes,
       grnsRes,
       prescriptionsRes,
-      branchesRes,
       ibtOrdersRes,
       drugsRes,
       dispensationsRes,
@@ -546,11 +536,9 @@ export async function fetchInitialDataFromDb(): Promise<{
       fetch(`${API_BASE}/api/expenses`).then((r) => r.json()),
       fetch(`${API_BASE}/api/sales-returns`).then((r) => r.json()),
       fetch(`${API_BASE}/api/purchase-returns`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/suppliers`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/purchase-orders`).then((r) => r.json()),
+      fetch(`${API_BASE}/api/purchase-orders`, { cache: 'no-store' }).then((r) => r.json()),
       fetch(`${API_BASE}/api/grns`).then((r) => r.json()),
       fetch(`${API_BASE}/api/prescriptions`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/branches`).then((r) => r.json()),
       fetch(`${API_BASE}/api/ibt-orders`).then((r) => r.json()),
       fetch(`${API_BASE}/api/pharmacy/drugs`).then((r) => r.json()),
       fetch(`${API_BASE}/api/pharmacy/dispensations`).then((r) => r.json()),
@@ -583,9 +571,6 @@ export async function fetchInitialDataFromDb(): Promise<{
     if (purchaseReturnsRes.status === 'fulfilled' && purchaseReturnsRes.value?.success && Array.isArray(purchaseReturnsRes.value.data)) {
       result.purchaseReturns = purchaseReturnsRes.value.data;
     }
-    if (suppliersRes.status === 'fulfilled' && suppliersRes.value?.success && Array.isArray(suppliersRes.value.data)) {
-      result.suppliers = suppliersRes.value.data;
-    }
     if (posRes.status === 'fulfilled' && posRes.value?.success && Array.isArray(posRes.value.data)) {
       result.purchaseOrders = posRes.value.data;
     }
@@ -594,9 +579,6 @@ export async function fetchInitialDataFromDb(): Promise<{
     }
     if (prescriptionsRes.status === 'fulfilled' && prescriptionsRes.value?.success && Array.isArray(prescriptionsRes.value.data)) {
       result.prescriptions = prescriptionsRes.value.data;
-    }
-    if (branchesRes.status === 'fulfilled' && branchesRes.value?.success && Array.isArray(branchesRes.value.data)) {
-      result.branches = branchesRes.value.data;
     }
     if (ibtOrdersRes.status === 'fulfilled' && ibtOrdersRes.value?.success && Array.isArray(ibtOrdersRes.value.data)) {
       result.ibtOrders = ibtOrdersRes.value.data;

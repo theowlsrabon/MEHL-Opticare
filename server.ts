@@ -606,6 +606,7 @@ app.post("/api/purchase-returns", async (req, res) => {
 
 // Suppliers
 app.get("/api/suppliers", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
   try {
     const suppliers = await dbGetSuppliers();
     res.json({ success: true, count: suppliers.length, data: suppliers });
@@ -648,6 +649,7 @@ app.delete("/api/suppliers/:id", async (req, res) => {
 
 // Purchase Orders
 app.get("/api/purchase-orders", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
   try {
     const orders = await dbGetPurchaseOrders();
     res.json({ success: true, count: orders.length, data: orders });
@@ -764,6 +766,7 @@ app.delete("/api/prescriptions/:id", async (req, res) => {
 
 // Hospital Branches
 app.get("/api/branches", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
   try {
     const branches = await dbGetBranches();
     res.json({ success: true, count: branches.length, data: branches });
