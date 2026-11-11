@@ -502,8 +502,8 @@ export async function dbGetDailyClosingData(date: string): Promise<{
   );
   const sales = salesResult.rows.map((row: any) => JSON.parse(row.data_json));
   const collectionsResult = await p.query(
-    'SELECT data_json FROM financial_collections WHERE collection_date = $1::date ORDER BY created_at',
-    [date]
+    'SELECT data_json FROM financial_collections WHERE collection_date = $1::date OR data_json LIKE $2 ORDER BY created_at',
+    [date, `%"date":"${date}"%`]
   );
   const collections = collectionsResult.rows.map((row: any) => JSON.parse(row.data_json));
   const invoiceNumbers = [...new Set(sales.map((sale: any) => sale.invoiceNumber).filter(Boolean))];
@@ -592,29 +592,36 @@ export async function dbGetDailyClosingData(date: string): Promise<{
 
   const [expensesResult, refundsResult, purchaseOrdersResult] = await Promise.all([
     p.query(
-      'SELECT data_json FROM expenses WHERE expense_date = $1::date AND payment_mode = $2',
-      [date, 'Cash']
+      'SELECT data_json FROM expenses WHERE expense_date = $1::date OR data_json LIKE $2',
+      [date, `%"date":"${date}"%`]
     ),
     p.query(
-      "SELECT data_json FROM sales_returns WHERE return_date = $1::date AND refund_method = 'Cash Refund' AND status IN ('approved', 'completed')",
-      [date]
+      'SELECT data_json FROM sales_returns WHERE return_date = $1::date OR data_json LIKE $2',
+      [date, `%"date":"${date}"%`]
     ),
     p.query(
-      'SELECT data_json FROM purchase_orders WHERE po_date <= $1::date',
-      [date]
+      'SELECT data_json FROM purchase_orders'
     ),
   ]);
   const dailyExpenses = expensesResult.rows.map((row: any) => JSON.parse(row.data_json));
   const dailyCashRefunds = refundsResult.rows.map((row: any) => JSON.parse(row.data_json));
   const purchaseOrders = purchaseOrdersResult.rows.map((row: any) => JSON.parse(row.data_json));
-  const expenseOutflow = dailyExpenses.reduce((sum: number, expense: any) => sum + (Number(expense.amountBDT) || 0), 0);
-  const refundOutflow = dailyCashRefunds.reduce((sum: number, refund: any) => sum + (Number(refund.totalRefundBDT) || 0), 0);
+  const expenseOutflow = dailyExpenses
+    .filter((e: any) => !e.paymentMode || e.paymentMode === 'Cash')
+    .reduce((sum: number, expense: any) => sum + (Number(expense.amountBDT) || 0), 0);
+  const refundOutflow = dailyCashRefunds
+    .filter((refund: any) => {
+      const mode = String(refund.refundMethod || '').toLowerCase();
+      return mode.includes('cash') || (!mode.includes('credit') && !mode.includes('exchange'));
+    })
+    .reduce((sum: number, refund: any) => sum + (Number(refund.totalRefundBDT) || 0), 0);
   const purchaseOrderOutflow = purchaseOrders.reduce((sum: number, po: any) => {
-    const payments = Array.isArray(po.paymentHistory)
-      ? po.paymentHistory.filter((payment: any) =>
-          payment.date === date && (!payment.paymentMode || payment.paymentMode === 'Cash')
-        )
-      : po.date === date
+    const payments = Array.isArray(po.paymentHistory) && po.paymentHistory.length > 0
+      ? po.paymentHistory.filter((payment: any) => {
+          const pDate = payment.date || String(payment.timestamp || '').slice(0, 10);
+          return pDate === date && (!payment.paymentMode || payment.paymentMode === 'Cash');
+        })
+      : (po.date === date || String(po.timestamp || '').slice(0, 10) === date)
         ? [{ amountBDT: po.paidAmountBDT, paymentMode: 'Cash' }]
         : [];
     return sum + payments.reduce((paymentSum: number, payment: any) => paymentSum + (Number(payment.amountBDT) || 0), 0);

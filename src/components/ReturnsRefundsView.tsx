@@ -144,7 +144,10 @@ export const ReturnsRefundsView: React.FC<ReturnsRefundsViewProps> = ({
       returnNumber: `RTN-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       creditNoteNumber: `CN-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       originalInvoiceNumber: matchedSale.invoiceNumber,
-      date: new Date().toISOString().split('T')[0],
+      date: (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
       patientName: customerName,
       patientPhone: customerPhone,
       returnType: reason === 'wrong_prescription'
@@ -183,7 +186,10 @@ export const ReturnsRefundsView: React.FC<ReturnsRefundsViewProps> = ({
       debitNoteNumber: `DN-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       supplierId: 'sup-01',
       supplierName: vendorName,
-      date: new Date().toISOString().split('T')[0],
+      date: (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
       reason: 'edging_coating_peel',
       items: [
         {

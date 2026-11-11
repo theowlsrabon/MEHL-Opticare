@@ -716,11 +716,15 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
         return inv;
       })
     );
+    const todayLocal = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
     onCollectionRecorded?.({
       id: paymentId,
       amountBDT: Math.round(collAmt),
       tenderMode: selectedPayMode,
-      date: new Date().toISOString().slice(0, 10),
+      date: todayLocal,
       invoiceNumber: activeInvoice.invoiceNumber,
     });
 

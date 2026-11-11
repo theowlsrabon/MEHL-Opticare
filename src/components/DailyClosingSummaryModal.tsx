@@ -149,19 +149,37 @@ export function computeLocalDailyClosingData(
     .reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0);
 
   const expenseOutflow = expenses
-    .filter((expense) => expense.date === date && expense.paymentMode === 'Cash')
+    .filter((expense) => {
+      const eDate = expense.date || String((expense as any).timestamp || '').slice(0, 10);
+      return (eDate === date || eDate?.slice(0, 10) === date) && (!expense.paymentMode || expense.paymentMode === 'Cash');
+    })
     .reduce((sum, expense) => sum + (Number(expense.amountBDT) || 0), 0);
+
   const refundOutflow = salesReturns
-    .filter((refund) => refund.date === date && refund.refundMethod === 'Cash Refund' && refund.status !== 'pending')
+    .filter((refund) => {
+      const rDate = refund.date || String((refund as any).timestamp || '').slice(0, 10);
+      const isDate = rDate === date || rDate?.slice(0, 10) === date;
+      const mode = String(refund.refundMethod || '').toLowerCase();
+      const isCash = mode.includes('cash') || (!mode.includes('credit') && !mode.includes('exchange'));
+      return isDate && isCash && refund.status !== 'pending' && (Number(refund.totalRefundBDT) || 0) > 0;
+    })
     .reduce((sum, refund) => sum + (Number(refund.totalRefundBDT) || 0), 0);
+
   const purchaseOrderOutflow = purchaseOrders.reduce((sum, po) => {
-    const payments = po.paymentHistory?.length
-      ? po.paymentHistory.filter((payment) => payment.date === date && (!payment.paymentMode || payment.paymentMode === 'Cash'))
-      : po.date === date && Number(po.paidAmountBDT) > 0
-        ? [{ amountBDT: Number(po.paidAmountBDT), paymentMode: 'Cash' as const }]
-        : [];
+    const payments = Array.isArray(po.paymentHistory) && po.paymentHistory.length > 0
+      ? po.paymentHistory.filter((payment) => {
+          const pDate = payment.date || String((payment as any).timestamp || '').slice(0, 10);
+          return (pDate === date || pDate?.slice(0, 10) === date) && (!payment.paymentMode || payment.paymentMode === 'Cash');
+        })
+      : (() => {
+          const poDate = po.date || String((po as any).timestamp || '').slice(0, 10);
+          return (poDate === date || poDate?.slice(0, 10) === date) && Number(po.paidAmountBDT) > 0
+            ? [{ amountBDT: Number(po.paidAmountBDT), paymentMode: 'Cash' as const }]
+            : [];
+        })();
     return sum + payments.reduce((paymentSum, payment) => paymentSum + (Number(payment.amountBDT) || 0), 0);
   }, 0);
+
   const trackedOutflow = expenseOutflow + refundOutflow + purchaseOrderOutflow;
   const otherOutflow = Math.max(0, (Number(savedClosing?.cashOutflow) || 0) - trackedOutflow);
   const cashOutflowBreakdown = {
@@ -174,13 +192,25 @@ export function computeLocalDailyClosingData(
   const netCashDifference = cashReceived - cashOutflow;
   const closingDrawerCash = openingCash + netCashDifference;
 
-  const filteredExpenses = expenses.filter((e) => e.date === date);
-  const filteredRefunds = salesReturns.filter((r) => r.date === date && r.status !== 'pending');
+  const filteredExpenses = expenses.filter((e) => {
+    const eDate = e.date || String((e as any).timestamp || '').slice(0, 10);
+    return eDate === date || eDate?.slice(0, 10) === date;
+  });
+
+  const filteredRefunds = salesReturns.filter((r) => {
+    const rDate = r.date || String((r as any).timestamp || '').slice(0, 10);
+    return (rDate === date || rDate?.slice(0, 10) === date) && r.status !== 'pending' && (Number(r.totalRefundBDT) || 0) > 0;
+  });
+
   const filteredPOs = purchaseOrders.filter((po) => {
     if (po.paymentHistory?.length) {
-      return po.paymentHistory.some((p) => p.date === date);
+      return po.paymentHistory.some((p) => {
+        const pDate = p.date || String((p as any).timestamp || '').slice(0, 10);
+        return pDate === date || pDate?.slice(0, 10) === date;
+      });
     }
-    return po.date === date;
+    const poDate = po.date || String((po as any).timestamp || '').slice(0, 10);
+    return (poDate === date || poDate?.slice(0, 10) === date) && Number(po.paidAmountBDT) > 0;
   });
 
   return {
@@ -376,7 +406,21 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   }, [isOpen, selectedDate, reloadToken, fallbackSales, fallbackCollections, fallbackJobs, fallbackExpenses, fallbackSalesReturns, fallbackPurchaseOrders]);
 
   const selectedSales = dailyData?.sales || [];
-  const selectedCollections = dailyData?.collections || [];
+
+  // Merge collections from DB and fallback/local store so newly recorded due collections immediately show
+  const selectedCollections = useMemo(() => {
+    const map = new Map<string, DueCollectionRecord>();
+    (fallbackCollections || []).forEach((c) => {
+      const colDate = c.date || String((c as any).timestamp || '').slice(0, 10);
+      if (colDate === selectedDate || colDate?.slice(0, 10) === selectedDate) {
+        map.set(c.id, c);
+      }
+    });
+    (dailyData?.collections || []).forEach((c) => {
+      map.set(c.id, c);
+    });
+    return Array.from(map.values());
+  }, [dailyData?.collections, fallbackCollections, selectedDate]);
   const completedGlazingJobs = dailyData?.completedJobs || [];
   const paidByInvoice = useMemo(() => {
     const totals = new Map<string, number>();
@@ -437,11 +481,8 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
     return summary;
   }, [selectedCollections, totalCashCollected]);
 
-  // Cash receipts are not the same as the full drawer balance.
+  // Cash receipts from merged collections on selected date
   const cashReceived = paymentBreakdown.Cash.total;
-  const cashOutflow = dailyData?.cashOutflow || 0;
-  const cashOutflowBreakdown = dailyData?.cashOutflowBreakdown || { expenses: 0, refunds: 0, purchaseOrders: 0, other: 0 };
-  const netCashDifference = dailyData?.netCashDifference ?? (cashReceived - cashOutflow);
   const openingCash = dailyData?.openingCash || 0;
   const digitalMfsCardTotal =
     paymentBreakdown.bKash.total + paymentBreakdown.Card.total + paymentBreakdown.Nagad.total + paymentBreakdown.Other.total;
@@ -459,7 +500,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
     )).length;
   }, [selectedSales, paidByInvoice]);
 
-  // Combined itemized costs list (direct expenses, refunds, supplier payments)
+  // Combined itemized costs list merging both database records and fallback/local entries
   const dailyCostsList = useMemo(() => {
     const list: Array<{
       id: string;
@@ -473,12 +514,19 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       timeOrDate: string;
     }> = [];
 
-    // 1. Direct operating and lab expenses
-    const currentExpenses = dailyData?.expenses?.length
-      ? dailyData.expenses
-      : fallbackExpenses.filter((e) => e.date === selectedDate);
+    // 1. Direct operating and lab expenses (Merge DB + Local)
+    const expensesMap = new Map<string, ExpenseItem>();
+    (fallbackExpenses || []).forEach((exp) => {
+      const expDate = exp.date || String((exp as any).timestamp || '').slice(0, 10);
+      if (expDate === selectedDate || expDate?.slice(0, 10) === selectedDate) {
+        expensesMap.set(exp.id, exp);
+      }
+    });
+    (dailyData?.expenses || []).forEach((exp) => {
+      expensesMap.set(exp.id, exp);
+    });
 
-    currentExpenses.forEach((exp) => {
+    expensesMap.forEach((exp) => {
       list.push({
         id: `exp-${exp.id}`,
         refNumber: exp.voucherNumber || exp.id,
@@ -492,17 +540,26 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       });
     });
 
-    // 2. Customer Sales Returns / Refunds
-    const currentRefunds = dailyData?.refunds?.length
-      ? dailyData.refunds
-      : fallbackSalesReturns.filter((r) => r.date === selectedDate && r.status !== 'pending');
+    // 2. Customer Sales Returns / Refunds (Merge DB + Local)
+    const refundsMap = new Map<string, SalesReturn>();
+    (fallbackSalesReturns || []).forEach((ref) => {
+      const refDate = ref.date || String((ref as any).timestamp || '').slice(0, 10);
+      if ((refDate === selectedDate || refDate?.slice(0, 10) === selectedDate) && ref.status !== 'pending' && (Number(ref.totalRefundBDT) || 0) > 0) {
+        refundsMap.set(ref.id, ref);
+      }
+    });
+    (dailyData?.refunds || []).forEach((ref) => {
+      if ((Number(ref.totalRefundBDT) || 0) > 0) {
+        refundsMap.set(ref.id, ref);
+      }
+    });
 
-    currentRefunds.forEach((ref) => {
+    refundsMap.forEach((ref) => {
       list.push({
         id: `ref-${ref.id}`,
         refNumber: ref.returnNumber || ref.id,
         type: 'Refund',
-        title: `${text('Refund for', 'রিফান্ড:')} ${ref.originalInvoiceNumber} (${ref.patientName})`,
+        title: `${text('Refund for', 'রিফান্ড:')} ${ref.originalInvoiceNumber || (ref as any).invoiceNumber || ''} (${ref.patientName || 'Customer'})`,
         category: text('Customer Refund', 'কাস্টমার রিফান্ড'),
         paymentMode: ref.refundMethod || 'Cash Refund',
         amountBDT: Number(ref.totalRefundBDT) || 0,
@@ -511,15 +568,21 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       });
     });
 
-    // 3. Supplier Purchase Orders
-    const currentPOs = dailyData?.purchaseOrders?.length
-      ? dailyData.purchaseOrders
-      : fallbackPurchaseOrders;
+    // 3. Supplier Purchase Orders (Merge DB + Local)
+    const poMap = new Map<string, PurchaseOrder>();
+    (dailyData?.purchaseOrders || []).forEach((po) => poMap.set(po.id, po));
+    (fallbackPurchaseOrders || []).forEach((po) => {
+      const existing = poMap.get(po.id);
+      if (!existing || (po.paymentHistory?.length || 0) >= (existing.paymentHistory?.length || 0)) {
+        poMap.set(po.id, po);
+      }
+    });
 
-    currentPOs.forEach((po) => {
+    poMap.forEach((po) => {
       if (po.paymentHistory?.length) {
         po.paymentHistory.forEach((payment) => {
-          if (payment.date === selectedDate && Number(payment.amountBDT) > 0) {
+          const payDate = payment.date || String((payment as any).timestamp || '').slice(0, 10);
+          if ((payDate === selectedDate || payDate?.slice(0, 10) === selectedDate) && Number(payment.amountBDT) > 0) {
             list.push({
               id: `po-${po.id}-${payment.id}`,
               refNumber: po.poNumber || po.id,
@@ -529,22 +592,25 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
               paymentMode: payment.paymentMode || 'Cash',
               amountBDT: Number(payment.amountBDT) || 0,
               beneficiary: po.supplierName || '-',
-              timeOrDate: payment.date,
+              timeOrDate: payDate,
             });
           }
         });
-      } else if (po.date === selectedDate && Number(po.paidAmountBDT) > 0) {
-        list.push({
-          id: `po-${po.id}`,
-          refNumber: po.poNumber || po.id,
-          type: 'Supplier PO',
-          title: `${text('Supplier payment:', 'সাপ্লায়ার পেমেন্ট:')} ${po.supplierName}`,
-          category: text('Supplier Purchase', 'সাপ্লায়ার ক্রয়'),
-          paymentMode: 'Cash',
-          amountBDT: Number(po.paidAmountBDT) || 0,
-          beneficiary: po.supplierName || '-',
-          timeOrDate: po.date,
-        });
+      } else if (Number(po.paidAmountBDT) > 0) {
+        const poDate = po.date || String((po as any).timestamp || '').slice(0, 10);
+        if (poDate === selectedDate || poDate?.slice(0, 10) === selectedDate) {
+          list.push({
+            id: `po-${po.id}`,
+            refNumber: po.poNumber || po.id,
+            type: 'Supplier PO',
+            title: `${text('Supplier payment:', 'সাপ্লায়ার পেমেন্ট:')} ${po.supplierName}`,
+            category: text('Supplier Purchase', 'সাপ্লায়ার ক্রয়'),
+            paymentMode: 'Cash',
+            amountBDT: Number(po.paidAmountBDT) || 0,
+            beneficiary: po.supplierName || '-',
+            timeOrDate: poDate,
+          });
+        }
       }
     });
 
@@ -554,6 +620,38 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   const totalCostsSum = useMemo(() => {
     return dailyCostsList.reduce((sum, item) => sum + item.amountBDT, 0);
   }, [dailyCostsList]);
+
+  // Dynamic cash outflows and breakdown derived from actual merged daily disbursements
+  const cashOutflowBreakdown = useMemo(() => {
+    const expensesCash = dailyCostsList
+      .filter((i) => i.type === 'Expense' && (!i.paymentMode || i.paymentMode === 'Cash'))
+      .reduce((sum, i) => sum + i.amountBDT, 0);
+    const refundsCash = dailyCostsList
+      .filter((i) => i.type === 'Refund' && (!i.paymentMode || i.paymentMode.toLowerCase().includes('cash')))
+      .reduce((sum, i) => sum + i.amountBDT, 0);
+    const poCash = dailyCostsList
+      .filter((i) => i.type === 'Supplier PO' && (!i.paymentMode || i.paymentMode === 'Cash'))
+      .reduce((sum, i) => sum + i.amountBDT, 0);
+    const otherCash = Math.max(
+      dailyData?.cashOutflowBreakdown?.other || 0,
+      Number(dailyData?.savedClosing?.cashOutflow || 0) - (expensesCash + refundsCash + poCash)
+    );
+
+    return {
+      expenses: Math.max(expensesCash, dailyData?.cashOutflowBreakdown?.expenses || 0),
+      refunds: Math.max(refundsCash, dailyData?.cashOutflowBreakdown?.refunds || 0),
+      purchaseOrders: Math.max(poCash, dailyData?.cashOutflowBreakdown?.purchaseOrders || 0),
+      other: Math.max(0, otherCash),
+    };
+  }, [dailyCostsList, dailyData]);
+
+  const cashOutflow = useMemo(() => {
+    return cashOutflowBreakdown.expenses + cashOutflowBreakdown.refunds + cashOutflowBreakdown.purchaseOrders + cashOutflowBreakdown.other;
+  }, [cashOutflowBreakdown]);
+
+  const netCashDifference = useMemo(() => {
+    return cashReceived - cashOutflow;
+  }, [cashReceived, cashOutflow]);
 
   // 4. Number of Glazing Jobs Completed (সম্পন্ন গ্লেজিং জব)
   const completedGlazingCount = completedGlazingJobs.length;

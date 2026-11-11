@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Supplier, PurchaseOrder, GoodsReceivedNote } from '../types';
 import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
@@ -6,7 +6,11 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface SupplierGrnViewProps {
   suppliers: Supplier[];
-  onUpdateSuppliers: (suppliers: Supplier[]) => void;
+  suppliersLoading: boolean;
+  suppliersLoadError: string | null;
+  purchaseOrdersLoading: boolean;
+  purchaseOrdersLoadError: string | null;
+  onUpdateSuppliers: (suppliers: Supplier[]) => Promise<void>;
   purchaseOrders: PurchaseOrder[];
   grns: GoodsReceivedNote[];
   onUpdateGrns?: (grns: GoodsReceivedNote[]) => void;
@@ -19,6 +23,10 @@ interface SupplierGrnViewProps {
 
 export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
   suppliers,
+  suppliersLoading,
+  suppliersLoadError,
+  purchaseOrdersLoading,
+  purchaseOrdersLoadError,
   onUpdateSuppliers,
   purchaseOrders,
   grns,
@@ -37,6 +45,8 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [selectedGrnToPrint, setSelectedGrnToPrint] = useState<GoodsReceivedNote | null>(null);
   const [supplierFormError, setSupplierFormError] = useState('');
+  const [supplierActionError, setSupplierActionError] = useState('');
+  const [isSavingSupplier, setIsSavingSupplier] = useState(false);
   const [supplierForm, setSupplierForm] = useState({
     name: '',
     category: 'Optical Lenses' as Supplier['category'],
@@ -50,6 +60,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
 
   const openSupplierForm = (supplier?: Supplier) => {
     setEditingSupplierId(supplier?.id ?? null);
+    setSupplierActionError('');
     setSupplierForm({
       name: supplier?.name ?? '',
       category: supplier?.category ?? 'Optical Lenses',
@@ -64,7 +75,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
     setIsEditingSupplier(true);
   };
 
-  const handleSaveSupplier = (event: React.FormEvent) => {
+  const handleSaveSupplier = async (event: React.FormEvent) => {
     event.preventDefault();
     const name = supplierForm.name.trim();
     const paymentTermsDays = Number(supplierForm.paymentTermsDays);
@@ -74,40 +85,53 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
       return;
     }
 
-    if (editingSupplierId) {
-      onUpdateSuppliers(suppliers.map((supplier) => supplier.id === editingSupplierId
-        ? {
-            ...supplier,
-            ...supplierForm,
-            name,
-            contactPerson: supplierForm.contactPerson.trim(),
-            phone: supplierForm.phone.trim(),
-            email: supplierForm.email.trim(),
-            address: supplierForm.address.trim(),
-            taxRegistrationNumber: supplierForm.taxRegistrationNumber.trim(),
-            paymentTermsDays,
-          }
+    const supplierDetails = {
+      ...supplierForm,
+      name,
+      contactPerson: supplierForm.contactPerson.trim(),
+      phone: supplierForm.phone.trim(),
+      email: supplierForm.email.trim(),
+      address: supplierForm.address.trim(),
+      taxRegistrationNumber: supplierForm.taxRegistrationNumber.trim(),
+      paymentTermsDays,
+    };
+    const newSupplierTimestamp = Date.now();
+    const newSupplierId = `supplier-${newSupplierTimestamp}`;
+    const updatedSuppliers = editingSupplierId
+      ? suppliers.map((supplier) => supplier.id === editingSupplierId
+        ? { ...supplier, ...supplierDetails }
         : supplier
-      ));
-    } else {
-      const code = `SUP-${Date.now().toString(36).toUpperCase()}`;
-      onUpdateSuppliers([{
-        id: `supplier-${Date.now()}`,
-        code,
-        ...supplierForm,
-        name,
-        contactPerson: supplierForm.contactPerson.trim(),
-        phone: supplierForm.phone.trim(),
-        email: supplierForm.email.trim(),
-        address: supplierForm.address.trim(),
-        taxRegistrationNumber: supplierForm.taxRegistrationNumber.trim(),
-        paymentTermsDays,
+      )
+      : [{
+        id: newSupplierId,
+        code: `SUP-${newSupplierTimestamp.toString(36).toUpperCase()}`,
+        ...supplierDetails,
         activeOrdersCount: 0,
         totalPurchasedBDT: 0,
         ratingStars: 0,
-      }, ...suppliers]);
+      }, ...suppliers];
+
+    setSupplierFormError('');
+    setIsSavingSupplier(true);
+    try {
+      await onUpdateSuppliers(updatedSuppliers);
+      setIsEditingSupplier(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSupplierFormError(`${text('Could not save supplier to database', 'ডেটাবেজে সরবরাহকারী সংরক্ষণ করা যায়নি')}: ${message}`);
+    } finally {
+      setIsSavingSupplier(false);
     }
-    setIsEditingSupplier(false);
+  };
+
+  const handleDeleteSupplier = async (supplierId: string) => {
+    setSupplierActionError('');
+    try {
+      await onUpdateSuppliers(suppliers.filter((supplier) => supplier.id !== supplierId));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSupplierActionError(`${text('Could not delete supplier from database', 'ডেটাবেজ থেকে সরবরাহকারী মুছে ফেলা যায়নি')}: ${message}`);
+    }
   };
 
   // New PO State
@@ -125,6 +149,12 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
   const parsedOrderAmount = Number(poOrderAmount) || 0;
   const parsedPaidAmount = Number(poPaidAmount) || 0;
   const poDueAmount = Math.max(0, parsedOrderAmount - parsedPaidAmount);
+
+  useEffect(() => {
+    setSelectedSupplierId((current) =>
+      suppliers.some((supplier) => supplier.id === current) ? current : suppliers[0]?.id || ''
+    );
+  }, [suppliers]);
 
   const handleCreatePO = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,7 +184,10 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
       poNumber: `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       supplierId: sup.id,
       supplierName: sup.name,
-      date: new Date().toISOString().split('T')[0],
+      date: (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
       expectedDeliveryDate: poDueDate,
       status: 'approved',
       items: [
@@ -453,12 +486,38 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
             <button
               type="button"
               onClick={() => openSupplierForm()}
+              disabled={suppliersLoading}
               className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs inline-flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">person_add</span>
               <span>{text('Add Supplier', 'সরবরাহকারী যোগ করুন')}</span>
             </button>
           </div>
+          {suppliersLoading && (
+            <div role="status" className="p-3 rounded-xl border border-teal-500/30 bg-teal-500/10 text-sm text-teal-700 dark:text-teal-300">
+              {text('Loading suppliers from database...', 'ডেটাবেজ থেকে সরবরাহকারীর তথ্য আনা হচ্ছে...')}
+            </div>
+          )}
+          {suppliersLoadError && (
+            <div role="alert" className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 text-sm text-rose-700 dark:text-rose-300">
+              {text('Could not load suppliers from database', 'ডেটাবেজ থেকে সরবরাহকারীর তথ্য আনা যায়নি')}: {suppliersLoadError}
+            </div>
+          )}
+          {supplierActionError && (
+            <div role="alert" className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 text-sm text-rose-700 dark:text-rose-300">
+              {supplierActionError}
+            </div>
+          )}
+          {purchaseOrdersLoadError && (
+            <div role="alert" className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 text-sm text-rose-700 dark:text-rose-300">
+              {text('Could not load payable amounts from purchase orders in the database', 'ডেটাবেজের ক্রয় আদেশ থেকে বকেয়া আনা যায়নি')}: {purchaseOrdersLoadError}
+            </div>
+          )}
+          {!suppliersLoading && !suppliersLoadError && suppliers.length === 0 && (
+            <div className="p-3 rounded-xl border border-outline-variant bg-surface-container-low text-sm text-on-surface-variant">
+              {text('No suppliers found in database. Add a supplier to get started.', 'ডেটাবেজে কোনো সরবরাহকারী নেই। শুরু করতে নতুন সরবরাহকারী যোগ করুন।')}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {suppliers.map((sup) => (
             <div
@@ -499,10 +558,14 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                 <div>
                   <span className="text-[10px] text-outline uppercase">{text('Payable', 'বকেয়া')}</span>
                   <div className="font-data-rx font-bold text-red-600">
-                    ৳{purchaseOrders
-                      .filter((po) => po.supplierId === sup.id)
-                      .reduce((total, po) => total + (po.dueAmountBDT ?? Math.max(0, po.totalAmountBDT - (po.paidAmountBDT ?? (po.paymentStatus === 'paid' ? po.totalAmountBDT : 0)))), 0)
-                      .toLocaleString()}
+                    {purchaseOrdersLoading
+                      ? text('Loading...', 'লোড হচ্ছে...')
+                      : purchaseOrdersLoadError
+                        ? '—'
+                        : `৳${purchaseOrders
+                            .filter((po) => po.supplierId === sup.id)
+                            .reduce((total, po) => total + (po.dueAmountBDT ?? Math.max(0, po.totalAmountBDT - (po.paidAmountBDT ?? (po.paymentStatus === 'paid' ? po.totalAmountBDT : 0)))), 0)
+                            .toLocaleString()}`}
                   </div>
                 </div>
                 <div className="text-right">
@@ -524,7 +587,7 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
                   type="button"
                   onClick={() => {
                     if (window.confirm(text(`Remove supplier "${sup.name}"? Existing purchase orders will be kept.`, `“${sup.name}” সরাবেন? আগের ক্রয় আদেশগুলো থাকবে।`))) {
-                      onUpdateSuppliers(suppliers.filter((supplier) => supplier.id !== sup.id));
+                      void handleDeleteSupplier(sup.id);
                     }
                   }}
                   aria-label={text(`Remove ${sup.name}`, `${sup.name} সরান`)}
@@ -592,8 +655,8 @@ export const SupplierGrnView: React.FC<SupplierGrnViewProps> = ({
             </div>
             {supplierFormError && <p role="alert" className="text-xs font-semibold text-rose-600 dark:text-rose-400">{supplierFormError}</p>}
             <div className="border-t border-outline-variant/60 dark:border-[#272d3a] pt-3 flex justify-end gap-2">
-              <button type="button" onClick={() => setIsEditingSupplier(false)} className="px-4 py-2 rounded-xl text-xs font-semibold text-outline hover:text-on-surface cursor-pointer">{text('Cancel', 'বাতিল')}</button>
-              <button type="submit" className="px-5 py-2 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer">{text('Save Supplier', 'সংরক্ষণ করুন')}</button>
+              <button type="button" disabled={isSavingSupplier} onClick={() => setIsEditingSupplier(false)} className="px-4 py-2 rounded-xl text-xs font-semibold text-outline hover:text-on-surface cursor-pointer disabled:opacity-50">{text('Cancel', 'বাতিল')}</button>
+              <button type="submit" disabled={isSavingSupplier} className="px-5 py-2 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer disabled:opacity-50">{text('Save Supplier', 'সংরক্ষণ করুন')}</button>
             </div>
           </form>
         </div>
