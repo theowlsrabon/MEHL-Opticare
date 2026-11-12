@@ -1,9 +1,7 @@
 import {
-  HospitalBranch,
   InterBranchTransferOrder,
   PharmacyDrug,
   DispensationRecord,
-  Supplier,
   PurchaseOrder,
   GoodsReceivedNote,
   ExpenseItem,
@@ -13,76 +11,6 @@ import {
   SecurityAuditLog,
   SystemConfig,
 } from '../types';
-
-// =========================================================================
-// 1. HOSPITAL BRANCH REGISTRY
-// =========================================================================
-export const initialBranches: HospitalBranch[] = [
-  {
-    id: 'branch-01',
-    code: 'HQ-CENTRAL',
-    name: 'Madina Eye Hospital - Central Plaza Hub',
-    banglaName: 'মদিনা চক্ষু হাসপাতাল - সেন্ট্রাল প্লাজা হেডকোয়ার্টার্স',
-    location: 'Mirpur-10 Circle, Section-6, Dhaka-1216',
-    type: 'headquarters',
-    phone: '+880 1711-234567',
-    email: 'central@madinaeye.org',
-    inchargeName: 'TASFIQUR RAHMAN (Hospital Director & Admin)',
-    isActive: true,
-    status: 'active',
-    activeStaffCount: 28,
-    openTraysCount: 34,
-    totalStockUnits: 3420,
-  },
-  {
-    id: 'branch-02',
-    code: 'DHN-SPEC',
-    name: 'Madina Optics & Cornea Center - Dhanmondi',
-    banglaName: 'মদিনা অপটিক্স ও কর্নিয়া সেন্টার - ধানমন্ডি ব্রাঞ্চ',
-    location: 'House 42, Road 7/A, Dhanmondi, Dhaka-1209',
-    type: 'specialty_center',
-    phone: '+880 1819-987654',
-    email: 'dhanmondi@madinaeye.org',
-    inchargeName: 'Dr. Tariq Modina, M.Optom',
-    isActive: true,
-    status: 'active',
-    activeStaffCount: 14,
-    openTraysCount: 16,
-    totalStockUnits: 1850,
-  },
-  {
-    id: 'branch-03',
-    code: 'UTT-OUTPOST',
-    name: 'Madina Eye Care Outpost - Uttara Sector 3',
-    banglaName: 'মদিনা চক্ষু সেবা আউটপোস্ট - উত্তরা শাখা',
-    location: 'Plot 12, Rabindra Sarani, Sector 3, Uttara, Dhaka',
-    type: 'outpost_clinic',
-    phone: '+880 1912-345678',
-    email: 'uttara@madinaeye.org',
-    inchargeName: 'Nasrin Akter (Dispensary Lead)',
-    isActive: false,
-    status: 'maintenance',
-    activeStaffCount: 8,
-    openTraysCount: 9,
-    totalStockUnits: 980,
-  },
-  {
-    id: 'branch-04',
-    code: 'LAB-CENTRAL',
-    name: 'Robotic Optical Edging & Glazing Lab Hub',
-    banglaName: 'সেন্ট্রাল রোবোটিক গ্লেজিং ও ল্যাব ফ্যাসিলিটি',
-    location: 'Floor 4, Central Plaza Tower, Dhaka',
-    type: 'central_lab',
-    phone: '+880 1733-112233',
-    email: 'labhub@madinaeye.org',
-    inchargeName: 'Kamrul Hasan (Master Glazer)',
-    isActive: true,
-    status: 'active',
-    activeStaffCount: 12,
-    openTraysCount: 42,
-    totalStockUnits: 5120,
-  },
-];
 
 // =========================================================================
 // 2. INTER-BRANCH TRANSFERS (IBT)
@@ -314,87 +242,6 @@ export const initialPharmacyDrugs: PharmacyDrug[] = [
 // 4. DISPENSATION RECORDS (FEFO PROOF)
 // =========================================================================
 export const initialDispensations: DispensationRecord[] = [];
-
-// =========================================================================
-// 5. SUPPLIER DIRECTORY
-// =========================================================================
-export const initialSuppliers: Supplier[] = [
-  {
-    id: 'sup-01',
-    code: 'SUP-ESSILOR',
-    name: 'Essilor Bangladesh Ltd (EssilorLuxottica Group)',
-    category: 'Optical Lenses',
-    contactPerson: 'Zakir Hossain (Key Account Lead)',
-    phone: '+880 1711-998877',
-    email: 'zakir.hossain@essilor.com.bd',
-    address: 'Gulshan Grace Tower, Level 8, Gulshan-1, Dhaka-1212',
-    taxRegistrationNumber: 'BIN-1088234912',
-    paymentTermsDays: 45,
-    activeOrdersCount: 2,
-    totalPurchasedBDT: 1425000,
-    ratingStars: 4.9,
-  },
-  {
-    id: 'sup-02',
-    code: 'SUP-LUXOTTICA',
-    name: 'Luxottica South Asia Private Ltd',
-    category: 'Designer Frames',
-    contactPerson: 'Ananya Sen (Brand Manager)',
-    phone: '+880 1819-556677',
-    email: 'orders.bd@luxottica.com',
-    address: 'Tejgaon Industrial Area, Dhaka',
-    taxRegistrationNumber: 'BIN-2099341201',
-    paymentTermsDays: 30,
-    activeOrdersCount: 1,
-    totalPurchasedBDT: 2350000,
-    ratingStars: 4.8,
-  },
-  {
-    id: 'sup-03',
-    code: 'SUP-SQUARE',
-    name: 'Square Pharmaceuticals Ltd (Ophthalmic Div)',
-    category: 'Ophthalmic Pharma',
-    contactPerson: 'Tanvir Ahmed (Institutional Rep)',
-    phone: '+880 1733-667788',
-    email: 'hospital.eye@squaregroup.com',
-    address: 'Square Centre, 48 Mohakhali C/A, Dhaka-1212',
-    taxRegistrationNumber: 'BIN-0001928374',
-    paymentTermsDays: 30,
-    activeOrdersCount: 2,
-    totalPurchasedBDT: 890000,
-    ratingStars: 4.9,
-  },
-  {
-    id: 'sup-04',
-    code: 'SUP-ALCON',
-    name: 'Alcon Laboratories BD (Care Pharmacy Div)',
-    category: 'Ophthalmic Pharma',
-    contactPerson: 'Sabbir Rahman (Specialty Consultant)',
-    phone: '+880 1911-334455',
-    email: 'supply.alcon@medicare.bd',
-    address: 'Pragati Sarani, Baridhara, Dhaka',
-    taxRegistrationNumber: 'BIN-5544332211',
-    paymentTermsDays: 30,
-    activeOrdersCount: 1,
-    totalPurchasedBDT: 1120000,
-    ratingStars: 4.9,
-  },
-  {
-    id: 'sup-05',
-    code: 'SUP-TITAN',
-    name: 'Titan Eyeplus Frames & Accessories',
-    category: 'Designer Frames',
-    contactPerson: 'Mehedi Hasan (Sales Exec)',
-    phone: '+880 1612-889900',
-    email: 'titan.orders@titanbd.com',
-    address: 'Uttara Commercial Zone, Dhaka',
-    taxRegistrationNumber: 'BIN-7788990011',
-    paymentTermsDays: 15,
-    activeOrdersCount: 1,
-    totalPurchasedBDT: 640000,
-    ratingStars: 4.6,
-  },
-];
 
 // =========================================================================
 // 6. PURCHASE ORDERS (PO) & GOODS RECEIVED NOTES (GRN)

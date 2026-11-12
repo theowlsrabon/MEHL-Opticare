@@ -6,12 +6,12 @@ dotenv.config();
 let pool: Pool | null = null;
 let isConnected = false;
 
-const NEON_DEFAULT_URL =
-  'postgresql://neondb_owner:npg_OuF7A3DcieLR@ep-wild-flower-bdj0sbxp-pooler.c-8.us-east-2.aws.neon.tech/neondb?channel_binding=require&sslmode=require';
-
 export function getDbPool(): Pool {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL || NEON_DEFAULT_URL;
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error('DATABASE_URL environment variable is not set. Set it in your .env file or deployment environment.');
+    }
     pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
@@ -25,7 +25,7 @@ export async function checkDbConnection(): Promise<{ ok: boolean; message: strin
     const p = getDbPool();
     const res = await p.query('SELECT 1 + 1 AS test');
     isConnected = true;
-    const activeUrl = process.env.DATABASE_URL || NEON_DEFAULT_URL;
+    const activeUrl = process.env.DATABASE_URL;
     return {
       ok: true,
       message: `Connected to Neon PostgreSQL database`,

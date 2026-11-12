@@ -342,6 +342,20 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     });
   };
 
+  const updatePaidServicePrice = (serviceId: string, price: number) => {
+    setSelectedPaidServices((prev) => {
+      const current = prev[serviceId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [serviceId]: {
+          ...current,
+          price,
+        },
+      };
+    });
+  };
+
   const resetPaidServices = () => {
     setSelectedPaidServices({});
   };
@@ -1633,15 +1647,28 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                                   </div>
                                 </div>
 
-                                <span
-                                  className={`px-2 py-0.5 rounded-lg text-xs font-bold font-mono whitespace-nowrap ${
-                                    selected
-                                      ? 'bg-[#00c49f] text-white'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-400 border border-slate-200 dark:border-slate-700'
-                                  }`}
-                                >
-                                  {service.priceBadge}
-                                </span>
+                                {selected ? (
+                                  <label
+                                    className="flex flex-col items-end gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <span>{text('Unit price (৳)', 'একক দাম (৳)')}</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      inputMode="numeric"
+                                      aria-label={text(`Unit price for ${service.nameEn}`, `${service.nameBn}-এর একক দাম`)}
+                                      value={currentPrice}
+                                      onChange={(e) => updatePaidServicePrice(service.id, Math.max(0, Number(e.target.value) || 0))}
+                                      className="w-24 h-8 px-2 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-[#1a202c] text-right font-mono text-xs font-bold text-teal-800 dark:text-teal-200 outline-hidden focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                                    />
+                                  </label>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-lg text-xs font-bold font-mono whitespace-nowrap bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-400 border border-slate-200 dark:border-slate-700">
+                                    {service.priceBadge}
+                                  </span>
+                                )}
                               </div>
 
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mb-3">

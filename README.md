@@ -18,3 +18,9 @@ View your app in AI Studio: https://ai.studio/apps/5965ca19-9887-44c8-a49a-6fae4
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Daily drawer auto-close
+
+The Render Cron service saves the daily drawer closing at 11:59 PM Bangladesh time. It runs independently of the browser and leaves any closing already saved that day unchanged.
+
+The `mehl-daily-closing` Cron service in [render.yaml](./render.yaml) uses the `DATABASE_URL` Neon connection and requires a paid Render Cron plan.

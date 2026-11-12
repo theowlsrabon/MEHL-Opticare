@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { InventoryItem, InventoryDamageRecord, InventoryMovementRecord, UserProfile, Supplier, PurchaseOrder } from '../types';
-import { initialSuppliers } from '../data/enterpriseData';
 import { BatchBarcodePrintModal } from './BatchBarcodePrintModal';
 import { BulkReorderModal } from './BulkReorderModal';
 import { InventoryMovementHistoryView } from './InventoryMovementHistoryView';
@@ -32,7 +31,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   language,
   initialSearchQuery = '',
   currentUser,
-  suppliers = initialSuppliers,
+  suppliers = [],
   onRestock,
   onDamageWriteOff,
   onDamageWriteOffBatch,

@@ -14,3 +14,16 @@ services:
         sync: false   # Set this in the Render dashboard
       - key: FRONTEND_URL
         sync: false   # Set to your Vercel app URL e.g. https://mehl.vercel.app
+
+  - type: cron
+    name: mehl-daily-closing
+    env: node
+    plan: starter
+    schedule: "59 17 * * *"
+    buildCommand: npm install
+    startCommand: npm run auto:daily-closing
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false

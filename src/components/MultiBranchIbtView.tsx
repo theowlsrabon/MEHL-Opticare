@@ -7,18 +7,22 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface MultiBranchIbtViewProps {
   branches: HospitalBranch[];
+  branchesLoading: boolean;
+  branchesLoadError: string | null;
   ibtOrders: InterBranchTransferOrder[];
   inventory?: InventoryItem[];
   onUpdateIbtOrders?: (orders: InterBranchTransferOrder[]) => void;
   onAddIbtOrder?: (order: InterBranchTransferOrder) => void;
   onUpdateIbtStatus?: (orderId: string, status: any) => void;
-  onAddBranch?: (branch: HospitalBranch) => void;
-  onUpdateBranch?: (branch: HospitalBranch) => void;
-  onDeleteBranch?: (branchId: string) => void;
+  onAddBranch?: (branch: HospitalBranch) => Promise<void>;
+  onUpdateBranch?: (branch: HospitalBranch) => Promise<void>;
+  onDeleteBranch?: (branchId: string) => Promise<void>;
 }
 
 export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   branches,
+  branchesLoading,
+  branchesLoadError,
   ibtOrders,
   inventory,
   onUpdateIbtOrders,
@@ -37,6 +41,8 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   const [isAddingBranch, setIsAddingBranch] = useState(false);
   const [editingBranch, setEditingBranch] = useState<HospitalBranch | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [branchActionError, setBranchActionError] = useState<string | null>(null);
+  const [isSavingBranch, setIsSavingBranch] = useState(false);
   const [branchSearch, setBranchSearch] = useState('');
   const [selectedOrderToPrint, setSelectedOrderToPrint] = useState<InterBranchTransferOrder | null>(null);
 
@@ -50,8 +56,8 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   const [editBranchManager, setEditBranchManager] = useState('');
   const [editBranchType, setEditBranchType] = useState<HospitalBranch['type']>('specialty_center');
   const [editBranchStatus, setEditBranchStatus] = useState<BranchStatus>('active');
-  const [editBranchStaffCount, setEditBranchStaffCount] = useState<number>(4);
-  const [editBranchStockUnits, setEditBranchStockUnits] = useState<number>(250);
+  const [editBranchStaffCount, setEditBranchStaffCount] = useState<number>(0);
+  const [editBranchStockUnits, setEditBranchStockUnits] = useState<number>(0);
 
   // New Transfer Form State
   const [sourceBranchId, setSourceBranchId] = useState('');
@@ -75,7 +81,10 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   const [newBranchBanglaName, setNewBranchBanglaName] = useState('');
   const [newBranchLocation, setNewBranchLocation] = useState('');
   const [newBranchPhone, setNewBranchPhone] = useState('');
+  const [newBranchEmail, setNewBranchEmail] = useState('');
   const [newBranchManager, setNewBranchManager] = useState('');
+  const [newBranchStaffCount, setNewBranchStaffCount] = useState(0);
+  const [newBranchStockUnits, setNewBranchStockUnits] = useState(0);
   const [newBranchType, setNewBranchType] = useState<HospitalBranch['type']>('specialty_center');
   const [newBranchStatus, setNewBranchStatus] = useState<BranchStatus>('active');
   const [items, setItems] = useState<IBTItem[]>([]);
@@ -243,7 +252,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   };
 
   // Handle Add Branch
-  const handleAddBranchSubmit = (e: React.FormEvent) => {
+  const handleAddBranchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!onAddBranch) return;
 
@@ -254,28 +263,40 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
       banglaName: newBranchBanglaName.trim() || newBranchName.trim(),
       location: newBranchLocation.trim(),
       phone: newBranchPhone.trim(),
-      email: `${newBranchCode.toLowerCase().trim()}@modinaeye.org`,
+      email: newBranchEmail.trim(),
       inchargeName: newBranchManager.trim(),
       type: newBranchType,
       isActive: newBranchStatus === 'active',
       status: newBranchStatus,
-      activeStaffCount: 4,
+      activeStaffCount: newBranchStaffCount,
       openTraysCount: 0,
-      totalStockUnits: 250,
+      totalStockUnits: newBranchStockUnits,
     };
 
-    onAddBranch(newBranch);
-    setIsAddingBranch(false);
-    
-    // Reset form
-    setNewBranchCode('');
-    setNewBranchName('');
-    setNewBranchBanglaName('');
-    setNewBranchLocation('');
-    setNewBranchPhone('');
-    setNewBranchManager('');
-    setNewBranchType('specialty_center');
-    setNewBranchStatus('active');
+    setBranchActionError(null);
+    setIsSavingBranch(true);
+    try {
+      await onAddBranch(newBranch);
+      setIsAddingBranch(false);
+      setNewBranchCode('');
+      setNewBranchName('');
+      setNewBranchBanglaName('');
+      setNewBranchLocation('');
+      setNewBranchPhone('');
+      setNewBranchEmail('');
+      setNewBranchManager('');
+      setNewBranchStaffCount(0);
+      setNewBranchStockUnits(0);
+      setNewBranchType('specialty_center');
+      setNewBranchStatus('active');
+      setToastMessage(text('Branch saved to database.', 'শাখার তথ্য ডেটাবেজে সংরক্ষিত হয়েছে।'));
+      setTimeout(() => setToastMessage(null), 3500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setBranchActionError(`${text('Could not save branch to database', 'ডেটাবেজে শাখা সংরক্ষণ করা যায়নি')}: ${message}`);
+    } finally {
+      setIsSavingBranch(false);
+    }
   };
 
   // Open Edit Branch Modal with prefilled data
@@ -290,12 +311,12 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
     setEditBranchManager(branch.inchargeName || '');
     setEditBranchType(branch.type || 'specialty_center');
     setEditBranchStatus(branch.status || (branch.isActive !== false ? 'active' : 'inactive'));
-    setEditBranchStaffCount(branch.activeStaffCount ?? 4);
-    setEditBranchStockUnits(branch.totalStockUnits ?? 250);
+    setEditBranchStaffCount(branch.activeStaffCount ?? 0);
+    setEditBranchStockUnits(branch.totalStockUnits ?? 0);
   };
 
   // Handle Save Edit Branch
-  const handleSaveEditBranchSubmit = (e: React.FormEvent) => {
+  const handleSaveEditBranchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingBranch || !onUpdateBranch) return;
 
@@ -306,7 +327,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
       banglaName: editBranchBanglaName.trim() || editBranchName.trim(),
       location: editBranchLocation.trim() || editingBranch.location,
       phone: editBranchPhone.trim() || editingBranch.phone,
-      email: editBranchEmail.trim() || `${editBranchCode.toLowerCase()}@modinaeye.org`,
+      email: editBranchEmail.trim(),
       inchargeName: editBranchManager.trim() || editingBranch.inchargeName,
       type: editBranchType,
       isActive: editBranchStatus === 'active',
@@ -315,13 +336,33 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
       totalStockUnits: Number(editBranchStockUnits) || 0,
     };
 
-    onUpdateBranch(updated);
-    setEditingBranch(null);
-    setToastMessage(text(
-      `Branch "${updated.name}" updated successfully.`,
-      `"${updated.banglaName || updated.name}" শাখার তথ্য সফলভাবে হালনাগাদ হয়েছে।`
-    ));
-    setTimeout(() => setToastMessage(null), 3500);
+    setBranchActionError(null);
+    setIsSavingBranch(true);
+    try {
+      await onUpdateBranch(updated);
+      setEditingBranch(null);
+      setToastMessage(text(
+        `Branch "${updated.name}" saved to database.`,
+        `"${updated.banglaName || updated.name}" শাখার তথ্য ডেটাবেজে সংরক্ষিত হয়েছে।`
+      ));
+      setTimeout(() => setToastMessage(null), 3500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setBranchActionError(`${text('Could not save branch to database', 'ডেটাবেজে শাখা সংরক্ষণ করা যায়নি')}: ${message}`);
+    } finally {
+      setIsSavingBranch(false);
+    }
+  };
+
+  const handleDeleteBranch = async (branchId: string) => {
+    if (!onDeleteBranch) return;
+    setBranchActionError(null);
+    try {
+      await onDeleteBranch(branchId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setBranchActionError(`${text('Could not delete branch from database', 'ডেটাবেজ থেকে শাখা মুছে ফেলা যায়নি')}: ${message}`);
+    }
   };
 
   // Handle Submit New IBT Order
@@ -476,8 +517,12 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
           )}
           {activeTab === 'branches' && (
             <button
-              onClick={() => setIsAddingBranch(true)}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:brightness-105 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+              onClick={() => {
+                setBranchActionError(null);
+                setIsAddingBranch(true);
+              }}
+              disabled={branchesLoading}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:brightness-105 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="material-symbols-outlined text-[18px]">add_business</span>
               <span>{text('Add Branch', 'শাখা যোগ করুন')}</span>
@@ -486,9 +531,30 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
         </div>
       </div>
 
+      {branchesLoading && (
+        <div role="status" className="p-3 rounded-xl border border-teal-500/30 bg-teal-500/10 text-sm text-teal-700 dark:text-teal-300">
+          {text('Loading branches from database...', 'ডেটাবেজ থেকে শাখার তথ্য আনা হচ্ছে...')}
+        </div>
+      )}
+      {branchesLoadError && (
+        <div role="alert" className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 text-sm text-rose-700 dark:text-rose-300">
+          {text('Could not load branches from database', 'ডেটাবেজ থেকে শাখার তথ্য আনা যায়নি')}: {branchesLoadError}
+        </div>
+      )}
+      {branchActionError && (
+        <div role="alert" className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 text-sm text-rose-700 dark:text-rose-300">
+          {branchActionError}
+        </div>
+      )}
+      {!branchesLoading && !branchesLoadError && branches.length === 0 && (
+        <div className="p-3 rounded-xl border border-outline-variant bg-surface-container-low text-sm text-on-surface-variant">
+          {text('No branches found in database. Add a branch to get started.', 'ডেটাবেজে কোনো শাখা নেই। শুরু করতে নতুন শাখা যোগ করুন।')}
+        </div>
+      )}
+
       {activeTab === 'ibt' ? (
         <>
-          {/* 4 Branch Overview Cards */}
+          {/* Branch Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {branches.map((b) => {
           const isMaintenance = b.status === 'maintenance';
@@ -536,7 +602,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
                       type="button"
                       onClick={() => {
                         if (window.confirm(text(`Permanently delete branch "${b.name}"?`, `আপনি কি "${b.name}" শাখাটি মুছে ফেলতে চান?`))) {
-                          onDeleteBranch(b.id);
+                          void handleDeleteBranch(b.id);
                         }
                       }}
                       className="px-2 py-1 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white font-bold text-[10px] inline-flex items-center gap-1 transition-all cursor-pointer"
@@ -1404,16 +1470,16 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
                     <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-outline-variant/50 dark:border-[#252a36] text-[11px] bg-surface-container-low/40 dark:bg-[#1a1e28]/50 p-2.5 rounded-xl">
                       <div>
                         <span className="text-[10px] text-outline block">{text('Staff', 'কর্মী')}</span>
-                        <span className="font-bold text-on-surface">{branch.activeStaffCount || 1} {text('', 'জন')}</span>
+                        <span className="font-bold text-on-surface">{branch.activeStaffCount ?? 0} {text('', 'জন')}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-outline block">{text('Open Trays', 'খোলা ট্রে')}</span>
-                        <span className="font-bold text-amber-600">{branch.openTraysCount || 0} {text('', 'টি')}</span>
+                        <span className="font-bold text-amber-600">{branch.openTraysCount ?? 0} {text('', 'টি')}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-outline block">{text('Stock', 'মজুদ')}</span>
                         <span className="font-bold text-on-surface font-data-rx">
-                          {(branch.totalStockUnits || 0).toLocaleString()}
+                          {(branch.totalStockUnits ?? 0).toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -1450,6 +1516,11 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
             </div>
 
             <div className="p-5 overflow-y-auto flex-1">
+              {branchActionError && (
+                <p role="alert" className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
+                  {branchActionError}
+                </p>
+              )}
               <form id="editBranchForm" onSubmit={handleSaveEditBranchSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                   <div className="space-y-1">
@@ -1612,7 +1683,8 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
               <button
                 type="submit"
                 form="editBranchForm"
-                className="px-5 py-2 text-xs font-bold rounded-xl bg-teal-600 hover:bg-teal-700 text-white cursor-pointer shadow-md flex items-center gap-1.5 transition-all"
+                disabled={isSavingBranch}
+                className="px-5 py-2 text-xs font-bold rounded-xl bg-teal-600 hover:bg-teal-700 text-white cursor-pointer shadow-md flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-[16px]">save</span>
                 <span>{text('Save Changes', 'পরিবর্তন সংরক্ষণ')}</span>
@@ -1633,6 +1705,11 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
               </button>
             </div>
             <div className="p-5 overflow-y-auto">
+              {branchActionError && (
+                <p role="alert" className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
+                  {branchActionError}
+                </p>
+              )}
               <form id="addBranchForm" onSubmit={handleAddBranchSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -1685,6 +1762,20 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
                   <label className="text-xs font-semibold text-on-surface">{text('Phone Number', 'ফোন নম্বর')}</label>
                   <input required type="text" placeholder="+880..." value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="w-full text-sm px-3 py-2 bg-surface dark:bg-[#1f242e] border border-outline-variant rounded-xl focus:border-blue-500 focus:outline-none text-on-surface font-mono" />
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-on-surface">{text('Official Email', 'অফিসিয়াল ইমেইল')}</label>
+                    <input type="email" placeholder="branch@example.org" value={newBranchEmail} onChange={(e) => setNewBranchEmail(e.target.value)} className="w-full text-sm px-3 py-2 bg-surface dark:bg-[#1f242e] border border-outline-variant rounded-xl focus:border-blue-500 focus:outline-none text-on-surface font-mono" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-on-surface">{text('Active Staff Count', 'সক্রিয় কর্মীর সংখ্যা')}</label>
+                    <input type="number" min={0} value={newBranchStaffCount} onChange={(e) => setNewBranchStaffCount(Number(e.target.value))} className="w-full text-sm px-3 py-2 bg-surface dark:bg-[#1f242e] border border-outline-variant rounded-xl focus:border-blue-500 focus:outline-none text-on-surface font-mono" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-on-surface">{text('Total Stock Units', 'মোট মজুদ ইউনিট')}</label>
+                    <input type="number" min={0} value={newBranchStockUnits} onChange={(e) => setNewBranchStockUnits(Number(e.target.value))} className="w-full text-sm px-3 py-2 bg-surface dark:bg-[#1f242e] border border-outline-variant rounded-xl focus:border-blue-500 focus:outline-none text-on-surface font-mono" />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-on-surface">{text('Full Location / Address', 'সম্পূর্ণ অবস্থান / ঠিকানা')}</label>
                   <textarea required rows={2} placeholder="Address details..." value={newBranchLocation} onChange={(e) => setNewBranchLocation(e.target.value)} className="w-full text-sm px-3 py-2 bg-surface dark:bg-[#1f242e] border border-outline-variant rounded-xl focus:border-blue-500 focus:outline-none text-on-surface"></textarea>
@@ -1693,7 +1784,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
             </div>
             <div className="p-4 border-t border-outline-variant/50 flex justify-end gap-3 bg-surface-container-low dark:bg-[#1a1d24]">
               <button onClick={() => setIsAddingBranch(false)} className="px-4 py-2 text-xs font-bold rounded-xl bg-surface border border-outline-variant text-on-surface cursor-pointer">Cancel</button>
-              <button type="submit" form="addBranchForm" className="px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-md">Add Branch</button>
+              <button type="submit" form="addBranchForm" disabled={isSavingBranch} className="px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Add Branch</button>
             </div>
           </div>
         </div>

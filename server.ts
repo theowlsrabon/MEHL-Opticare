@@ -310,7 +310,7 @@ app.post("/api/admin/clear-dummy-data", async (_req, res) => {
 });
 
 // Full operational data reset / reboot (Keeps Admin & Superadmin credentials intact)
-app.post("/api/admin/reset-operational-data", async (req, res) => {
+const resetOperationalDataHandler = async (req: any, res: any) => {
   try {
     const role = (req.body?.role || req.headers["x-user-role"] || "").toString().toLowerCase();
     const username = (req.body?.username || req.headers["x-username"] || "").toString().toLowerCase();
@@ -367,7 +367,11 @@ app.post("/api/admin/reset-operational-data", async (req, res) => {
     console.error("[reset-operational-data error]:", err);
     res.status(500).json({ success: false, error: err.message || "Failed to reboot database." });
   }
-});
+};
+
+app.post("/api/admin/reset-operational-data", resetOperationalDataHandler);
+// Alias for database reset / operational wipe (Accessible via /api/reset-database as well)
+app.post("/api/reset-database", resetOperationalDataHandler);
 
 // --- MySQL CRUD ENDPOINTS ---
 
