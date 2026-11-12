@@ -1077,19 +1077,31 @@ export default function App() {
     setResetErrorMsg('');
     setIsResettingDb(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/reset-operational-data`, {
+      const payload = {
+        role: currentUserRole,
+        username: authenticatedUser?.username || 'admin',
+        password: resetAdminPassword.trim(),
+      };
+      const headers = {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUserRole,
+        'x-username': authenticatedUser?.username || 'admin',
+      };
+
+      // Try /api/reset-database first, fallback to /api/admin/reset-operational-data
+      let res = await fetch(`${API_BASE}/api/reset-database`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUserRole,
-          'x-username': authenticatedUser?.username || 'admin',
-        },
-        body: JSON.stringify({
-          role: currentUserRole,
-          username: authenticatedUser?.username || 'admin',
-          password: resetAdminPassword.trim(),
-        }),
+        headers,
+        body: JSON.stringify(payload),
       });
+
+      if (res.status === 404) {
+        res = await fetch(`${API_BASE}/api/admin/reset-operational-data`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+      }
 
       const parsed = await safeParseJsonResponse<{ success?: boolean; error?: string; message?: string }>(res);
       if (!res.ok || !parsed.data?.success) {
