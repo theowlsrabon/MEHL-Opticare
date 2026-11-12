@@ -308,6 +308,7 @@ app.post("/api/admin/reset-operational-data", async (req, res) => {
   try {
     const role = (req.body?.role || req.headers["x-user-role"] || "").toString().toLowerCase();
     const username = (req.body?.username || req.headers["x-username"] || "").toString().toLowerCase();
+    const password = (req.body?.password || "").toString();
 
     // Verify authorized roles: admin or super_admin
     const isAuthorized =
@@ -323,6 +324,27 @@ app.post("/api/admin/reset-operational-data", async (req, res) => {
       });
     }
 
+    // Verify password for security confirmation
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        error: "Admin security password is required to confirm database reset.",
+      });
+    }
+
+    // Super admin password check or DB user password check
+    if (username === "srabon" || role === "super_admin") {
+      if (password !== "vugichugi") {
+        return res.status(401).json({ success: false, error: "Incorrect Super Admin password." });
+      }
+    } else {
+      // Check admin account from DB
+      const user = await dbGetUserByUsername(username || "admin");
+      if (!user || user.password !== password) {
+        return res.status(401).json({ success: false, error: "Incorrect Admin password." });
+      }
+    }
+
     const result = await dbResetOperationalData();
     res.json({
       success: true,
@@ -330,7 +352,8 @@ app.post("/api/admin/reset-operational-data", async (req, res) => {
       result,
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error("[reset-operational-data error]:", err);
+    res.status(500).json({ success: false, error: err.message || "Failed to reboot database." });
   }
 });
 

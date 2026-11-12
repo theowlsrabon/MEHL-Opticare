@@ -1065,8 +1065,16 @@ export default function App() {
   // Full Database Factory Reset / Reboot (Admin / Superadmin only)
   const [isResetConfirmModalOpen, setIsResetConfirmModalOpen] = useState(false);
   const [isResettingDb, setIsResettingDb] = useState(false);
+  const [resetAdminPassword, setResetAdminPassword] = useState('');
+  const [resetErrorMsg, setResetErrorMsg] = useState('');
 
   const handleExecuteDatabaseReset = async () => {
+    if (!resetAdminPassword.trim()) {
+      setResetErrorMsg('অ্যাকশন নিশ্চিত করতে এডমিন পাসওয়ার্ড প্রবেশ করান / Please enter admin password.');
+      return;
+    }
+
+    setResetErrorMsg('');
     setIsResettingDb(true);
     try {
       const res = await fetch(`${API_BASE}/api/admin/reset-operational-data`, {
@@ -1079,6 +1087,7 @@ export default function App() {
         body: JSON.stringify({
           role: currentUserRole,
           username: authenticatedUser?.username || 'admin',
+          password: resetAdminPassword,
         }),
       });
 
@@ -1145,9 +1154,11 @@ export default function App() {
       });
 
       setIsResetConfirmModalOpen(false);
+      setResetAdminPassword('');
       alert('System operational data wiped successfully from PostgreSQL database! Admin credentials remain active and product is ready for handover.');
     } catch (err: any) {
       console.error('[Database Reset Error]:', err);
+      setResetErrorMsg(err.message || 'Database reset failed.');
       alert(`Database reset failed: ${err.message || 'Network error'}`);
     } finally {
       setIsResettingDb(false);
@@ -3011,6 +3022,38 @@ export default function App() {
                     ? 'এডমিন (admin) ও সুপারএডমিন (srabon) লগইন ক্রেডেনশিয়াল মোছা হবে না। হ্যান্ডওভারের পর ক্লায়েন্ট তাদের এডমিন একাউন্ট দিয়ে লগইন করে ফ্রেশ ডাটা এন্ট্রি করতে পারবে।'
                     : 'Admin (admin) & SuperAdmin (srabon) login credentials and core system frameworks are strictly preserved.'}
                 </p>
+              </div>
+
+              {/* Security Password Input Field */}
+              <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-[#1a2130] border border-slate-300 dark:border-slate-700 space-y-2">
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-100">
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-rose-500">lock</span>
+                    {language === 'bn' ? 'নিরাপত্তা পাসওয়ার্ড যাচাই (এডমিন / সুপারএডমিন)' : 'Security Verification Password (Admin / Super Admin)'}
+                  </span>
+                </label>
+                <input
+                  type="password"
+                  value={resetAdminPassword}
+                  onChange={(e) => {
+                    setResetAdminPassword(e.target.value);
+                    if (resetErrorMsg) setResetErrorMsg('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isResettingDb) {
+                      void handleExecuteDatabaseReset();
+                    }
+                  }}
+                  placeholder={language === 'bn' ? 'এডমিন পাসওয়ার্ড লিখুন (যেমন: admin123 অথবা vugichugi)' : 'Enter admin password (e.g. admin123 or vugichugi)'}
+                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#12161f] border border-slate-300 dark:border-slate-600 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-rose-500"
+                  autoFocus
+                />
+                {resetErrorMsg && (
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">error</span>
+                    {resetErrorMsg}
+                  </p>
+                )}
               </div>
             </div>
 
