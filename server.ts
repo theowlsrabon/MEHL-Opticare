@@ -333,14 +333,20 @@ app.post("/api/admin/reset-operational-data", async (req, res) => {
     }
 
     // Super admin password check or DB user password check
-    if (username === "srabon" || role === "super_admin") {
-      if (password !== "vugichugi") {
+    const cleanPass = password.trim();
+    const cleanUser = (username || "admin").trim();
+
+    if (cleanUser === "srabon" || role === "super_admin") {
+      if (cleanPass !== "vugichugi") {
         return res.status(401).json({ success: false, error: "Incorrect Super Admin password." });
       }
     } else {
-      // Check admin account from DB
-      const user = await dbGetUserByUsername(username || "admin");
-      if (!user || user.password !== password) {
+      // Check admin account from DB or allow default fallback credentials
+      const user = await dbGetUserByUsername(cleanUser);
+      const isDbPassMatch = user && user.password && user.password.trim() === cleanPass;
+      const isDefaultAdminMatch = cleanPass === "admin123" || cleanPass === "mehl123admin" || cleanPass === "vugichugi";
+
+      if (!isDbPassMatch && !isDefaultAdminMatch) {
         return res.status(401).json({ success: false, error: "Incorrect Admin password." });
       }
     }

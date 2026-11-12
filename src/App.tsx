@@ -1087,13 +1087,14 @@ export default function App() {
         body: JSON.stringify({
           role: currentUserRole,
           username: authenticatedUser?.username || 'admin',
-          password: resetAdminPassword,
+          password: resetAdminPassword.trim(),
         }),
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to reboot database.');
+      const parsed = await safeParseJsonResponse<{ success?: boolean; error?: string; message?: string }>(res);
+      if (!res.ok || !parsed.data?.success) {
+        const errMsg = parsed.data?.error || parsed.error || `Error ${res.status}: Failed to reboot database.`;
+        throw new Error(errMsg);
       }
 
       // Clear recorded operational inputs from browser localStorage (keep auth credentials)
