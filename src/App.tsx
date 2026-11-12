@@ -1090,6 +1090,9 @@ export default function App() {
         'madina_due_invoices',
         'madina_due_audit_log',
         'madina_optical_sms_logs',
+        'madina_salesmen',
+        'madina_branches',
+        'madina_suppliers',
       ];
       keysToRemove.forEach((k) => localStorage.removeItem(k));
 
@@ -1098,6 +1101,9 @@ export default function App() {
       setInventory([]);
       setSalesRecords([]);
       setFinancialCollections([]);
+      setSalesmen([]);
+      setBranches([]);
+      setSuppliers([]);
       setExpenses([]);
       setSalesReturns([]);
       setPurchaseReturns([]);
