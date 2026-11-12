@@ -211,22 +211,6 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
             </div>}
 
             {renderNavItem(
-              'executive-dashboard',
-              <Activity size={17} />,
-              'Executive Dashboard',
-              'এক্সিকিউটিভ ড্যাশবোর্ড',
-              { text: 'C-SUITE', variant: 'amber' }
-            )}
-
-            {renderNavItem(
-              'lab-pipeline',
-              <Factory size={17} />,
-              'Lab Glazing Conveyor',
-              'ল্যাব গ্লেজিং কনভেয়ার',
-              { text: `${activeLabJobsCount}`, variant: 'count' }
-            )}
-
-            {renderNavItem(
               'modina-erp',
               <Receipt size={17} />,
               'POS & ERP Suite',
@@ -242,10 +226,19 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
             )}
 
             {renderNavItem(
-              'stock-master',
-              <Boxes size={17} />,
-              'Stock & Frame Registry',
-              'স্টক ও ফ্রেম রেজিস্ট্রি'
+              'lab-pipeline',
+              <Factory size={17} />,
+              'Lab Glazing Conveyor',
+              'ল্যাব গ্লেজিং কনভেয়ার',
+              { text: `${activeLabJobsCount}`, variant: 'count' }
+            )}
+
+            {renderNavItem(
+              'returns-refunds',
+              <RefreshCcw size={17} />,
+              'Returns, Refunds & Credit',
+              'রিটার্ন, রিফান্ড ও ক্রেডিট',
+              { text: 'CN/DN', variant: 'amber' }
             )}
           </div>
 
@@ -282,11 +275,10 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
             )}
 
             {renderNavItem(
-              'returns-refunds',
-              <RefreshCcw size={17} />,
-              'Returns, Refunds & Credit',
-              'রিটার্ন, রিফান্ড ও ক্রেডিট',
-              { text: 'CN/DN', variant: 'amber' }
+              'stock-master',
+              <Boxes size={17} />,
+              'Stock & Frame Registry',
+              'স্টক ও ফ্রেম রেজিস্ট্রি'
             )}
 
             {/* PHARMACY MODULE (Hidden temporarily as requested - can be re-enabled anytime by changing false to true) */}
@@ -306,6 +298,14 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
                 {language === 'bn' ? 'রিপোর্টস, সেটিংস ও নিরাপত্তা' : 'REPORTS, SETTINGS & SECURITY'}
               </span>
             </div>}
+
+            {renderNavItem(
+              'executive-dashboard',
+              <Activity size={17} />,
+              'Executive Dashboard',
+              'এক্সিকিউটিভ ড্যাশবোর্ড',
+              { text: 'C-SUITE', variant: 'amber' }
+            )}
 
             {renderNavItem(
               'reports',
