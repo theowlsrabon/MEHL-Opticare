@@ -81,7 +81,15 @@ app.use(
   cors({
     origin: ALLOWED_ORIGIN,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-user-role",
+      "x-username",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+    ],
     credentials: ALLOWED_ORIGIN !== "*",
   })
 );
@@ -559,62 +567,6 @@ app.post("/api/daily-closing", async (req, res) => {
     res.json({ success: true, message: `Daily drawer closing for ${closing.date} confirmed & saved` });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// Alias for database reset / operational wipe (Accessible via /api/reset-database as well)
-app.post("/api/reset-database", async (req, res) => {
-  try {
-    const role = (req.body?.role || req.headers["x-user-role"] || "").toString().toLowerCase();
-    const username = (req.body?.username || req.headers["x-username"] || "").toString().toLowerCase();
-    const password = (req.body?.password || "").toString();
-
-    const isAuthorized =
-      role === "admin" ||
-      role === "super_admin" ||
-      username === "admin" ||
-      username === "srabon";
-
-    if (!isAuthorized) {
-      return res.status(403).json({
-        success: false,
-        error: "Forbidden: Only Admin or Super Admin can reboot operational database.",
-      });
-    }
-
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        error: "Admin security password is required to confirm database reset.",
-      });
-    }
-
-    const cleanPass = password.trim();
-    const cleanUser = (username || "admin").trim();
-
-    if (cleanUser === "srabon" || role === "super_admin") {
-      if (cleanPass !== "vugichugi") {
-        return res.status(401).json({ success: false, error: "Incorrect Super Admin password." });
-      }
-    } else {
-      const user = await dbGetUserByUsername(cleanUser);
-      const isDbPassMatch = user && user.password && user.password.trim() === cleanPass;
-      const isDefaultAdminMatch = cleanPass === "admin123" || cleanPass === "mehl123admin" || cleanPass === "vugichugi";
-
-      if (!isDbPassMatch && !isDefaultAdminMatch) {
-        return res.status(401).json({ success: false, error: "Incorrect Admin password." });
-      }
-    }
-
-    const result = await dbResetOperationalData();
-    res.json({
-      success: true,
-      message: "Database operational data wiped successfully. Admin credentials preserved.",
-      result,
-    });
-  } catch (err: any) {
-    console.error("[reset-database error]:", err);
-    res.status(500).json({ success: false, error: err.message || "Failed to reboot database." });
   }
 });
 

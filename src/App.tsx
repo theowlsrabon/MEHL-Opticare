@@ -1091,8 +1091,6 @@ export default function App() {
       };
       const headers = {
         'Content-Type': 'application/json',
-        'x-user-role': currentUserRole,
-        'x-username': authenticatedUser?.username || 'admin',
       };
 
       // Try /api/reset-database first, fallback to /api/admin/reset-operational-data
