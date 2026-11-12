@@ -698,17 +698,14 @@ export default function App() {
         const totalOpticalRev = sortedSales.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
 
         const resetOffset = Number(dbData.drawerBalanceSummary?.resetOffset) || 0;
-        const effectiveCash = Math.max(
-          0,
-          Math.max(prev.cashCollectedBDT, reconciledCashInDrawer) - resetOffset
-        );
+        const effectiveCash = Math.max(0, reconciledCashInDrawer - resetOffset);
 
         return {
           ...prev,
           cashCollectedBDT: effectiveCash,
           digitalPaymentsBDT: totalDigital,
-          totalExpenses: Math.max(prev.totalExpenses, totalExpensesSum),
-          grossOpticalRevenue: Math.max(prev.grossOpticalRevenue, totalOpticalRev),
+          totalExpenses: totalExpensesSum,
+          grossOpticalRevenue: totalOpticalRev,
           dueCollectionsBDT: databaseCollections.reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0),
         };
       });

@@ -1436,6 +1436,7 @@ export async function dbResetOperationalData(): Promise<{
     'pharmacy_dispensations',
     'sms_logs',
     'system_audit_logs',
+    'salesmen',
   ];
 
   const purged: string[] = [];
@@ -1446,6 +1447,22 @@ export async function dbResetOperationalData(): Promise<{
     } catch (e: any) {
       console.warn(`[dbResetOperationalData] Table ${tbl} clear skipped or not present: ${e.message}`);
     }
+  }
+
+  // Clear non-standard test branches, preserve standard branches
+  try {
+    await p.query(`DELETE FROM hospital_branches WHERE id NOT IN ('branch-01', 'branch-02', 'branch-03', 'branch-04')`);
+    purged.push('hospital_branches (custom)');
+  } catch (e: any) {
+    console.warn(`[dbResetOperationalData] Branches cleanup error: ${e.message}`);
+  }
+
+  // Clear non-standard test suppliers, preserve standard official suppliers
+  try {
+    await p.query(`DELETE FROM suppliers WHERE id NOT IN ('sup-01', 'sup-02', 'sup-03', 'sup-04', 'sup-05')`);
+    purged.push('suppliers (custom)');
+  } catch (e: any) {
+    console.warn(`[dbResetOperationalData] Suppliers cleanup error: ${e.message}`);
   }
 
   // Delete non-admin custom staff accounts, preserve admin and super_admin

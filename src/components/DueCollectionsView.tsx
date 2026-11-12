@@ -96,285 +96,9 @@ export interface DueCollectionRecord {
   invoiceNumber: string;
 }
 
-const INVOICE_DATABASE: DispensaryInvoice[] = [
-  {
-    id: 'inv-8842',
-    invoiceNumber: '#INV-2024-8842',
-    legacyId: 'IN_1015',
-    status: 'due',
-    bookedDate: '28 Oct 2024, 04:15 PM',
-    deliveryDate: '30 Oct 2024 (Today)',
-    trayLocation: 'Tray #B-14',
-    patientName: 'Farhana Rahman',
-    patientPhone: '+880 1712-984210',
-    optometrist: 'Dr. Tariq Modina',
-    optometristReg: 'BMDC-OP-4421',
-    hospitalFile: 'MCH-2024-99120',
-    department: 'Eye Clinic OPD Dept',
-    refraction: {
-      rxRef: '#RX-24-8842',
-      lensType: 'Essilor Crizal Alize 1.61 Hi-Index UV400',
-      frameFit: 'Ray-Ban Aviator (Gold Frame, 58-14-135)',
-      typeBadge: 'Bifocal / Progressive',
-      od: {
-        sph: '-2.25',
-        cyl: '-0.75',
-        axis: '85°',
-        add: '+1.50',
-        pd: '31.5 mm',
-        segHeight: '18 mm',
-      },
-      os: {
-        sph: '-2.50',
-        cyl: '-0.50',
-        axis: '90°',
-        add: '+1.50',
-        pd: '31.0 mm',
-        segHeight: '18 mm',
-      },
-    },
-    items: [
-      {
-        id: 'item-1',
-        name: 'Ray-Ban Aviator Classic (RB3025)',
-        sku: 'RB-3025-001/58 • Gold Metal Full Rim',
-        category: 'Frame',
-        rate: 185.0,
-        discountPct: 0,
-        qty: 1,
-        netTotal: 185.0,
-      },
-      {
-        id: 'item-2',
-        name: 'Essilor Crizal Alize 1.61 Hi-Index Pair',
-        sku: 'Anti-Glare, Scratch Resistant, BlueShield UV400',
-        category: 'Optical Lens',
-        rate: 130.0,
-        discountPct: 7.7,
-        qty: 1,
-        netTotal: 120.0,
-      },
-      {
-        id: 'item-3',
-        name: 'Opti-Free PureMoist Lens Care Pack & Case',
-        sku: '300ml Solution + Antimicrobial Microfiber Cloth',
-        category: 'Pharmacy',
-        rate: 37.53,
-        discountPct: 0,
-        qty: 1,
-        netTotal: 37.53,
-      },
-    ],
-    subtotal: 342.53,
-    discountApplied: -10.0,
-    grossBill: 342.53,
-    prevPaid: 200.0,
-    initialDue: 142.53,
-    payments: [
-      {
-        id: 'pay-1',
-        title: 'Initial Order Advance (Payment #1)',
-        amount: 200.0,
-        date: '28 Oct 2024, 04:22 PM',
-        tenderMode: 'Cash',
-        receiptSlip: 'REC-8842-ADV',
-        receivedBy: 'Cashier #02 (Tariq)',
-        isInitial: true,
-      },
-    ],
-  },
-  {
-    id: 'inv-8839',
-    invoiceNumber: '#INV-2024-8839',
-    legacyId: 'IN_1012',
-    status: 'due',
-    bookedDate: '27 Oct 2024, 11:30 AM',
-    deliveryDate: '29 Oct 2024',
-    trayLocation: 'Tray #C-08',
-    patientName: 'Kamal Hossain',
-    patientPhone: '+880 1718-332211',
-    optometrist: 'Dr. Tariq Modina',
-    optometristReg: 'BMDC-OP-4421',
-    hospitalFile: 'MCH-2024-98845',
-    department: 'Eye Clinic OPD Dept',
-    refraction: {
-      rxRef: '#RX-24-8839',
-      lensType: 'Zeiss ClearView 1.56 BlueGuard SV',
-      frameFit: 'Titanium Rimless Flex (Gunmetal, 52-18-140)',
-      typeBadge: 'Single Vision Anti-Fatigue',
-      od: {
-        sph: '-1.50',
-        cyl: '-0.50',
-        axis: '180°',
-        add: '+0.00',
-        pd: '32.0 mm',
-        segHeight: 'N/A',
-      },
-      os: {
-        sph: '-1.75',
-        cyl: '-0.25',
-        axis: '175°',
-        add: '+0.00',
-        pd: '32.5 mm',
-        segHeight: 'N/A',
-      },
-    },
-    items: [
-      {
-        id: 'item-8839-1',
-        name: 'Gucci Square Titanium Flex Frame',
-        sku: 'GG-0098O-002 • Minimalist Rimless',
-        category: 'Frame',
-        rate: 175.0,
-        discountPct: 0,
-        qty: 1,
-        netTotal: 175.0,
-      },
-      {
-        id: 'item-8839-2',
-        name: 'Zeiss ClearView 1.56 BlueGuard Lens Pair',
-        sku: 'Single Vision High Optical Clarity',
-        category: 'Optical Lens',
-        rate: 110.0,
-        discountPct: 0,
-        qty: 1,
-        netTotal: 110.0,
-      },
-    ],
-    subtotal: 285.0,
-    discountApplied: 0,
-    grossBill: 285.0,
-    prevPaid: 200.0,
-    initialDue: 85.0,
-    payments: [
-      {
-        id: 'pay-8839-1',
-        title: 'Initial Order Advance (Payment #1)',
-        amount: 200.0,
-        date: '27 Oct 2024, 11:35 AM',
-        tenderMode: 'Cash',
-        receiptSlip: 'REC-8839-ADV',
-        receivedBy: 'Cashier #02 (Tariq)',
-        isInitial: true,
-      },
-    ],
-  },
-  {
-    id: 'inv-8821',
-    invoiceNumber: '#INV-2024-8821',
-    legacyId: 'IN_1008',
-    status: 'due',
-    bookedDate: '25 Oct 2024, 02:40 PM',
-    deliveryDate: '28 Oct 2024',
-    trayLocation: 'Tray #A-03',
-    patientName: 'Nazmul Islam',
-    patientPhone: '+880 1819-554433',
-    optometrist: 'Dr. Tariq Modina',
-    optometristReg: 'BMDC-OP-4421',
-    hospitalFile: 'MCH-2024-97210',
-    department: 'Eye Clinic OPD Dept',
-    refraction: {
-      rxRef: '#RX-24-8821',
-      lensType: 'Varilux Comfort Max 1.67 Transitions Gen 8',
-      frameFit: 'Silhouette Titan Minimal Art (Silver, 54-17-145)',
-      typeBadge: 'Photochromic Progressive',
-      od: {
-        sph: '+1.75',
-        cyl: '-1.00',
-        axis: '90°',
-        add: '+2.00',
-        pd: '33.0 mm',
-        segHeight: '19 mm',
-      },
-      os: {
-        sph: '+2.00',
-        cyl: '-0.75',
-        axis: '95°',
-        add: '+2.00',
-        pd: '33.0 mm',
-        segHeight: '19 mm',
-      },
-    },
-    items: [
-      {
-        id: 'item-8821-1',
-        name: 'Silhouette Titan Minimal Art Chassis',
-        sku: 'SIL-5060-6050 • Screwless Rimless',
-        category: 'Frame',
-        rate: 260.0,
-        discountPct: 0,
-        qty: 1,
-        netTotal: 260.0,
-      },
-      {
-        id: 'item-8821-2',
-        name: 'Varilux Comfort Max 1.67 Transitions Pair',
-        sku: 'Digital Surface Progressive Grey Tint',
-        category: 'Optical Lens',
-        rate: 250.0,
-        discountPct: 0,
-        qty: 1,
-        netTotal: 250.0,
-      },
-    ],
-    subtotal: 510.0,
-    discountApplied: 0,
-    grossBill: 510.0,
-    prevPaid: 300.0,
-    initialDue: 210.0,
-    payments: [
-      {
-        id: 'pay-8821-1',
-        title: 'Initial Order Advance (Payment #1)',
-        amount: 300.0,
-        date: '25 Oct 2024, 02:45 PM',
-        tenderMode: 'bKash',
-        receiptSlip: 'REC-8821-ADV',
-        receivedBy: 'Cashier #02 (Tariq)',
-        isInitial: true,
-      },
-    ],
-  },
-];
+const INVOICE_DATABASE: DispensaryInvoice[] = [];
 
-const INITIAL_AUDIT_LOG: SettledAuditRecord[] = [
-  {
-    id: 'aud-1',
-    time: '03:48 PM',
-    invoiceNumber: '#INV-2024-8839',
-    patientName: 'Kamal Hossain',
-    totalBill: 285.0,
-    paidToday: 85.0,
-    remainingDue: 0.0,
-    tenderMode: 'Cash',
-    handover: 'Delivered',
-    cashier: 'Dr. Tariq',
-  },
-  {
-    id: 'aud-2',
-    time: '02:15 PM',
-    invoiceNumber: '#INV-2024-8835',
-    patientName: 'Nusrat Jahan',
-    totalBill: 410.0,
-    paidToday: 150.0,
-    remainingDue: 0.0,
-    tenderMode: 'POS Card',
-    handover: 'Delivered',
-    cashier: 'Cashier 02',
-  },
-  {
-    id: 'aud-3',
-    time: '01:30 PM',
-    invoiceNumber: '#INV-2024-8830',
-    patientName: 'Rafiqul Anwar',
-    totalBill: 190.0,
-    paidToday: 90.0,
-    remainingDue: 0.0,
-    tenderMode: 'bKash',
-    handover: 'Delivered',
-    cashier: 'Dr. Tariq',
-  },
-];
+const INITIAL_AUDIT_LOG: SettledAuditRecord[] = [];
 
 interface DueCollectionsViewProps {
   onCollectionRecorded?: (collection: DueCollectionRecord) => void;
@@ -509,8 +233,8 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
   const [markDelivered, setMarkDelivered] = useState<boolean>(true);
 
   // KPI States
-  const [todayCollectedTotal, setTodayCollectedTotal] = useState<number>(1420.0);
-  const [todaySlipsCount, setTodaySlipsCount] = useState<number>(12);
+  const [todayCollectedTotal, setTodayCollectedTotal] = useState<number>(0);
+  const [todaySlipsCount, setTodaySlipsCount] = useState<number>(0);
   const [auditLog, setAuditLog] = useState<SettledAuditRecord[]>(() => {
     const saved = localStorage.getItem('madina_due_audit_log');
     if (saved) {
@@ -1979,20 +1703,27 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             </div>
 
             <div id="daily-shift-ledger-printable" className="printable-area p-5 space-y-4 bg-white text-slate-900 rounded-xl">
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
-                  <span className="text-[11px] text-on-surface-variant block font-medium">Cash Collected</span>
-                  <span className="font-data-pos text-[16px] font-bold text-primary">৳890.00</span>
-                </div>
-                <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
-                  <span className="text-[11px] text-on-surface-variant block font-medium">POS Card</span>
-                  <span className="font-data-pos text-[16px] font-bold text-secondary">৳310.00</span>
-                </div>
-                <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
-                  <span className="text-[11px] text-on-surface-variant block font-medium">bKash / Nagad</span>
-                  <span className="font-data-pos text-[16px] font-bold text-on-surface">৳220.00</span>
-                </div>
-              </div>
+              {(() => {
+                const cashColl = auditLog.filter(a => a.tenderMode === 'Cash').reduce((s, a) => s + (Number(a.paidToday) || 0), 0);
+                const cardColl = auditLog.filter(a => a.tenderMode === 'Card' || a.tenderMode === 'POS Card').reduce((s, a) => s + (Number(a.paidToday) || 0), 0);
+                const mfsColl = auditLog.filter(a => a.tenderMode === 'bKash' || a.tenderMode === 'Nagad' || a.tenderMode === 'MFS').reduce((s, a) => s + (Number(a.paidToday) || 0), 0);
+                return (
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
+                      <span className="text-[11px] text-on-surface-variant block font-medium">Cash Collected</span>
+                      <span className="font-data-pos text-[16px] font-bold text-primary">৳{cashColl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
+                      <span className="text-[11px] text-on-surface-variant block font-medium">POS Card</span>
+                      <span className="font-data-pos text-[16px] font-bold text-secondary">৳{cardColl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant">
+                      <span className="text-[11px] text-on-surface-variant block font-medium">bKash / Nagad</span>
+                      <span className="font-data-pos text-[16px] font-bold text-on-surface">৳{mfsColl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="p-4 bg-primary/10 rounded-xl border border-primary/20 flex items-center justify-between">
                 <div>
