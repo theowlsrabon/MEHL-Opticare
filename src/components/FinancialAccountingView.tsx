@@ -133,16 +133,52 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
     return total + dueAmount;
   }, 0);
 
-  const reportTotalRevenueDeductions = reportSalesRefunds + reportSupplierOrderPayments + reportSalesDueAmount;
+  // Revenue deductions: Sales returns & refunds + uncollected invoice due balances (Supplier PO payments removed as requested)
+  const reportTotalRevenueDeductions = reportSalesRefunds + reportSalesDueAmount;
   const reportPharmacyRevenue = filteredDispensations.reduce((total, record) => total + (Number(record.totalPriceBDT) || 0), 0);
   const reportRecordedRevenue = reportGrossSalesRevenue;
-  const reportRecordedCogs = filteredSales.reduce((total, sale) => (
-    total + (sale.itemLines || []).reduce((saleTotal, line) => (
-      typeof line.unitCostBDT === 'number' && Number.isFinite(line.unitCostBDT)
+
+  // COGS for physical goods (frames, lenses, inventory items with recorded cost)
+  const reportPhysicalCogs = filteredSales.reduce((total, sale) => (
+    total + (sale.itemLines || []).reduce((saleTotal, line) => {
+      // Exclude paid service lines from physical cogs (handled below)
+      const sku = (line.sku || '').toUpperCase();
+      const isPaidServiceLine = sku.startsWith('SRV-');
+      if (isPaidServiceLine) return saleTotal;
+
+      return typeof line.unitCostBDT === 'number' && Number.isFinite(line.unitCostBDT)
         ? saleTotal + line.unitCostBDT * line.quantity
-        : saleTotal
-    ), 0)
+        : saleTotal;
+    }, 0)
   ), 0);
+
+  // Cost of Paid Services: calculated as 90% of selling price (e.g. Super Clean, Nose Pad Replacement, etc.)
+  const reportPaidServicesCost = filteredSales.reduce((total, sale) => {
+    let serviceRevenue = 0;
+
+    // 1. Check itemLines for service items
+    (sale.itemLines || []).forEach((line) => {
+      const sku = (line.sku || '').toUpperCase();
+      const isServiceSku = sku.startsWith('SRV-');
+      const isServiceCategory = (line.category as string) === 'Service' || (line.category as string) === 'Accessories';
+      if (isServiceSku || (isServiceCategory && /super clean|nose pad|wash|ribbon|cleaner/i.test(line.name || ''))) {
+        const linePrice = Number(line.unitPriceBDT) || 0;
+        const lineQty = Number(line.quantity) || 1;
+        const lineDiscount = Number(line.discountBDT) || 0;
+        serviceRevenue += Math.max(0, (linePrice * lineQty) - lineDiscount);
+      }
+    });
+
+    // 2. Also check sale's prescription or explicit paidServices field if present
+    if (serviceRevenue === 0 && (sale as any).paidServicesTotal) {
+      serviceRevenue = Number((sale as any).paidServicesTotal) || 0;
+    }
+
+    return total + (serviceRevenue * 0.90);
+  }, 0);
+
+  const reportTotalCogs = reportPhysicalCogs + reportPaidServicesCost;
+  const reportRecordedCogs = reportTotalCogs;
   const reportNetRevenue = reportGrossSalesRevenue - reportTotalRevenueDeductions;
   const reportGrossProfitEstimate = reportNetRevenue - reportRecordedCogs;
   const reportOperatingExpenses = filteredExpenses.reduce((total, expense) => total + (Number(expense.amountBDT) || 0), 0);
@@ -381,10 +417,6 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <span className="font-data-rx font-bold">−৳{formatAmount(reportSalesRefunds)}</span>
                 </div>
                 <div className="flex justify-between text-red-700 dark:text-red-300">
-                  <span>{text('Less: Supplier order payments (Cash & Due)', 'বাদ: সরবরাহকারীর অর্ডার পরিশোধ (নগদ ও বকেয়া)')}</span>
-                  <span className="font-data-rx font-bold">−৳{formatAmount(reportSupplierOrderPayments)}</span>
-                </div>
-                <div className="flex justify-between text-red-700 dark:text-red-300">
                   <span>{text('Less: Uncollected invoice balance (Due)', 'বাদ: অপরিশোধিত ইনভয়েস ব্যালেন্স (বকেয়া)')}</span>
                   <span className="font-data-rx font-bold">−৳{formatAmount(reportSalesDueAmount)}</span>
                 </div>
@@ -410,15 +442,21 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
               </div>
               <div className="space-y-1.5 pl-3">
                 <div className="flex justify-between">
-                  <span className="text-on-surface">{text('Cost recorded on sale lines', 'বিক্রয়-লাইনে সংরক্ষিত পণ্যমূল্য')}</span>
-                  <span className="font-data-rx font-bold text-on-surface">৳{formatAmount(reportRecordedCogs)}</span>
+                  <span className="text-on-surface">{text('Cost recorded on sale lines (Frames & Inventory)', 'বিক্রয়-লাইনে সংরক্ষিত ফ্রেম ও পণ্যের খরচ')}</span>
+                  <span className="font-data-rx font-bold text-on-surface">৳{formatAmount(reportPhysicalCogs)}</span>
                 </div>
+                {reportPaidServicesCost > 0 && (
+                  <div className="flex justify-between pl-3 text-amber-700 dark:text-amber-300">
+                    <span>{text('Cost of Paid Services (90% of selling price)', 'পেইড সার্ভিস খরচ (বিক্রয়মূল্যের ৯০%)')}</span>
+                    <span className="font-data-rx font-bold">৳{formatAmount(reportPaidServicesCost)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between pt-1 font-extrabold border-t border-dashed border-slate-300 dark:border-[#272d3a]">
-                  <span>{text('Recorded COGS', 'সংরক্ষিত COGS')}</span>
+                  <span>{text('Recorded COGS & Service Costs', 'সংরক্ষিত COGS ও সার্ভিস খরচ')}</span>
                   <span className="font-data-rx text-amber-700 dark:text-amber-300">৳{formatAmount(reportRecordedCogs)}</span>
                 </div>
                 <p className="text-[10px] text-outline">
-                  {text('Only sale lines with a recorded unit cost are included; missing line costs and pharmacy costs are not assumed to be zero.', 'শুধু ইউনিট খরচ সংরক্ষিত বিক্রয়-লাইন অন্তর্ভুক্ত; অনুপস্থিত লাইন ও ফার্মেসির খরচ শূন্য ধরা হয়নি।')}
+                  {text('Includes recorded physical goods cost plus 90% cost estimate on paid services (Super Clean, Nose Pad, etc.).', 'সংরক্ষিত ফ্রেম ও পণ্যের খরচের পাশাপাশি পেইড সার্ভিসের (সুপার ক্লিন, নোজ প্যাড ইত্যাদি) ৯০% খরচ অন্তর্ভুক্ত।')}
                 </p>
               </div>
             </div>
