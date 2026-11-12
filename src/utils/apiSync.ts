@@ -544,13 +544,13 @@ export async function fetchInitialDataFromDb(): Promise<{
       fetch(`${API_BASE}/api/pharmacy/dispensations`).then((r) => r.json()),
     ]);
 
-    if (jobsRes.status === 'fulfilled' && jobsRes.value?.success && jobsRes.value.data?.length > 0) {
+    if (jobsRes.status === 'fulfilled' && jobsRes.value?.success && Array.isArray(jobsRes.value.data)) {
       result.jobs = jobsRes.value.data;
     }
-    if (invRes.status === 'fulfilled' && invRes.value?.success && invRes.value.data?.length > 0) {
+    if (invRes.status === 'fulfilled' && invRes.value?.success && Array.isArray(invRes.value.data)) {
       result.inventory = invRes.value.data;
     }
-    if (salesRes.status === 'fulfilled' && salesRes.value?.success && salesRes.value.data?.length > 0) {
+    if (salesRes.status === 'fulfilled' && salesRes.value?.success && Array.isArray(salesRes.value.data)) {
       result.sales = salesRes.value.data;
     }
     if (collectionsRes.status === 'fulfilled' && collectionsRes.value?.success) {

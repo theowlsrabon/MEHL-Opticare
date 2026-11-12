@@ -273,6 +273,7 @@ export default function App() {
       return initialFinancialSummary;
     }
   });
+  const isHydratedFromDb = useRef(false);
   const postedDueCollectionIds = useRef<Set<string>>(new Set());
   const recordedSaleIds = useRef<Set<string>>(new Set());
   const [financialCollections, setFinancialCollections] = useState<DueCollectionRecord[]>(() => {
@@ -576,131 +577,124 @@ export default function App() {
     ]);
   };
 
-  // Initial hydration from the application database
+  // Initial hydration from the application database (Database is single source of truth)
   useEffect(() => {
     fetchInitialDataFromDb().then((dbData) => {
-      if (dbData.jobs && dbData.jobs.length > 0) {
+      // 1. Optical Jobs
+      if (Array.isArray(dbData.jobs)) {
         setJobs(dbData.jobs);
-      } else if (jobs.length > 0) {
-        // Seed MySQL with initial jobs
-        bulkSyncJobsToDb(jobs);
+        localStorage.setItem('madina_jobs', JSON.stringify(dbData.jobs));
       }
 
-      if (dbData.inventory && dbData.inventory.length > 0) {
+      // 2. Inventory Items
+      if (Array.isArray(dbData.inventory)) {
         setInventory(dbData.inventory);
-      } else if (inventory.length > 0) {
-        // Seed MySQL with initial inventory
-        bulkSyncInventoryToDb(inventory);
+        localStorage.setItem('madina_inventory', JSON.stringify(dbData.inventory));
       }
 
-      const localSales = (() => {
-        try {
-          return JSON.parse(localStorage.getItem('madina_sales_records') || '[]') as SaleRecord[];
-        } catch (error) {
-          console.warn('[Sales Sync] Could not read locally saved sales records:', error);
-          return [];
-        }
-      })();
-      const databaseSales = dbData.sales || [];
-      const databaseSaleIds = new Set(databaseSales.map((sale) => sale.id));
-      localSales
-        .filter((sale) => !databaseSaleIds.has(sale.id))
-        .forEach((sale) => {
-          void syncSaleToDb(sale).then((synced) => setSaleSyncWarning(!synced));
-        });
-
-      const localCollections = (() => {
-        try {
-          return JSON.parse(localStorage.getItem('madina_financial_collections') || '[]') as DueCollectionRecord[];
-        } catch (error) {
-          console.warn('[Collections Sync] Could not read locally cached collection records:', error);
-          return [];
-        }
-      })();
-      const databaseCollections = dbData.financialCollections || [];
-      const collectionsById = new Map<string, DueCollectionRecord>();
-      [...localCollections, ...databaseCollections].forEach((collection) => collectionsById.set(collection.id, collection));
-      const databaseCollectionIds = new Set(databaseCollections.map((collection) => collection.id));
-      localCollections
-        .filter((collection) => !databaseCollectionIds.has(collection.id))
-        .forEach((collection) => void syncFinancialCollectionToDb(collection));
-      const allSales = new Map<string, SaleRecord>();
-      [...salesRecords, ...localSales, ...databaseSales].forEach((sale) => allSales.set(sale.id, sale));
-      allSales.forEach((sale) => {
-        const saleAdvance = Number(sale.advancePaid) || 0;
-        if (saleAdvance <= 0) return;
-        const collection: DueCollectionRecord = {
-          id: `sale-${sale.id}`,
-          amountBDT: saleAdvance,
-          tenderMode: sale.paymentMethod || 'Cash',
-          date: sale.date || sale.timestamp?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-          invoiceNumber: sale.invoiceNumber,
-        };
-        collectionsById.set(collection.id, collection);
-        if (!databaseCollectionIds.has(collection.id)) void syncFinancialCollectionToDb(collection);
-      });
-      const mergedCollections = [...collectionsById.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      setFinancialCollections(mergedCollections);
-      localStorage.setItem('madina_financial_collections', JSON.stringify(mergedCollections));
-
-      const mergedSalesMap = new Map<string, SaleRecord>();
-      [...localSales, ...salesRecords, ...databaseSales].forEach((sale) => mergedSalesMap.set(sale.id, sale));
-      const sortedSales = [...mergedSalesMap.values()].sort((a, b) =>
-        (b.timestamp || b.date).localeCompare(a.timestamp || a.date)
+      // 3. Sales Records — DB is the authority
+      const databaseSales: SaleRecord[] = Array.isArray(dbData.sales) ? dbData.sales : [];
+      const sortedSales = [...databaseSales].sort((a, b) =>
+        (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || '')
       );
       setSalesRecords(sortedSales);
+      localStorage.setItem('madina_sales_records', JSON.stringify(sortedSales));
 
-      // Hydrate & Merge Salesmen from database & local cache
-      const localSalesmen = (() => {
-        try {
-          const raw = localStorage.getItem('madina_salesmen');
-          return raw ? (JSON.parse(raw) as Salesman[]) : [];
-        } catch {
-          return [];
-        }
-      })();
-      const databaseSalesmen = dbData.salesmen || [];
-      const salesmenById = new Map<string, Salesman>();
-      [...salesmen, ...localSalesmen, ...databaseSalesmen].forEach((sm) => {
-        if (sm && sm.id) salesmenById.set(sm.id, sm);
-      });
-      const mergedSalesmen = [...salesmenById.values()];
-      if (mergedSalesmen.length > 0) {
-        setSalesmen(mergedSalesmen);
-        localStorage.setItem('madina_salesmen', JSON.stringify(mergedSalesmen));
-        // Sync any local salesmen to the database if not yet present
-        const dbSalesmenIds = new Set(databaseSalesmen.map((sm) => sm.id));
-        mergedSalesmen.forEach((sm) => {
-          if (!dbSalesmenIds.has(sm.id)) {
-            void syncSalesmanToDb(sm);
-          }
-        });
+      // 4. Financial Collections — DB is the authority
+      const databaseCollections: DueCollectionRecord[] = Array.isArray(dbData.financialCollections)
+        ? dbData.financialCollections
+        : [];
+      setFinancialCollections(databaseCollections);
+      localStorage.setItem('madina_financial_collections', JSON.stringify(databaseCollections));
+
+      // 5. Salesmen
+      if (Array.isArray(dbData.salesmen)) {
+        setSalesmen(dbData.salesmen);
+        localStorage.setItem('madina_salesmen', JSON.stringify(dbData.salesmen));
       }
 
-      // Reconcile Drawer Cash Balance (Carryover from all cash collections minus outflows)
+      // 6. Expenses
+      const databaseExpenses: ExpenseItem[] = Array.isArray(dbData.expenses) ? dbData.expenses : [];
+      if (Array.isArray(dbData.expenses)) {
+        setExpenses(databaseExpenses);
+        localStorage.setItem('madina_expenses', JSON.stringify(databaseExpenses));
+      }
+
+      // 7. Sales Returns
+      const databaseSalesReturns: SalesReturn[] = Array.isArray(dbData.salesReturns) ? dbData.salesReturns : [];
+      if (Array.isArray(dbData.salesReturns)) {
+        setSalesReturns(databaseSalesReturns);
+        localStorage.setItem('madina_sales_returns', JSON.stringify(databaseSalesReturns));
+      }
+
+      // 8. Purchase Returns
+      if (Array.isArray(dbData.purchaseReturns)) {
+        setPurchaseReturns(dbData.purchaseReturns);
+        localStorage.setItem('madina_purchase_returns', JSON.stringify(dbData.purchaseReturns));
+      }
+
+      // 9. Purchase Orders
+      const databasePurchaseOrders: PurchaseOrder[] = Array.isArray(dbData.purchaseOrders) ? dbData.purchaseOrders : [];
+      if (Array.isArray(dbData.purchaseOrders)) {
+        setPurchaseOrders(databasePurchaseOrders);
+      } else {
+        const error = new Error('Purchase order database request failed.');
+        console.error('[Purchase Orders] Could not load purchase orders from the database:', error);
+        setPurchaseOrdersLoadError(error.message);
+      }
+      setPurchaseOrdersLoading(false);
+
+      // 10. GRNs
+      if (Array.isArray(dbData.grns)) {
+        setGrns(dbData.grns);
+        localStorage.setItem('madina_grns', JSON.stringify(dbData.grns));
+      }
+
+      // 11. IBT Orders
+      if (Array.isArray(dbData.ibtOrders)) {
+        setIbtOrders(dbData.ibtOrders);
+      }
+
+      // 12. Pharmacy Drugs
+      if (Array.isArray(dbData.drugs)) {
+        setDrugs(dbData.drugs);
+      }
+
+      // 13. Pharmacy Dispensations
+      if (Array.isArray(dbData.dispensations)) {
+        setDispensations(dbData.dispensations);
+      }
+
+      // 14. Prescriptions
+      if (Array.isArray(dbData.prescriptions)) {
+        setPrescriptions(dbData.prescriptions);
+        localStorage.setItem('madina_prescriptions', JSON.stringify(dbData.prescriptions));
+      }
+
+      // Reconcile Drawer Cash Balance
       setFinancialSummary((prev) => {
-        const totalCashInflow = mergedCollections
+        const totalCashInflow = databaseCollections
           .filter((c) => c.tenderMode === 'Cash')
           .reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0);
 
-        const totalCashExpenses = expenses
+        const totalCashExpenses = databaseExpenses
           .filter((e) => e.paymentMode === 'Cash')
           .reduce((sum, e) => sum + (Number(e.amountBDT) || 0), 0);
 
-        const totalCashRefunds = salesReturns
+        const totalCashRefunds = databaseSalesReturns
           .filter((r) => r.refundMethod === 'Cash Refund')
           .reduce((sum, r) => sum + (Number(r.totalRefundBDT) || 0), 0);
 
-        const totalCashPo = purchaseOrders
+        const totalCashPo = databasePurchaseOrders
           .reduce((sum, po) => sum + (Number(po.paidAmountBDT) || 0), 0);
 
         const reconciledCashInDrawer = Math.max(0, totalCashInflow - totalCashExpenses - totalCashRefunds - totalCashPo);
 
-        const totalDigital = mergedCollections
+        const totalDigital = databaseCollections
           .filter((c) => c.tenderMode !== 'Cash')
           .reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0);
 
-        const totalExpensesSum = expenses.reduce((sum, e) => sum + (Number(e.amountBDT) || 0), 0);
+        const totalExpensesSum = databaseExpenses.reduce((sum, e) => sum + (Number(e.amountBDT) || 0), 0);
         const totalOpticalRev = sortedSales.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
 
         const resetOffset = Number(dbData.drawerBalanceSummary?.resetOffset) || 0;
@@ -715,75 +709,12 @@ export default function App() {
           digitalPaymentsBDT: totalDigital,
           totalExpenses: Math.max(prev.totalExpenses, totalExpensesSum),
           grossOpticalRevenue: Math.max(prev.grossOpticalRevenue, totalOpticalRev),
-          dueCollectionsBDT: mergedCollections.reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0),
+          dueCollectionsBDT: databaseCollections.reduce((sum, c) => sum + (Number(c.amountBDT) || 0), 0),
         };
       });
 
-      // Hydrate Expenses from Neon DB
-      if (dbData.expenses && dbData.expenses.length > 0) {
-        setExpenses(dbData.expenses);
-      } else if (expenses.length > 0) {
-        expenses.forEach((e) => void syncExpenseToDb(e));
-      }
-
-      // Hydrate Sales Returns from Neon DB
-      if (dbData.salesReturns && dbData.salesReturns.length > 0) {
-        setSalesReturns(dbData.salesReturns);
-      } else if (salesReturns.length > 0) {
-        salesReturns.forEach((r) => void syncSalesReturnToDb(r));
-      }
-
-      // Hydrate Purchase Returns from Neon DB
-      if (dbData.purchaseReturns && dbData.purchaseReturns.length > 0) {
-        setPurchaseReturns(dbData.purchaseReturns);
-      } else if (purchaseReturns.length > 0) {
-        purchaseReturns.forEach((r) => void syncPurchaseReturnToDb(r));
-      }
-
-      // Hydrate Purchase Orders from Neon DB
-      if (Array.isArray(dbData.purchaseOrders)) {
-        setPurchaseOrders(dbData.purchaseOrders);
-      } else {
-        const error = new Error('Purchase order database request failed.');
-        console.error('[Purchase Orders] Could not load purchase orders from the database:', error);
-        setPurchaseOrdersLoadError(error.message);
-      }
-      setPurchaseOrdersLoading(false);
-
-      // Hydrate GRNs from Neon DB
-      if (dbData.grns && dbData.grns.length > 0) {
-        setGrns(dbData.grns);
-      } else if (grns.length > 0) {
-        void bulkSyncGrnsToDb(grns);
-      }
-
-      // Hydrate IBT Orders from Neon DB
-      if (dbData.ibtOrders && dbData.ibtOrders.length > 0) {
-        setIbtOrders(dbData.ibtOrders);
-      } else if (ibtOrders.length > 0) {
-        void bulkSyncIbtOrdersToDb(ibtOrders);
-      }
-
-      // Hydrate Pharmacy Drugs from Neon DB
-      if (dbData.drugs && dbData.drugs.length > 0) {
-        setDrugs(dbData.drugs);
-      } else if (drugs.length > 0) {
-        void bulkSyncPharmacyDrugsToDb(drugs);
-      }
-
-      // Hydrate Pharmacy Dispensations from Neon DB
-      if (dbData.dispensations && dbData.dispensations.length > 0) {
-        setDispensations(dbData.dispensations);
-      } else if (dispensations.length > 0) {
-        void bulkSyncPharmacyDispensationsToDb(dispensations);
-      }
-
-      // Hydrate Prescriptions from Neon DB
-      if (dbData.prescriptions && dbData.prescriptions.length > 0) {
-        setPrescriptions(dbData.prescriptions);
-      } else if (prescriptions.length > 0) {
-        void bulkSyncPrescriptionsToDb(prescriptions);
-      }
+      // Hydration done: allow future user modifications to sync to database
+      isHydratedFromDb.current = true;
     });
   }, []);
 
@@ -834,6 +765,7 @@ export default function App() {
   // Persist state to localStorage and the application database
   useEffect(() => {
     localStorage.setItem('madina_jobs', JSON.stringify(jobs));
+    if (!isHydratedFromDb.current) return;
     const timer = setTimeout(() => {
       bulkSyncJobsToDb(jobs);
     }, 1500);
@@ -842,6 +774,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('madina_inventory', JSON.stringify(inventory));
+    if (!isHydratedFromDb.current) return;
     const timer = setTimeout(() => {
       bulkSyncInventoryToDb(inventory);
     }, 2000);
