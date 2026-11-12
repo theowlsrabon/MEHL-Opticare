@@ -3073,8 +3073,8 @@ export default function App() {
                 </div>
                 <p className="text-[11px] leading-relaxed">
                   {language === 'bn'
-                    ? 'এডমিন (admin) ও সুপারএডমিন (srabon) লগইন ক্রেডেনশিয়াল মোছা হবে না। হ্যান্ডওভারের পর ক্লায়েন্ট তাদের এডমিন একাউন্ট দিয়ে লগইন করে ফ্রেশ ডাটা এন্ট্রি করতে পারবে।'
-                    : 'Admin (admin) & SuperAdmin (srabon) login credentials and core system frameworks are strictly preserved.'}
+                    ? 'এডমিন (admin) লগইন ক্রেডেনশিয়াল মোছা হবে না। হ্যান্ডওভারের পর ক্লায়েন্ট তাদের এডমিন একাউন্ট দিয়ে লগইন করে ফ্রেশ ডাটা এন্ট্রি করতে পারবে।'
+                    : 'Adminlogin credentials and core system frameworks are strictly preserved.'}
                 </p>
               </div>
 
@@ -3083,7 +3083,7 @@ export default function App() {
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-100">
                   <span className="flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-[16px] text-rose-500">lock</span>
-                    {language === 'bn' ? 'নিরাপত্তা পাসওয়ার্ড যাচাই (এডমিন / সুপারএডমিন)' : 'Security Verification Password (Admin / Super Admin)'}
+                    {language === 'bn' ? 'নিরাপত্তা পাসওয়ার্ড যাচাই (এডমিন)' : 'Security Verification Password (Admin)'}
                   </span>
                 </label>
                 <input
@@ -3098,7 +3098,7 @@ export default function App() {
                       void handleExecuteDatabaseReset();
                     }
                   }}
-                  placeholder={language === 'bn' ? 'এডমিন পাসওয়ার্ড লিখুন (যেমন: admin123 অথবা vugichugi)' : 'Enter admin password (e.g. admin123 or vugichugi)'}
+                  placeholder={language === 'bn' ? 'এডমিন পাসওয়ার্ড লিখুন ' : 'Enter admin password '}
                   className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#12161f] border border-slate-300 dark:border-slate-600 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-rose-500"
                   autoFocus
                 />
