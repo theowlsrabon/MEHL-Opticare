@@ -280,6 +280,9 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   }, [initialDate, todayIso]);
 
   const [selectedDate, setSelectedDate] = useState<string>(defaultSelectedDate);
+  const [viewMode, setViewMode] = useState<'single' | 'range'>('single');
+  const [rangeStart, setRangeStart] = useState<string>(defaultSelectedDate);
+  const [rangeEnd, setRangeEnd] = useState<string>(defaultSelectedDate);
   const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'costs' | 'jobs' | 'payment_audit'>('invoices');
   const [copySuccess, setCopySuccess] = useState(false);
   const [dailyData, setDailyData] = useState<DailyClosingData | null>(null);
@@ -339,7 +342,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !selectedDate) return;
+    if (!isOpen || !selectedDate || viewMode === 'range') return;
 
     const controller = new AbortController();
     setDailyData(null);
@@ -403,12 +406,64 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       });
 
     return () => controller.abort();
-  }, [isOpen, selectedDate, reloadToken, fallbackSales, fallbackCollections, fallbackJobs, fallbackExpenses, fallbackSalesReturns, fallbackPurchaseOrders]);
+  }, [isOpen, selectedDate, viewMode, reloadToken, fallbackSales, fallbackCollections, fallbackJobs, fallbackExpenses, fallbackSalesReturns, fallbackPurchaseOrders]);
 
-  const selectedSales = dailyData?.sales || [];
+  // Helper: check if a date string falls within the range (inclusive)
+  const isInRange = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const d = dateStr.slice(0, 10);
+    return d >= rangeStart && d <= rangeEnd;
+  };
+
+  // Range mode: aggregate data directly from fallback props across the range
+  const rangeSales = useMemo(() => {
+    if (viewMode !== 'range') return [];
+    return (fallbackSales || []).filter((s) => isInRange(s.date || String((s as any).timestamp || '').slice(0, 10)));
+  }, [viewMode, fallbackSales, rangeStart, rangeEnd]);
+
+  const rangeCollections = useMemo(() => {
+    if (viewMode !== 'range') return [];
+    return (fallbackCollections || []).filter((c) => isInRange(c.date || String((c as any).timestamp || '').slice(0, 10)));
+  }, [viewMode, fallbackCollections, rangeStart, rangeEnd]);
+
+  const rangeExpenses = useMemo(() => {
+    if (viewMode !== 'range') return [];
+    return (fallbackExpenses || []).filter((e) => isInRange(e.date || ''));
+  }, [viewMode, fallbackExpenses, rangeStart, rangeEnd]);
+
+  const rangeSalesReturns = useMemo(() => {
+    if (viewMode !== 'range') return [];
+    return (fallbackSalesReturns || []).filter((r) => isInRange(r.date || '') && r.status !== 'pending');
+  }, [viewMode, fallbackSalesReturns, rangeStart, rangeEnd]);
+
+  const rangePurchaseOrderPayments = useMemo(() => {
+    if (viewMode !== 'range') return [];
+    const list: Array<{ id: string; poId: string; supplierName: string; amountBDT: number; paymentMode: string; date: string }> = [];
+    (fallbackPurchaseOrders || []).forEach((po) => {
+      if (Array.isArray(po.paymentHistory) && po.paymentHistory.length > 0) {
+        po.paymentHistory.forEach((p: any) => {
+          if (isInRange(p.date || '')) {
+            list.push({ id: `${po.id}-${p.id}`, poId: po.id, supplierName: po.supplierName, amountBDT: Number(p.amountBDT) || 0, paymentMode: p.paymentMode || 'Cash', date: p.date });
+          }
+        });
+      } else if (Number(po.paidAmountBDT) > 0 && isInRange(po.date || '')) {
+        list.push({ id: po.id, poId: po.id, supplierName: po.supplierName, amountBDT: Number(po.paidAmountBDT) || 0, paymentMode: 'Cash', date: po.date });
+      }
+    });
+    return list;
+  }, [viewMode, fallbackPurchaseOrders, rangeStart, rangeEnd]);
+
+  const rangeJobs = useMemo(() => {
+    if (viewMode !== 'range') return [];
+    return (fallbackJobs || []).filter((j) => j.stage === 5 && (j.auditTrail || []).some((entry: any) => entry.stageNumber === 5 && isInRange(String(entry.timestamp || '').slice(0, 10))));
+  }, [viewMode, fallbackJobs, rangeStart, rangeEnd]);
+
+  // Effective data: single mode uses DB data merged with fallback; range mode uses aggregated fallback data
+  const selectedSales = viewMode === 'range' ? rangeSales : (dailyData?.sales || []);
 
   // Merge collections from DB and fallback/local store so newly recorded due collections immediately show
   const selectedCollections = useMemo(() => {
+    if (viewMode === 'range') return rangeCollections;
     const map = new Map<string, DueCollectionRecord>();
     (fallbackCollections || []).forEach((c) => {
       const colDate = c.date || String((c as any).timestamp || '').slice(0, 10);
@@ -420,8 +475,8 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       map.set(c.id, c);
     });
     return Array.from(map.values());
-  }, [dailyData?.collections, fallbackCollections, selectedDate]);
-  const completedGlazingJobs = dailyData?.completedJobs || [];
+  }, [viewMode, dailyData?.collections, fallbackCollections, selectedDate, rangeCollections]);
+  const completedGlazingJobs = viewMode === 'range' ? rangeJobs : (dailyData?.completedJobs || []);
   const paidByInvoice = useMemo(() => {
     const totals = new Map<string, number>();
     (dailyData?.invoiceCollections || []).forEach((collection) => {
@@ -513,6 +568,50 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
       beneficiary: string;
       timeOrDate: string;
     }> = [];
+
+    if (viewMode === 'range') {
+      // Range mode: use pre-filtered fallback data
+      rangeExpenses.forEach((exp) => {
+        list.push({
+          id: `exp-${exp.id}`,
+          refNumber: exp.voucherNumber || exp.id,
+          type: 'Expense',
+          title: exp.description || text('General Operating Expense', 'সাধারণ পরিচালন ব্যয়'),
+          category: exp.category || text('Expense', 'খরচ'),
+          paymentMode: exp.paymentMode || 'Cash',
+          amountBDT: Number(exp.amountBDT) || 0,
+          beneficiary: exp.paidTo || exp.approvedBy || '-',
+          timeOrDate: exp.date,
+        });
+      });
+      rangeSalesReturns.forEach((ref) => {
+        list.push({
+          id: `ref-${ref.id}`,
+          refNumber: ref.returnNumber || ref.id,
+          type: 'Refund',
+          title: `${text('Refund for', 'রিফান্ড:')} ${ref.originalInvoiceNumber || (ref as any).invoiceNumber || ''} (${ref.patientName || 'Customer'})`,
+          category: text('Customer Refund', 'কাস্টমার রিফান্ড'),
+          paymentMode: ref.refundMethod || 'Cash Refund',
+          amountBDT: Number(ref.totalRefundBDT) || 0,
+          beneficiary: ref.patientName || '-',
+          timeOrDate: ref.date,
+        });
+      });
+      rangePurchaseOrderPayments.forEach((p) => {
+        list.push({
+          id: `po-${p.id}`,
+          refNumber: p.poId,
+          type: 'Supplier PO',
+          title: `${text('Supplier payment:', 'সাপ্লায়ার পেমেন্ট:')} ${p.supplierName}`,
+          category: text('Supplier Purchase', 'সাপ্লায়ার ক্রয়'),
+          paymentMode: p.paymentMode || 'Cash',
+          amountBDT: p.amountBDT,
+          beneficiary: p.supplierName || '-',
+          timeOrDate: p.date,
+        });
+      });
+      return list;
+    }
 
     // 1. Direct operating and lab expenses (Merge DB + Local)
     const expensesMap = new Map<string, ExpenseItem>();
@@ -615,7 +714,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
     });
 
     return list;
-  }, [dailyData, fallbackExpenses, fallbackSalesReturns, fallbackPurchaseOrders, selectedDate, language]);
+  }, [viewMode, dailyData, fallbackExpenses, fallbackSalesReturns, fallbackPurchaseOrders, selectedDate, language, rangeExpenses, rangeSalesReturns, rangePurchaseOrderPayments]);
 
   const totalCostsSum = useMemo(() => {
     return dailyCostsList.reduce((sum, item) => sum + item.amountBDT, 0);
@@ -663,6 +762,9 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
 
   // Formatted date string for display
   const formattedDateTitle = useMemo(() => {
+    if (viewMode === 'range') {
+      return `${rangeStart} → ${rangeEnd}`;
+    }
     try {
       const [y, m, d] = selectedDate.split('-').map(Number);
       const dt = new Date(y, m - 1, d);
@@ -676,7 +778,7 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
     } catch {
       return selectedDate;
     }
-  }, [selectedDate, language]);
+  }, [viewMode, selectedDate, rangeStart, rangeEnd, language]);
 
   // Copy structured text summary to clipboard
   const handleCopySummary = () => {
@@ -761,21 +863,41 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
 
           {/* Date Picker & Controls (Close button only; top print/copy buttons removed) */}
           <div className="flex items-center gap-2 self-start lg:self-auto flex-wrap">
-            <div className="flex min-h-10 items-center gap-2 bg-slate-50 dark:bg-[#1b202c] border border-slate-200 dark:border-[#2a3242] rounded-xl px-3 py-1.5">
-              <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-teal-700 dark:text-teal-300">calendar_month</span>
-              <label htmlFor="closing-date-input" className="sr-only">
-                {text('Select closing date', 'ক্লোজিং তারিখ নির্বাচন করুন')}
-              </label>
-              <input
-                id="closing-date-input"
-                data-autofocus
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="text-xs font-semibold text-slate-800 dark:text-slate-100 bg-transparent focus:outline-hidden cursor-pointer"
-                title={text('Select date for daily closing', 'দৈনিক ক্লোজিংয়ের তারিখ নির্বাচন করুন')}
-              />
-            </div>
+            {viewMode === 'single' ? (
+              <div className="flex min-h-10 items-center gap-2 bg-slate-50 dark:bg-[#1b202c] border border-slate-200 dark:border-[#2a3242] rounded-xl px-3 py-1.5">
+                <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-teal-700 dark:text-teal-300">calendar_month</span>
+                <label htmlFor="closing-date-input" className="sr-only">
+                  {text('Select closing date', 'ক্লোজিং তারিখ নির্বাচন করুন')}
+                </label>
+                <input
+                  id="closing-date-input"
+                  data-autofocus
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="text-xs font-semibold text-slate-800 dark:text-slate-100 bg-transparent focus:outline-hidden cursor-pointer"
+                  title={text('Select date for daily closing', 'দৈনিক ক্লোজিংয়ের তারিখ নির্বাচন করুন')}
+                />
+              </div>
+            ) : (
+              <div className="flex min-h-10 items-center gap-2 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-300 dark:border-indigo-700 rounded-xl px-3 py-1.5">
+                <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-indigo-600 dark:text-indigo-300">date_range</span>
+                <input
+                  type="date"
+                  value={rangeStart}
+                  onChange={(e) => setRangeStart(e.target.value)}
+                  className="text-xs font-semibold text-slate-800 dark:text-slate-100 bg-transparent focus:outline-hidden cursor-pointer"
+                />
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">→</span>
+                <input
+                  type="date"
+                  value={rangeEnd}
+                  min={rangeStart}
+                  onChange={(e) => setRangeEnd(e.target.value)}
+                  className="text-xs font-semibold text-slate-800 dark:text-slate-100 bg-transparent focus:outline-hidden cursor-pointer"
+                />
+              </div>
+            )}
 
             <button
               type="button"
@@ -795,35 +917,98 @@ export const DailyClosingSummaryModal: React.FC<DailyClosingSummaryModalProps> =
             <span>{text('Quick date selection:', 'দ্রুত তারিখ নির্বাচন:')}</span>
           </span>
 
-          <button
-            type="button"
-            onClick={() => setSelectedDate(todayIso)}
-            className={`min-h-9 px-3 rounded-lg font-semibold text-sm shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer ${
-              selectedDate === todayIso
-                ? 'bg-teal-700 text-white'
-                : 'bg-white dark:bg-[#1e2330] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#262d3c] border border-slate-200 dark:border-[#2b3345]'
-            }`}
-          >
-            <span>{text('Today', 'আজ')}</span>
-            {selectedDate === todayIso && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-          </button>
+          {/* Single / Range mode toggle */}
+          <div className="flex items-center gap-1 bg-white dark:bg-[#1e2330] border border-slate-200 dark:border-[#2b3345] rounded-lg p-0.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode('single')}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${viewMode === 'single' ? 'bg-teal-700 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#262d3c]'}`}
+            >
+              {text('Single Day', 'একক দিন')}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setViewMode('range'); setRangeStart(rangeStart || todayIso); setRangeEnd(rangeEnd || todayIso); }}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1 ${viewMode === 'range' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#262d3c]'}`}
+            >
+              <span aria-hidden="true" className="material-symbols-outlined text-[13px]">date_range</span>
+              {text('Date Range', 'তারিখ পরিসর')}
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setSelectedDate(yesterdayIso)}
-            className={`min-h-9 px-3 rounded-lg font-semibold text-sm shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer ${
-              selectedDate === yesterdayIso
-                ? 'bg-teal-700 text-white'
-                : 'bg-white dark:bg-[#1e2330] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#262d3c] border border-slate-200 dark:border-[#2b3345]'
-            }`}
-          >
-            <span>{text('Yesterday', 'গতকাল')}</span>
-          </button>
+          {viewMode === 'single' && (
+            <>
+              <button
+                type="button"
+                onClick={() => { setViewMode('single'); setSelectedDate(todayIso); }}
+                className={`min-h-9 px-3 rounded-lg font-semibold text-sm shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  selectedDate === todayIso
+                    ? 'bg-teal-700 text-white'
+                    : 'bg-white dark:bg-[#1e2330] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#262d3c] border border-slate-200 dark:border-[#2b3345]'
+                }`}
+              >
+                <span>{text('Today', 'আজ')}</span>
+                {selectedDate === todayIso && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setViewMode('single'); setSelectedDate(yesterdayIso); }}
+                className={`min-h-9 px-3 rounded-lg font-semibold text-sm shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  selectedDate === yesterdayIso
+                    ? 'bg-teal-700 text-white'
+                    : 'bg-white dark:bg-[#1e2330] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#262d3c] border border-slate-200 dark:border-[#2b3345]'
+                }`}
+              >
+                <span>{text('Yesterday', 'গতকাল')}</span>
+              </button>
+            </>
+          )}
+
+          {viewMode === 'range' && (
+            <>
+              <button
+                type="button"
+                onClick={() => { const d = new Date(); const end = todayIso; const start = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); setRangeStart(start); setRangeEnd(end); }}
+                className="min-h-9 px-3 rounded-lg font-semibold text-xs shrink-0 bg-white dark:bg-[#1e2330] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 border border-slate-200 dark:border-[#2b3345] transition-colors cursor-pointer"
+              >
+                {text('This Month', 'এই মাস')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { const d = new Date(); const lastMonth = new Date(d.getFullYear(), d.getMonth() - 1, 1); const start = lastMonth.toISOString().slice(0, 10); const end = new Date(d.getFullYear(), d.getMonth(), 0).toISOString().slice(0, 10); setRangeStart(start); setRangeEnd(end); }}
+                className="min-h-9 px-3 rounded-lg font-semibold text-xs shrink-0 bg-white dark:bg-[#1e2330] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 border border-slate-200 dark:border-[#2b3345] transition-colors cursor-pointer"
+              >
+                {text('Last Month', 'গত মাস')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { const d = new Date(); const start = new Date(d.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10); setRangeStart(start); setRangeEnd(todayIso); }}
+                className="min-h-9 px-3 rounded-lg font-semibold text-xs shrink-0 bg-white dark:bg-[#1e2330] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 border border-slate-200 dark:border-[#2b3345] transition-colors cursor-pointer"
+              >
+                {text('Last 7 Days', 'গত ৭ দিন')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { const d = new Date(); const start = new Date(d.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10); setRangeStart(start); setRangeEnd(todayIso); }}
+                className="min-h-9 px-3 rounded-lg font-semibold text-xs shrink-0 bg-white dark:bg-[#1e2330] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 border border-slate-200 dark:border-[#2b3345] transition-colors cursor-pointer"
+              >
+                {text('Last 30 Days', 'গত ৩০ দিন')}
+              </button>
+            </>
+          )}
         </div>
 
         {/* ================= MODAL BODY ================= */}
         <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 p-5 sm:p-7 dark:bg-[#111620]">
-          {isLoading && (
+          {viewMode === 'range' && (
+            <div className="mb-4 flex items-center gap-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-700 px-4 py-2.5 text-xs font-semibold text-indigo-800 dark:text-indigo-300">
+              <span aria-hidden="true" className="material-symbols-outlined text-[16px]">date_range</span>
+              {text('Date Range Report', 'তারিখ পরিসর রিপোর্ট')}: <strong className="font-mono">{rangeStart}</strong> → <strong className="font-mono">{rangeEnd}</strong>
+              <span className="ml-1 text-indigo-500 dark:text-indigo-400">({text('using local synced data', 'স্থানীয় সিঙ্কড ডাটা ব্যবহার করা হচ্ছে')})</span>
+            </div>
+          )}
+          {isLoading && viewMode === 'single' && (
             <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-slate-600 dark:text-slate-300" role="status">
               <span aria-hidden="true" className="material-symbols-outlined animate-spin text-3xl text-teal-700 dark:text-teal-300">progress_activity</span>
               <p className="text-sm font-medium">{text('Loading records from the database…', 'ডাটাবেস থেকে তথ্য লোড হচ্ছে…')}</p>
