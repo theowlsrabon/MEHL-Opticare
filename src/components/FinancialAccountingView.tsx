@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DispensationRecord, FinancialSummary, ExpenseItem, SaleRecord, PurchaseOrder, SalesReturn, PurchaseReturn } from '../types';
 import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
@@ -83,17 +83,59 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   const filteredPurchaseReturns = validReportPeriod
     ? purchaseReturns.filter((record) => record.date >= reportStartDate && record.date <= reportEndDate && record.status === 'credit_adjusted')
     : [];
-  const reportCollectionsReceived = filteredCollections.reduce((total, record) => total + record.amountBDT, 0);
-  const reportSalesRefunds = filteredSalesReturns.reduce((total, record) => total + record.totalRefundBDT, 0);
-  const reportSupplierPurchases = filteredPurchaseOrders.reduce((total, order) => total + order.totalAmountBDT, 0);
-  const reportSupplierCredits = filteredPurchaseReturns.reduce((total, record) => total + record.totalClaimAmountBDT, 0);
+  const reportCollectionsReceived = filteredCollections.reduce((total, record) => total + (Number(record.amountBDT) || 0), 0);
+  const reportSalesRefunds = filteredSalesReturns.reduce((total, record) => total + (Number(record.totalRefundBDT) || 0), 0);
+  const reportSupplierPurchases = filteredPurchaseOrders.reduce((total, order) => total + (Number(order.totalAmountBDT) || 0), 0);
+  const reportSupplierCredits = filteredPurchaseReturns.reduce((total, record) => total + (Number(record.totalClaimAmountBDT) || 0), 0);
   const collectionsByTender: Record<string, number> = {};
   filteredCollections.forEach((collection) => {
-    collectionsByTender[collection.tenderMode] = (collectionsByTender[collection.tenderMode] || 0) + collection.amountBDT;
+    collectionsByTender[collection.tenderMode] = (collectionsByTender[collection.tenderMode] || 0) + (Number(collection.amountBDT) || 0);
   });
-  const reportOpticalRevenue = filteredSales.reduce((total, sale) => total + sale.totalAmount, 0);
-  const reportPharmacyRevenue = filteredDispensations.reduce((total, record) => total + record.totalPriceBDT, 0);
-  const reportRecordedRevenue = reportOpticalRevenue + reportPharmacyRevenue;
+  const reportOpticalRevenue = filteredSales.reduce((total, sale) => total + (Number(sale.totalAmount) || 0), 0);
+  const reportDueCollections = reportCollectionsReceived;
+  const reportGrossSalesRevenue = reportOpticalRevenue + reportDueCollections;
+
+  // Supplier payments (both cash and due payments made within period)
+  const reportSupplierOrderPayments = validReportPeriod
+    ? purchaseOrders.reduce((total, po) => {
+        if (Array.isArray(po.paymentHistory) && po.paymentHistory.length > 0) {
+          const periodPayments = po.paymentHistory.filter(
+            (p) => p.date >= reportStartDate && p.date <= reportEndDate
+          );
+          return total + periodPayments.reduce((pSum, p) => pSum + (Number(p.amountBDT) || 0), 0);
+        }
+        if (po.date >= reportStartDate && po.date <= reportEndDate && Number(po.paidAmountBDT) > 0) {
+          return total + Number(po.paidAmountBDT);
+        }
+        return total;
+      }, 0)
+    : 0;
+
+  // Map of total payments made for invoices to find remaining due on optical sales
+  const invoicePaymentsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    financialCollections.forEach((c) => {
+      if (c.invoiceNumber) {
+        map.set(c.invoiceNumber, (map.get(c.invoiceNumber) || 0) + (Number(c.amountBDT) || 0));
+      }
+    });
+    return map;
+  }, [financialCollections]);
+
+  // Uncollected invoice balance (Due) for the optical sales in the selected period
+  const reportSalesDueAmount = filteredSales.reduce((total, sale) => {
+    const saleTotal = Number(sale.totalAmount) || 0;
+    const paidAmount = Math.max(
+      invoicePaymentsMap.get(sale.invoiceNumber) || 0,
+      Number(sale.advancePaid) || 0
+    );
+    const dueAmount = Math.max(0, saleTotal - paidAmount);
+    return total + dueAmount;
+  }, 0);
+
+  const reportTotalRevenueDeductions = reportSalesRefunds + reportSupplierOrderPayments + reportSalesDueAmount;
+  const reportPharmacyRevenue = filteredDispensations.reduce((total, record) => total + (Number(record.totalPriceBDT) || 0), 0);
+  const reportRecordedRevenue = reportGrossSalesRevenue;
   const reportRecordedCogs = filteredSales.reduce((total, sale) => (
     total + (sale.itemLines || []).reduce((saleTotal, line) => (
       typeof line.unitCostBDT === 'number' && Number.isFinite(line.unitCostBDT)
@@ -101,9 +143,9 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
         : saleTotal
     ), 0)
   ), 0);
-  const reportNetRevenue = reportRecordedRevenue - reportSalesRefunds;
+  const reportNetRevenue = reportGrossSalesRevenue - reportTotalRevenueDeductions;
   const reportGrossProfitEstimate = reportNetRevenue - reportRecordedCogs;
-  const reportOperatingExpenses = filteredExpenses.reduce((total, expense) => total + expense.amountBDT, 0);
+  const reportOperatingExpenses = filteredExpenses.reduce((total, expense) => total + (Number(expense.amountBDT) || 0), 0);
   const reportEbitdaEstimate = reportGrossProfitEstimate - reportOperatingExpenses;
 
   // New Expense Form State
@@ -327,16 +369,24 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <span className="font-data-rx font-bold text-on-surface">৳{formatAmount(reportOpticalRevenue)}</span>
                 </div>
                 <div className="flex justify-between pl-3 text-teal-700 dark:text-teal-300">
-                  <span>{text('Pharmacy Sales', 'ফার্মেসি বিক্রয়')}</span>
-                  <span className="font-data-rx font-bold">৳{formatAmount(reportPharmacyRevenue)}</span>
+                  <span>{text('Due Collections', 'বকেয়া আদায়')}</span>
+                  <span className="font-data-rx font-bold">৳{formatAmount(reportDueCollections)}</span>
                 </div>
                 <div className="flex justify-between pt-1 font-bold border-t border-dashed border-slate-300 dark:border-[#272d3a]">
                   <span>{text('Gross sales revenue', 'মোট বিক্রয় রাজস্ব')}</span>
-                  <span className="font-data-rx">৳{formatAmount(reportRecordedRevenue)}</span>
+                  <span className="font-data-rx">৳{formatAmount(reportGrossSalesRevenue)}</span>
                 </div>
                 <div className="flex justify-between text-red-700 dark:text-red-300">
-                  <span>{text('Less: sales returns and refunds', 'বাদ: বিক্রয় ফেরত ও রিফান্ড')}</span>
+                  <span>{text('Less: Sales returns and refunds', 'বাদ: বিক্রয় ফেরত ও রিফান্ড')}</span>
                   <span className="font-data-rx font-bold">−৳{formatAmount(reportSalesRefunds)}</span>
+                </div>
+                <div className="flex justify-between text-red-700 dark:text-red-300">
+                  <span>{text('Less: Supplier order payments (Cash & Due)', 'বাদ: সরবরাহকারীর অর্ডার পরিশোধ (নগদ ও বকেয়া)')}</span>
+                  <span className="font-data-rx font-bold">−৳{formatAmount(reportSupplierOrderPayments)}</span>
+                </div>
+                <div className="flex justify-between text-red-700 dark:text-red-300">
+                  <span>{text('Less: Uncollected invoice balance (Due)', 'বাদ: অপরিশোধিত ইনভয়েস ব্যালেন্স (বকেয়া)')}</span>
+                  <span className="font-data-rx font-bold">−৳{formatAmount(reportSalesDueAmount)}</span>
                 </div>
                 <div className="flex justify-between pt-1 font-extrabold border-t border-dashed border-slate-300 dark:border-[#272d3a]">
                   <span>{text('Net Revenue', 'নিট রাজস্ব')}</span>
