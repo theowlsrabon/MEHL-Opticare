@@ -200,6 +200,8 @@ app.post("/api/auth/login", async (req, res) => {
         roleTitle: user.roleTitle,
         allowedViews: user.allowedViews || [],
         status: user.status,
+        assignedBranchId: user.assignedBranchId || null,
+        assignedBranchName: user.assignedBranchName || null,
       },
     });
   } catch (err: any) {
@@ -225,7 +227,7 @@ app.get("/api/users", async (req, res) => {
 // Create user (Admin only)
 app.post("/api/users", async (req, res) => {
   try {
-    const { username, password, name, role, roleTitle, allowedViews, status } = req.body;
+    const { username, password, name, role, roleTitle, allowedViews, status, assignedBranchId, assignedBranchName } = req.body;
     if (!username || !password || !name) {
       return res.status(400).json({ success: false, error: "Username, password, and name are required." });
     }
@@ -249,6 +251,8 @@ app.post("/api/users", async (req, res) => {
         "stock-master",
       ],
       status: status || "active",
+      assignedBranchId: assignedBranchId || null,
+      assignedBranchName: assignedBranchName || null,
     };
 
     await dbUpsertUser(newUser);
@@ -262,7 +266,7 @@ app.post("/api/users", async (req, res) => {
 app.put("/api/users/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { username, password, name, role, roleTitle, allowedViews, status } = req.body;
+    const { username, password, name, role, roleTitle, allowedViews, status, assignedBranchId, assignedBranchName } = req.body;
 
     const updatedUser = {
       id,
@@ -273,6 +277,8 @@ app.put("/api/users/:id", async (req, res) => {
       roleTitle,
       allowedViews,
       status,
+      assignedBranchId: assignedBranchId || null,
+      assignedBranchName: assignedBranchName || null,
     };
 
     await dbUpsertUser(updatedUser);

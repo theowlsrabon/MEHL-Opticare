@@ -61,6 +61,8 @@ export async function initializeDatabase(): Promise<void> {
         role_title VARCHAR(100) NOT NULL DEFAULT 'Optical Staff',
         allowed_views TEXT NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'active',
+        assigned_branch_id VARCHAR(100) NULL,
+        assigned_branch_name VARCHAR(255) NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -825,7 +827,7 @@ export async function dbCreateDrawerBalanceReset(reset: {
 export async function dbGetUsers(): Promise<any[]> {
   const p = getDbPool();
   const res = await p.query(
-    'SELECT id, username, password, name, role, role_title as "roleTitle", allowed_views as "allowedViews", status, created_at, updated_at FROM user_accounts ORDER BY created_at ASC'
+    'SELECT id, username, password, name, role, role_title as "roleTitle", allowed_views as "allowedViews", status, assigned_branch_id as "assignedBranchId", assigned_branch_name as "assignedBranchName", created_at, updated_at FROM user_accounts ORDER BY created_at ASC'
   );
   return res.rows.map((r: any) => ({
     ...r,
@@ -836,7 +838,7 @@ export async function dbGetUsers(): Promise<any[]> {
 export async function dbGetUserByUsername(username: string): Promise<any | null> {
   const p = getDbPool();
   const res = await p.query(
-    'SELECT id, username, password, name, role, role_title as "roleTitle", allowed_views as "allowedViews", status FROM user_accounts WHERE username = $1 LIMIT 1',
+    'SELECT id, username, password, name, role, role_title as "roleTitle", allowed_views as "allowedViews", status, assigned_branch_id as "assignedBranchId", assigned_branch_name as "assignedBranchName" FROM user_accounts WHERE username = $1 LIMIT 1',
     [username]
   );
   if (res.rows.length === 0) return null;
@@ -851,8 +853,8 @@ export async function dbUpsertUser(user: any): Promise<void> {
   const p = getDbPool();
   const allowedViewsJson = JSON.stringify(user.allowedViews || []);
   const sql = `
-    INSERT INTO user_accounts (id, username, password, name, role, role_title, allowed_views, status, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+    INSERT INTO user_accounts (id, username, password, name, role, role_title, allowed_views, status, assigned_branch_id, assigned_branch_name, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
     ON CONFLICT (id) DO UPDATE SET
       username = EXCLUDED.username,
       password = EXCLUDED.password,
@@ -861,6 +863,8 @@ export async function dbUpsertUser(user: any): Promise<void> {
       role_title = EXCLUDED.role_title,
       allowed_views = EXCLUDED.allowed_views,
       status = EXCLUDED.status,
+      assigned_branch_id = EXCLUDED.assigned_branch_id,
+      assigned_branch_name = EXCLUDED.assigned_branch_name,
       updated_at = CURRENT_TIMESTAMP;
   `;
   await p.query(sql, [
@@ -872,6 +876,8 @@ export async function dbUpsertUser(user: any): Promise<void> {
     user.roleTitle || 'Optical Staff',
     allowedViewsJson,
     user.status || 'active',
+    user.assignedBranchId || null,
+    user.assignedBranchName || null,
   ]);
 }
 

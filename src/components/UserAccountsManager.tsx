@@ -24,7 +24,7 @@ interface UserAccountsManagerProps {
 }
 
 const ALL_MODULES: { id: ViewMode; name: string; section: string }[] = [
-  { id: 'executive-dashboard', name: 'Executive Dashboard (C-Suite)', section: 'Clinical & Lab Operations' },
+  { id: 'executive-dashboard', name: 'Executive Dashboard (C-Suite)', section: 'Reports, Settings & Security' },
   { id: 'lab-pipeline', name: 'Lab Glazing Conveyor (5-Stage)', section: 'Clinical & Lab Operations' },
   { id: 'modina-erp', name: 'POS & ERP Suite (Billing & Rx)', section: 'Clinical & Lab Operations' },
   { id: 'stock-master', name: 'Stock & Frame Registry', section: 'Clinical & Lab Operations' },
@@ -33,9 +33,9 @@ const ALL_MODULES: { id: ViewMode; name: string; section: string }[] = [
   { id: 'financial-accounting', name: 'Profit Analytics & Accounts (P&L)', section: 'Supply Chain & Finance' },
   { id: 'returns-refunds', name: 'Returns, Refunds & Credit (CN/DN)', section: 'Supply Chain & Finance' },
   // { id: 'pharmacy-command', name: 'FEFO Auto-Dispensing (Pharmacy)', section: 'Supply Chain & Finance' }, // Temporarily hidden
-  { id: 'reports', name: 'Reports & Analytics', section: 'Reports & Security' },
-  { id: 'salesmen', name: 'Sales Staff & Commission', section: 'Reports & Security' },
-  { id: 'settings-roles', name: 'Settings & Role Permissions (RBAC)', section: 'Reports & Security' },
+  { id: 'reports', name: 'Reports & Analytics', section: 'Reports, Settings & Security' },
+  { id: 'salesmen', name: 'Sales Staff & Commission', section: 'Reports, Settings & Security' },
+  { id: 'settings-roles', name: 'Settings & Role Permissions (RBAC)', section: 'Reports, Settings & Security' },
 ];
 
 export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ currentUsername }) => {
@@ -57,6 +57,9 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
     'stock-master',
   ]);
   const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active');
+  const [formAssignedBranchId, setFormAssignedBranchId] = useState('');
+  const [formAssignedBranchName, setFormAssignedBranchName] = useState('');
+  const [availableBranches, setAvailableBranches] = useState<{ id: string; name: string; location?: string }[]>([]);
   const [formError, setFormError] = useState('');
 
   // Fetch users from MySQL database
@@ -77,6 +80,15 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
 
   useEffect(() => {
     loadUsers();
+    // Load branches for assignment dropdown
+    fetch(`${API_BASE}/api/branches`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && Array.isArray(d.data)) {
+          setAvailableBranches(d.data.map((b: any) => ({ id: b.id, name: b.branchName || b.name, location: b.location })));
+        }
+      })
+      .catch(() => {/* silently ignore if no branches endpoint */});
   }, []);
 
   const openCreateModal = () => {
@@ -88,6 +100,8 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
     setFormRoleTitle('Optical Staff');
     setFormAllowedViews(['modina-erp', 'lab-pipeline', 'stock-master']);
     setFormStatus('active');
+    setFormAssignedBranchId('');
+    setFormAssignedBranchName('');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -101,6 +115,8 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
     setFormRoleTitle(user.roleTitle || 'Optical Staff');
     setFormAllowedViews(user.allowedViews || []);
     setFormStatus(user.status || 'active');
+    setFormAssignedBranchId(user.assignedBranchId || '');
+    setFormAssignedBranchName(user.assignedBranchName || '');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -161,6 +177,8 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
             roleTitle: formRoleTitle,
             allowedViews: formAllowedViews,
             status: formStatus,
+            assignedBranchId: formAssignedBranchId || null,
+            assignedBranchName: formAssignedBranchName || null,
           }),
         });
         const data = await res.json();
@@ -178,6 +196,8 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
             roleTitle: formRoleTitle,
             allowedViews: formAllowedViews,
             status: formStatus,
+            assignedBranchId: formAssignedBranchId || null,
+            assignedBranchName: formAssignedBranchName || null,
           }),
         });
         const data = await res.json();
@@ -279,6 +299,7 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
               <th className="py-2.5 px-3">Password (Unencrypted)</th>
               <th className="py-2.5 px-3">Role Type</th>
               <th className="py-2.5 px-3">Allowed Modules</th>
+              <th className="py-2.5 px-3">Branch</th>
               <th className="py-2.5 px-3">Status</th>
               <th className="py-2.5 px-3 text-right">Actions</th>
             </tr>
@@ -332,6 +353,16 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
                         </span>
                       ) : null}
                     </div>
+                  </td>
+
+                  <td className="py-3 px-3">
+                    {u.assignedBranchName ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800/40">
+                        {u.assignedBranchName}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">All Branches</span>
+                    )}
                   </td>
 
                   <td className="py-3 px-3">
@@ -506,6 +537,34 @@ export const UserAccountsManager: React.FC<UserAccountsManagerProps> = ({ curren
                     <option value="inactive">Inactive (Suspended)</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Branch Assignment */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Assigned Branch <span className="font-normal text-slate-400">(Staff only — leave blank for all-branch access)</span>
+                </label>
+                <select
+                  value={formAssignedBranchId}
+                  onChange={(e) => {
+                    const selected = availableBranches.find((b) => b.id === e.target.value);
+                    setFormAssignedBranchId(e.target.value);
+                    setFormAssignedBranchName(selected?.name || '');
+                  }}
+                  className="w-full h-9 px-3 text-xs rounded-xl bg-slate-50 dark:bg-[#121c26] border border-slate-200 dark:border-[#1e2d3d] focus:border-[#00c49f] text-slate-900 dark:text-white cursor-pointer"
+                >
+                  <option value="">— No Branch Restriction (All Branches) —</option>
+                  {availableBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}{b.location ? ` — ${b.location}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {formAssignedBranchId && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
+                    ⚠ This user will only see & manage stock/sales for: <strong>{formAssignedBranchName}</strong>
+                  </p>
+                )}
               </div>
 
               {/* Module access presets */}

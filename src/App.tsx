@@ -156,6 +156,13 @@ export default function App() {
       setCurrentUserRole(authenticatedUser.role as UserRole);
     }
   }, [authenticatedUser]);
+
+  // Branch scope: null = no restriction (admin/super_admin), or a branchId string for staff
+  const userAssignedBranchId =
+    currentUserRole === 'admin' || currentUserRole === 'super_admin'
+      ? null
+      : (authenticatedUser?.assignedBranchId || null);
+
   const [jobs, setJobs] = useState<OpticalJob[]>(() => {
     const saved = localStorage.getItem('madina_jobs');
     if (saved) {
@@ -1432,33 +1439,37 @@ export default function App() {
   const handleRecordSale = (sale: SaleRecord) => {
     if (recordedSaleIds.current.has(sale.id) || salesRecords.some((existingSale) => existingSale.id === sale.id)) return;
     recordedSaleIds.current.add(sale.id);
-    setSalesRecords((prev) => [sale, ...prev]);
-    if (sale.paymentMethod === 'Cash' && sale.advancePaid > 0) {
+    // Tag with branch if user is branch-scoped
+    const taggedSale = userAssignedBranchId
+      ? { ...sale, branchId: userAssignedBranchId, branchName: authenticatedUser?.assignedBranchName || undefined }
+      : sale;
+    setSalesRecords((prev) => [taggedSale, ...prev]);
+    if (taggedSale.paymentMethod === 'Cash' && taggedSale.advancePaid > 0) {
       setFinancialSummary((prev) => ({
         ...prev,
-        cashCollectedBDT: prev.cashCollectedBDT + sale.advancePaid,
+        cashCollectedBDT: prev.cashCollectedBDT + taggedSale.advancePaid,
       }));
     }
-    const saleAdvance = Number(sale.advancePaid) || 0;
+    const saleAdvance = Number(taggedSale.advancePaid) || 0;
     if (saleAdvance > 0) {
       const collection: DueCollectionRecord = {
-        id: `sale-${sale.id}`,
+        id: `sale-${taggedSale.id}`,
         amountBDT: saleAdvance,
-        tenderMode: sale.paymentMethod,
-        date: sale.date || sale.timestamp?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        invoiceNumber: sale.invoiceNumber,
+        tenderMode: taggedSale.paymentMethod,
+        date: taggedSale.date || taggedSale.timestamp?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+        invoiceNumber: taggedSale.invoiceNumber,
       };
       setFinancialCollections((previous) => [collection, ...previous.filter((item) => item.id !== collection.id)]);
       void syncFinancialCollectionToDb(collection);
     }
-    void syncSaleToDb(sale).then((synced) => setSaleSyncWarning(!synced));
+    void syncSaleToDb(taggedSale).then((synced) => setSaleSyncWarning(!synced));
     setSalesmen((prev) =>
       prev.map((salesman) =>
-        salesman.id === sale.salesmanId
+        salesman.id === taggedSale.salesmanId
           ? {
               ...salesman,
               totalSalesCount: (salesman.totalSalesCount || 0) + 1,
-              totalSalesVolumeBDT: (salesman.totalSalesVolumeBDT || 0) + sale.totalAmount,
+              totalSalesVolumeBDT: (salesman.totalSalesVolumeBDT || 0) + taggedSale.totalAmount,
             }
           : salesman
       )
@@ -2403,7 +2414,7 @@ export default function App() {
             }}
             onOpenLiveCamera={() => setIsFloatingCameraActive((prev) => !prev)}
             onOpenNewInvoice={() => setIsNewInvoiceOpen(true)}
-            inventory={inventory}
+            inventory={userAssignedBranchId ? inventory.filter(item => !item.branchId || item.branchId === userAssignedBranchId) : inventory}
             jobs={jobs}
             initialScannedBarcode={posScannedBarcode}
             onDeleteSaleRecord={isSuperAdmin ? handleDeleteSaleRecord : undefined}
@@ -2419,7 +2430,7 @@ export default function App() {
 
         {currentView === 'stock-master' && (
           <InventoryRegistryTable
-            items={inventory}
+            items={userAssignedBranchId ? inventory.filter(item => !item.branchId || item.branchId === userAssignedBranchId) : inventory}
             damageRecords={inventoryDamageRecords}
             movementRecords={inventoryMovementRecords}
             language={language}
@@ -2779,20 +2790,24 @@ export default function App() {
         onClose={() => setIsAddGlassesOpen(false)}
         currentUser={currentUser}
         onAddStock={(newItem, printImmediately) => {
-          setInventory((prev) => [newItem, ...prev]);
+          // Tag with branch if user is branch-scoped
+          const taggedItem = userAssignedBranchId
+            ? { ...newItem, branchId: userAssignedBranchId, branchName: authenticatedUser?.assignedBranchName || undefined }
+            : newItem;
+          setInventory((prev) => [taggedItem, ...prev]);
           setInventoryMovementRecords((previous) => [{
             id: `movement-stock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             timestamp: new Date().toISOString(),
-            inventoryItemId: newItem.id,
-            sku: newItem.sku,
-            itemName: newItem.name,
-            category: newItem.category,
+            inventoryItemId: taggedItem.id,
+            sku: taggedItem.sku,
+            itemName: taggedItem.name,
+            category: taggedItem.category,
             type: 'stock',
-            quantity: newItem.stockQty,
+            quantity: taggedItem.stockQty,
             recordedBy: currentUser.name,
           }, ...previous]);
           if (printImmediately) {
-            setBarcodeItemToPrint(newItem);
+            setBarcodeItemToPrint(taggedItem);
           }
         }}
       />

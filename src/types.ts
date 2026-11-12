@@ -53,6 +53,8 @@ export interface SaleRecord {
   paymentMethod: 'Cash' | 'bKash' | 'Card' | 'Nagad';
   commissionEarned: number;
   status: 'completed' | 'pending_glazing' | 'delivered';
+  branchId?: string;
+  branchName?: string;
   itemLines?: SaleItemLine[];
 }
 
@@ -195,6 +197,8 @@ export interface InventoryItem {
   suggestedAskingPrice?: number;
   purchaseCostBDT?: number;
   askingPriceBDT?: number;
+  branchId?: string;
+  branchName?: string;
 }
 
 export interface InventoryDamageRecord {
@@ -318,6 +322,8 @@ export interface UserAccount {
   roleTitle: string;
   allowedViews: ViewMode[];
   status: 'active' | 'inactive';
+  assignedBranchId?: string;
+  assignedBranchName?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -479,10 +485,18 @@ export interface PurchaseOrder {
   }[];
   totalAmountBDT: number;
   paidAmountBDT?: number;
+  paymentHistory?: PurchaseOrderPayment[];
   dueAmountBDT?: number;
   notes?: string;
   paymentStatus: 'unpaid' | 'partial' | 'paid';
   createdByName: string;
+}
+
+export interface PurchaseOrderPayment {
+  id: string;
+  date: string;
+  amountBDT: number;
+  paymentMode?: 'Cash' | 'Bank Transfer' | 'bKash' | 'Cheque';
 }
 
 export interface GoodsReceivedNote {
