@@ -1096,18 +1096,44 @@ export default function App() {
       };
 
       // Try /api/reset-database first, fallback to /api/admin/reset-operational-data
-      let res = await fetch(`${API_BASE}/api/reset-database`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      if (res.status === 404) {
-        res = await fetch(`${API_BASE}/api/admin/reset-operational-data`, {
+      // Use AbortController for 60s timeout (Render cold starts can be slow)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      let res: Response;
+      try {
+        res = await fetch(`${API_BASE}/api/reset-database`, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (fetchErr?.name === 'AbortError') {
+          throw new Error('Request timed out (60s). Backend may be starting up — please try again in a moment.');
+        }
+        throw fetchErr;
+      }
+
+      if (res.status === 404) {
+        const controller2 = new AbortController();
+        const timeoutId2 = setTimeout(() => controller2.abort(), 60000);
+        try {
+          res = await fetch(`${API_BASE}/api/admin/reset-operational-data`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+            signal: controller2.signal,
+          });
+          clearTimeout(timeoutId2);
+        } catch (fetchErr2: any) {
+          clearTimeout(timeoutId2);
+          if (fetchErr2?.name === 'AbortError') {
+            throw new Error('Request timed out (60s). Backend may be starting up — please try again.');
+          }
+          throw fetchErr2;
+        }
       }
 
       const parsed = await safeParseJsonResponse<{ success?: boolean; error?: string; message?: string }>(res);
