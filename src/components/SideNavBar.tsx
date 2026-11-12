@@ -37,6 +37,7 @@ interface SideNavBarProps {
   currentUserRole?: UserRole;
   authenticatedUser?: UserAccount | null;
   onLogout?: () => void;
+  onResetDatabase?: () => void;
 }
 
 export const SideNavBar: React.FC<SideNavBarProps> = ({
@@ -51,6 +52,7 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
   currentUserRole = 'admin',
   authenticatedUser,
   onLogout,
+  onResetDatabase,
   isSidebarOpen,
   onToggleSidebar
 }) => {
@@ -360,6 +362,30 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
 
         {/* Sidebar Bottom: Expiring / Low Stock Box & Terminal Footer */}
         <div className="flex flex-col gap-2 pt-2 border-t border-[#e2e8f0] dark:border-[#182531]">
+          {/* Admin / Super Admin System Database Reboot / Reset Button */}
+          {hasFullAccess && onResetDatabase && (
+            <button
+              type="button"
+              onClick={onResetDatabase}
+              className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-rose-600 dark:text-rose-400 bg-rose-50/80 hover:bg-rose-100/90 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/50 transition-all cursor-pointer shadow-xs ${
+                !isSidebarOpen ? 'justify-center' : ''
+              }`}
+              title={language === 'bn' ? 'ডাটাবেস রিসেট ও ফ্যাক্টরি রিবুট (এডমিন অনলি)' : 'Factory Reboot / Clear DB (Admin Only)'}
+            >
+              <RefreshCcw size={15} className="shrink-0 transition-transform group-hover:rotate-180 duration-500 text-rose-600 dark:text-rose-400" />
+              {isSidebarOpen && (
+                <div className="flex flex-col text-left leading-tight min-w-0 flex-1">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wide truncate">
+                    {language === 'bn' ? 'ডাটাবেস রিসেট / রিবুট' : 'Reset / Reboot DB'}
+                  </span>
+                  <span className="text-[9px] text-rose-500/90 dark:text-rose-400/80 font-mono truncate">
+                    {language === 'bn' ? 'টেস্টিং ডাটা মুছুন' : 'Purge Testing Input'}
+                  </span>
+                </div>
+              )}
+            </button>
+          )}
+
           {/* Project attribution and developer credit */}
           <div className="flex items-center justify-between px-1 text-[10px] text-[#64748b] dark:text-[#7d91a3] gap-2">
             {isSidebarOpen && (

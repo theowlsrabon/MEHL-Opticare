@@ -1397,10 +1397,64 @@ export async function dbClearDummyData(): Promise<{ jobs: number; inventory: num
   const iRes = await p.query('DELETE FROM inventory_items');
   const sRes = await p.query('DELETE FROM sales_records');
   await p.query('DELETE FROM sms_logs');
-  await p.query('DELETE FROM system_audit_logs');
+  try { await p.query('DELETE FROM system_audit_logs'); } catch {}
   return {
     jobs: jRes.rowCount ?? 0,
     inventory: iRes.rowCount ?? 0,
     sales: sRes.rowCount ?? 0,
+  };
+}
+
+// ----------------- COMPLETE OPERATIONAL DATABASE RESET (WITHOUT CREDENTIALS) -----------------
+export async function dbResetOperationalData(): Promise<{
+  purgedTables: string[];
+  preservedUsersCount: number;
+}> {
+  const p = getDbPool();
+
+  // Tables storing recorded input/transactional operational data
+  const tablesToClear = [
+    'sales_records',
+    'financial_collections',
+    'drawer_closings',
+    'drawer_balance_resets',
+    'optical_jobs',
+    'inventory_items',
+    'expenses',
+    'sales_returns',
+    'purchase_returns',
+    'goods_received_notes',
+    'purchase_orders',
+    'prescriptions',
+    'ibt_orders',
+    'pharmacy_dispensations',
+    'sms_logs',
+    'system_audit_logs',
+  ];
+
+  const purged: string[] = [];
+  for (const tbl of tablesToClear) {
+    try {
+      await p.query(`DELETE FROM ${tbl}`);
+      purged.push(tbl);
+    } catch (e: any) {
+      console.warn(`[dbResetOperationalData] Table ${tbl} clear skipped or not present: ${e.message}`);
+    }
+  }
+
+  // Delete non-admin custom staff accounts, preserve admin and super_admin
+  try {
+    await p.query(`DELETE FROM user_accounts WHERE role NOT IN ('admin', 'super_admin') AND username NOT IN ('admin', 'srabon')`);
+  } catch (e: any) {
+    console.warn(`[dbResetOperationalData] Staff accounts cleanup error: ${e.message}`);
+  }
+
+  // Count preserved admin & superadmin users
+  const adminRes = await p.query(`SELECT COUNT(*)::int as count FROM user_accounts`);
+  const preservedUsersCount = adminRes.rows[0]?.count || 0;
+
+  return {
+    purgedTables: purged,
+    preservedUsersCount,
   };
 }

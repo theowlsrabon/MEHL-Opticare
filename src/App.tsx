@@ -1062,6 +1062,98 @@ export default function App() {
     setPurchaseOrders([]);
   };
 
+  // Full Database Factory Reset / Reboot (Admin / Superadmin only)
+  const [isResetConfirmModalOpen, setIsResetConfirmModalOpen] = useState(false);
+  const [isResettingDb, setIsResettingDb] = useState(false);
+
+  const handleExecuteDatabaseReset = async () => {
+    setIsResettingDb(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/reset-operational-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUserRole,
+          'x-username': authenticatedUser?.username || 'admin',
+        },
+        body: JSON.stringify({
+          role: currentUserRole,
+          username: authenticatedUser?.username || 'admin',
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to reboot database.');
+      }
+
+      // Clear recorded operational inputs from browser localStorage (keep auth credentials)
+      const keysToRemove = [
+        'madina_jobs',
+        'madina_inventory',
+        'madina_inventory_damage_ledger',
+        'madina_inventory_movement_history',
+        'madina_sales_records',
+        'madina_grns',
+        'madina_prescriptions',
+        'madina_expenses',
+        'madina_financial_summary',
+        'madina_financial_collections',
+        'madina_due_collection_ids',
+        'madina_sales_returns',
+        'madina_purchase_returns',
+        'madina_drawer_reset_today',
+        'madina_drawer_balance_resets',
+        'madina_due_invoices',
+        'madina_due_audit_log',
+        'madina_optical_sms_logs',
+      ];
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+      // Reset application state to clean slate
+      setJobs([]);
+      setInventory([]);
+      setSalesRecords([]);
+      setFinancialCollections([]);
+      setExpenses([]);
+      setSalesReturns([]);
+      setPurchaseReturns([]);
+      setPurchaseOrders([]);
+      setGrns([]);
+      setPrescriptions([]);
+      setIbtOrders([]);
+      setDispensations([]);
+      setAuditLogs([]);
+      setActivityLogs([]);
+      setInventoryDamageRecords([]);
+      setInventoryMovementRecords([]);
+      postedDueCollectionIds.current.clear();
+      setFinancialSummary({
+        grossOpticalRevenue: 0,
+        pharmacyRevenue: 0,
+        consultationRevenue: 0,
+        cogsOptical: 0,
+        cogsPharmacy: 0,
+        grossProfit: 0,
+        totalExpenses: 0,
+        netOperatingProfit: 0,
+        profitMarginPct: 0,
+        cashCollectedBDT: 0,
+        digitalPaymentsBDT: 0,
+        outstandingReceivablesBDT: 0,
+        dueCollectionsBDT: 0,
+      });
+
+      setIsResetConfirmModalOpen(false);
+      alert('System operational data wiped successfully from PostgreSQL database! Admin credentials remain active and product is ready for handover.');
+    } catch (err: any) {
+      console.error('[Database Reset Error]:', err);
+      alert(`Database reset failed: ${err.message || 'Network error'}`);
+    } finally {
+      setIsResettingDb(false);
+    }
+  };
+
   // Mobile sidebar state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -1885,6 +1977,7 @@ export default function App() {
         currentUserRole={currentUserRole}
         authenticatedUser={authenticatedUser}
         onLogout={handleLogout}
+        onResetDatabase={() => setIsResetConfirmModalOpen(true)}
       />
 
       {/* 3. Main Dashboard Workspace (Pushed comfortably below fixed 64px header with clear gap from 256px sidebar on desktop) */}
@@ -2864,6 +2957,95 @@ export default function App() {
         fallbackSalesReturns={salesReturns}
         fallbackPurchaseOrders={purchaseOrders}
       />
+
+      {/* Admin / Superadmin Database Factory Reset Confirmation Modal */}
+      {isResetConfirmModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-white dark:bg-[#161c26] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-rose-50 dark:bg-rose-950/40 border-b border-rose-200/70 dark:border-rose-900/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-300">
+                  <span className="material-symbols-outlined text-[24px]">restart_alt</span>
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-rose-900 dark:text-rose-200">
+                    {language === 'bn' ? 'ডাটাবেস ফ্যাক্টরি রিসেট / রিবুট' : 'Database Factory Reboot / Reset'}
+                  </h3>
+                  <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                    {language === 'bn' ? 'ক্লায়েন্ট হ্যান্ডওভার ও টেস্টিং ডাটা ক্লিয়ার' : 'Handover & Testing Data Purge'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isResettingDb}
+                onClick={() => setIsResetConfirmModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-rose-200/50 dark:hover:bg-rose-900/40 text-rose-500 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4 text-xs text-slate-600 dark:text-slate-300">
+              <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300">
+                  <span className="material-symbols-outlined text-[16px]">warning</span>
+                  {language === 'bn' ? 'সতর্কবার্তা: যা মোছা হবে' : 'Warning: What will be deleted'}
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  {language === 'bn'
+                    ? 'ইনপুট দেওয়া সমস্ত টেস্টিং ডাটা (Sales Records, Glazing Jobs, Stock Inventory, Collections, Expenses, Refunds, POs, Prescriptions) ডাটাবেস থেকে সম্পূর্ণ মুছে ক্লিন স্লেট করা হবে।'
+                    : 'All input testing data (Sales Records, Glazing Jobs, Stock Inventory, Collections, Expenses, Refunds, POs, Prescriptions) will be wiped clean from PostgreSQL database.'}
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-xs text-emerald-800 dark:text-emerald-300">
+                  <span className="material-symbols-outlined text-[16px]">verified_user</span>
+                  {language === 'bn' ? 'নিরাপদ: যা অক্ষত থাকবে' : 'Preserved: Admin Credentials Intact'}
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  {language === 'bn'
+                    ? 'এডমিন (admin) ও সুপারএডমিন (srabon) লগইন ক্রেডেনশিয়াল মোছা হবে না। হ্যান্ডওভারের পর ক্লায়েন্ট তাদের এডমিন একাউন্ট দিয়ে লগইন করে ফ্রেশ ডাটা এন্ট্রি করতে পারবে।'
+                    : 'Admin (admin) & SuperAdmin (srabon) login credentials and core system frameworks are strictly preserved.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 dark:bg-[#121721] border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={isResettingDb}
+                onClick={() => setIsResetConfirmModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                disabled={isResettingDb}
+                onClick={handleExecuteDatabaseReset}
+                className="px-5 py-2.5 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isResettingDb ? (
+                  <>
+                    <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
+                    <span>{language === 'bn' ? 'মুছে ফেলা হচ্ছে…' : 'Purging Database…'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+                    <span>{language === 'bn' ? 'হ্যাঁ, ডাটাবেস রিবুট ও ক্লিন করুন' : 'Confirm Reboot & Clean Slate'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -67,6 +67,7 @@ import {
   dbUpsertUser,
   dbDeleteUser,
   dbClearDummyData,
+  dbResetOperationalData,
 } from "./serverDb";
 
 dotenv.config();
@@ -297,6 +298,37 @@ app.post("/api/admin/clear-dummy-data", async (_req, res) => {
   try {
     const result = await dbClearDummyData();
     res.json({ success: true, message: "Dummy operational data purged successfully", result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Full operational data reset / reboot (Keeps Admin & Superadmin credentials intact)
+app.post("/api/admin/reset-operational-data", async (req, res) => {
+  try {
+    const role = (req.body?.role || req.headers["x-user-role"] || "").toString().toLowerCase();
+    const username = (req.body?.username || req.headers["x-username"] || "").toString().toLowerCase();
+
+    // Verify authorized roles: admin or super_admin
+    const isAuthorized =
+      role === "admin" ||
+      role === "super_admin" ||
+      username === "admin" ||
+      username === "srabon";
+
+    if (!isAuthorized) {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden: Only Admin or Super Admin can reboot operational database.",
+      });
+    }
+
+    const result = await dbResetOperationalData();
+    res.json({
+      success: true,
+      message: "Database operational data wiped successfully. Admin credentials preserved.",
+      result,
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
