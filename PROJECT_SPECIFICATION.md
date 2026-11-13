@@ -224,7 +224,7 @@ Navigation is managed via a single currentView string state in App.tsx. All "rou
 
 **Top-Right Quick Actions (compact icon buttons):**
 - Camera Scan — activates floating live camera barcode reader
-- Quick Barcode (F4) — opens QuickScannerModal
+- Quick Barcode— opens QuickScannerModal
 - Quick Scan — alternate scanner trigger
 
 **Form Validation:**

@@ -222,7 +222,7 @@ export interface InventoryMovementRecord {
   sku: string;
   itemName: string;
   category: InventoryItem['category'] | 'Service' | 'Accessories' | string;
-  type: 'stock' | 'restock' | 'damage';
+  type: 'stock' | 'restock' | 'damage' | 'sale';
   quantity: number;
   reason?: string;
   recordedBy: string;

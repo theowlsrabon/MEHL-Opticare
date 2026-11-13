@@ -29,6 +29,12 @@ const movementLabels: Record<InventoryMovementRecord['type'], { en: string; bn: 
     icon: 'warning',
     styles: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30',
   },
+  sale: {
+    en: 'Sale',
+    bn: 'বিক্রয়',
+    icon: 'shopping_cart',
+    styles: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30',
+  },
 };
 
 export const InventoryMovementHistoryView: React.FC<InventoryMovementHistoryViewProps> = ({
@@ -167,7 +173,7 @@ export const InventoryMovementHistoryView: React.FC<InventoryMovementHistoryView
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredRecords.map((record) => {
                   const movement = movementLabels[record.type];
-                  const signedQuantity = record.type === 'damage' ? -record.quantity : record.quantity;
+                  const signedQuantity = record.type === 'damage' || record.type === 'sale' ? -record.quantity : record.quantity;
                   return (
                     <tr key={record.id} className="text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50/70 dark:hover:bg-[#151923]">
                       <td className="px-4 py-3 whitespace-nowrap">{formatTimestamp(record.timestamp)}</td>

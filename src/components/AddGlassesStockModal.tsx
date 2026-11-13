@@ -27,7 +27,7 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
   const [storageBin, setStorageBin] = useState('');
   const [purchasePriceBDT, setPurchasePriceBDT] = useState<number | ''>('');
   const [askingPriceBDT, setAskingPriceBDT] = useState<number | ''>('');
-  const [printImmediately, setPrintImmediately] = useState<boolean>(false);
+  const [printImmediately, setPrintImmediately] = useState<boolean>(true);
 
   if (!isOpen) return null;
 

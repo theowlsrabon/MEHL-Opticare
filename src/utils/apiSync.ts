@@ -92,15 +92,21 @@ export async function syncInventoryItemToDb(item: any): Promise<void> {
   }
 }
 
-export async function bulkSyncInventoryToDb(inventory: any[]): Promise<void> {
+export async function bulkSyncInventoryToDb(inventory: any[]): Promise<boolean> {
   try {
-    await fetch(`${API_BASE}/api/inventory/bulk`, {
+    const response = await fetch(`${API_BASE}/api/inventory/bulk`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inventory }),
     });
+    const result = await response.json();
+    if (!response.ok || result?.success !== true) {
+      throw new Error(result?.error || `HTTP ${response.status}`);
+    }
+    return true;
   } catch (err) {
     console.warn('[Sync Warning] Bulk inventory sync pending:', err);
+    return false;
   }
 }
 
@@ -490,6 +496,7 @@ export async function bulkSyncPharmacyDispensationsToDb(dispensations: Dispensat
 export async function fetchInitialDataFromDb(): Promise<{
   jobs?: any[];
   inventory?: any[];
+  inventoryLoadError?: string;
   sales?: any[];
   salesmen?: Salesman[];
   financialCollections?: DueCollectionRecord[];
@@ -549,6 +556,13 @@ export async function fetchInitialDataFromDb(): Promise<{
     }
     if (invRes.status === 'fulfilled' && invRes.value?.success && Array.isArray(invRes.value.data)) {
       result.inventory = invRes.value.data;
+    } else {
+      result.inventoryLoadError =
+        invRes.status === 'fulfilled'
+          ? invRes.value?.error || 'The inventory endpoint returned an invalid response.'
+          : invRes.reason instanceof Error
+            ? invRes.reason.message
+            : String(invRes.reason);
     }
     if (salesRes.status === 'fulfilled' && salesRes.value?.success && Array.isArray(salesRes.value.data)) {
       result.sales = salesRes.value.data;

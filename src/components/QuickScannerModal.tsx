@@ -155,6 +155,10 @@ const QuickScannerModalInner: React.FC<QuickScannerModalProps> = ({
     currentUser?.role === 'admin' ||
     currentUser?.role === 'super_admin' ||
     currentUser?.permissions?.canViewPurchaseCost;
+  const getUnitRetailPriceBDT = (item: InventoryItem) =>
+    item.askingPriceBDT ?? item.sellPrice * 120;
+  const getUnitPurchaseCostBDT = (item: InventoryItem) =>
+    item.purchaseCostBDT ?? item.costPrice * 120;
 
   // Sync initialScanCode when modal opens
   useEffect(() => {
@@ -1120,7 +1124,7 @@ const QuickScannerModalInner: React.FC<QuickScannerModalProps> = ({
               </div>
 
               {/* Core Stock Quantity & Last Stock Date Time (Koyta ache & Last stock time) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Available Quantity */}
                 <div className="p-4 rounded-2xl bg-white dark:bg-[#121c26] border border-slate-200 dark:border-[#1e2d3d] flex flex-col justify-between">
                   <span className="text-[10px] font-black uppercase text-slate-400 block">
@@ -1156,21 +1160,6 @@ const QuickScannerModalInner: React.FC<QuickScannerModalProps> = ({
                   </span>
                 </div>
 
-                {/* Storage Bin Location */}
-                <div className="p-4 rounded-2xl bg-white dark:bg-[#121c26] border border-slate-200 dark:border-[#1e2d3d] flex flex-col justify-between">
-                  <span className="text-[10px] font-black uppercase text-slate-400 block">
-                    Storage Shelf &amp; Drawer (র‍্যাক লোকেশন):
-                  </span>
-                  <div className="my-1.5">
-                    <span className="text-sm font-black text-slate-900 dark:text-white block font-mono">
-                      {matchedItem.storageBin || 'Display Cabinet A-01'}
-                    </span>
-                    <span className="text-[11px] text-slate-500 block mt-1">
-                      Tag Code: {matchedItem.adminCostCode?.replace(/\*/g, '') || encodeAdminCostCipher(matchedItem.costPrice || 500)}
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-slate-400">Barcode Tail Tag Attached</span>
-                </div>
               </div>
 
               {/* Pricing, Cost & Secret Cipher Floor */}
@@ -1181,7 +1170,7 @@ const QuickScannerModalInner: React.FC<QuickScannerModalProps> = ({
                     Retail Selling Price (MRP):
                   </span>
                   <div className="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">
-                    ৳{Number(matchedItem.sellPrice || 0).toLocaleString()} BDT
+                    ৳{Math.round(getUnitRetailPriceBDT(matchedItem)).toLocaleString()} BDT
                   </div>
                   <span className="text-[11px] text-slate-500 block mt-1">
                     Customer Counter Price (Standard MRP Guide)
@@ -1204,11 +1193,11 @@ const QuickScannerModalInner: React.FC<QuickScannerModalProps> = ({
                           Wholesale Cost Floor (Admin Only):
                         </span>
                         <span className="text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded font-mono">
-                          Margin: +৳{(Number(matchedItem.sellPrice || 0) - Number(matchedItem.costPrice || 0)).toLocaleString()} BDT
+                          Margin: +৳{Math.round(getUnitRetailPriceBDT(matchedItem) - getUnitPurchaseCostBDT(matchedItem)).toLocaleString()} BDT
                         </span>
                       </div>
                       <div className="text-xl font-black text-emerald-700 dark:text-emerald-300 font-mono">
-                        ৳{Number(matchedItem.costPrice || 0).toLocaleString()} BDT
+                        ৳{Math.round(getUnitPurchaseCostBDT(matchedItem)).toLocaleString()} BDT
                       </div>
                       <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400 block mt-1">
                         Bargaining Rule: Do not sell below cost. Maintain 35%+ gross margin floor.

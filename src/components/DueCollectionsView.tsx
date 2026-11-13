@@ -226,6 +226,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
 
   // Settlement Form State
   const activeInvoice = invoices.find((inv) => inv.id === activeInvoiceId) || invoices[0];
+  const activeInvoiceDue = activeInvoice?.initialDue ?? 0;
   const [waiverAmount, setWaiverAmount] = useState<string>('');
   const [selectedPayMode, setSelectedPayMode] = useState<'bKash' | 'Nagad' | 'Cash' | 'Card'>('Cash');
   const [collectionAmount, setCollectionAmount] = useState<string>('');
@@ -294,7 +295,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
 
   // Sync collection amount when active invoice changes
   useEffect(() => {
-    if (!activeInvoiceId) {
+    if (!activeInvoiceId || !activeInvoice) {
       setWaiverAmount('');
       setCollectionAmount('');
       setGivenAmount('');
@@ -302,13 +303,13 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
     }
 
     setWaiverAmount('');
-    setCollectionAmount(activeInvoice.initialDue.toFixed(2));
-    if (activeInvoice.initialDue === 142.53) {
+    setCollectionAmount(activeInvoiceDue.toFixed(2));
+    if (activeInvoiceDue === 142.53) {
       setGivenAmount('150.00');
     } else {
-      setGivenAmount(Math.ceil(activeInvoice.initialDue).toFixed(2));
+      setGivenAmount(Math.ceil(activeInvoiceDue).toFixed(2));
     }
-  }, [activeInvoiceId, activeInvoice.initialDue]);
+  }, [activeInvoiceId, activeInvoice, activeInvoiceDue]);
 
   const getInvoiceSearchTerms = (value: string): string[] => {
     const terms = [value.trim()];
@@ -342,7 +343,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
   const parsedWaiver = parseFloat(waiverAmount) || 0;
   const computedWaiverValue = parsedWaiver;
 
-  const netPayableDue = Math.max(0, activeInvoice.initialDue - computedWaiverValue);
+  const netPayableDue = Math.max(0, activeInvoiceDue - computedWaiverValue);
   const parsedCollectionAmt = parseFloat(collectionAmount) || 0;
   const parsedGivenAmt = parseFloat(givenAmount) || 0;
   const returnChange = Math.max(0, parsedGivenAmt - parsedCollectionAmt);
@@ -485,7 +486,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
   };
 
   const handleCollectAndPrint = (slipOnly: boolean = false) => {
-    if (!activeInvoiceId) {
+    if (!activeInvoiceId || !activeInvoice) {
       showToast(text('Select an invoice using its number or POS barcode before collecting payment.', 'পেমেন্ট নেওয়ার আগে ইনভয়েস নম্বর বা POS বারকোড দিয়ে ইনভয়েস নির্বাচন করুন।'));
       searchInputRef.current?.focus();
       return;
@@ -536,6 +537,19 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
   };
 
   const totalOutstandingDue = invoices.reduce((sum, inv) => sum + inv.initialDue, 0);
+  const duePatientCount = new Set(
+    invoices
+      .filter((invoice) => invoice.initialDue > 0)
+      .map((invoice) => {
+        const normalizedPhone = invoice.patientPhone.replace(/\D/g, '');
+        if (normalizedPhone) return `phone:${normalizedPhone}`;
+
+        const normalizedName = invoice.patientName.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+        return normalizedName
+          ? `name:${normalizedName}`
+          : `invoice:${normalizeInvoiceSearchTerm(invoice.invoiceNumber)}`;
+      })
+  ).size;
 
   return (
     <div className="flex flex-col gap-6 text-on-surface">
@@ -593,16 +607,12 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
           {/* Quick Top Actions */}
           <div className="flex flex-wrap items-center gap-2.5 self-start xl:self-auto">
             <button
-              onClick={() => {
-                searchInputRef.current?.focus();
-                searchInputRef.current?.select();
-                showToast(text('F4 barcode / QR scanner ready', 'F4 বারকোড / কিউআর স্ক্যানার চালু হয়েছে'));
-              }}
+              onClick={() => setIsInvoiceScannerOpen(true)}
               className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#1a1d26] border border-teal-500/30 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-50 dark:hover:bg-teal-950/30 flex items-center gap-2 shadow-xs transition-all cursor-pointer"
               type="button"
             >
               <span className="material-symbols-outlined text-[18px] text-teal-600">qr_code_scanner</span>
-              <span>{text('Scanner (F4)', 'স্ক্যানার (F4)')}</span>
+              <span>{text('Scanner ', 'স্ক্যানার ')}</span>
             </button>
             <button
               onClick={() => setIsBatchSmsModalOpen(true)}
@@ -610,7 +620,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               type="button"
             >
               <span className="material-symbols-outlined text-[18px] text-amber-600">sms</span>
-              <span>{text('Due SMS Notices (14)', 'বকেয়া SMS নোটিশ (১৪)')}</span>
+              <span>{text(`Due SMS Notices (${duePatientCount})`, `বকেয়া SMS নোটিশ (${duePatientCount.toLocaleString('bn-BD')})`)}</span>
             </button>
             <button
               onClick={() => setIsLedgerModalOpen(true)}
@@ -690,50 +700,6 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
             </div>
           </div>
 
-          {/* Metric 3: Ready for Pickup */}
-          <div className="bg-white dark:bg-[#1a1d26] border border-blue-500/20 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all min-h-[156px] flex flex-col">
-            <div className="flex items-start justify-between gap-2 text-outline mb-2 min-h-8">
-              <span className="text-[10px] leading-snug font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300">
-                {text('Ready for Pickup', 'ডেলিভারির জন্য প্রস্তুত')}
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[16px]">eyeglasses</span>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-              <span className="text-lg leading-tight font-data-pos text-blue-600 dark:text-blue-400 font-bold">{text('14 eyeglasses', '১৪টি চশমা')}</span>
-              <span className="text-[9px] leading-snug font-bold text-blue-700 dark:text-blue-300 bg-blue-500/15 px-1.5 py-0.5 rounded-full">
-                {text('Lab Verified', 'ল্যাবে যাচাইকৃত')}
-              </span>
-            </div>
-            <div className="mt-auto pt-2 border-t border-blue-500/15 text-[10px] leading-snug text-on-surface-variant flex items-center justify-between gap-1">
-              <span>{text('Stored in workshop trays', 'ওয়ার্কশপ ট্রেতে সংরক্ষিত')}</span>
-              <span className="font-semibold text-blue-600">{text('Ready to hand over', 'হস্তান্তরের জন্য প্রস্তুত')}</span>
-            </div>
-          </div>
-
-          {/* Metric 4: Ready for Handover Trays (Replaced FEFO) */}
-          <div className="bg-gradient-to-br from-teal-500/10 via-teal-500/5 to-white dark:to-[#1a1d26] border border-teal-500/25 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all min-h-[156px] flex flex-col">
-            <div className="flex items-start justify-between gap-2 text-teal-800 dark:text-teal-300 mb-2 min-h-8">
-              <span className="text-[10px] leading-snug font-bold uppercase tracking-wide flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px] text-teal-600 shrink-0">inventory_2</span>
-                {text('Ready for Handover Trays', 'হস্তান্তরের জন্য প্রস্তুত ট্রে')}
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[16px]">check_circle</span>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-              <span className="text-lg leading-tight font-data-pos text-teal-700 dark:text-teal-300 font-bold">১২ টি ট্রে</span>
-              <span className="text-[9px] leading-snug font-bold text-teal-700 dark:text-teal-300 bg-teal-500/15 px-1.5 py-0.5 rounded-full">
-                Ready for Handover
-              </span>
-            </div>
-            <div className="mt-auto pt-2 border-t border-teal-500/20 text-[10px] leading-snug text-teal-800/80 dark:text-teal-300/80 flex items-center justify-between gap-1">
-              <span>নিকটতম মেয়াদ: Nov 2026</span>
-              <span className="font-bold text-teal-700 dark:text-teal-400">FEFO Active</span>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -854,7 +820,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
         )}
       </section>
 
-      {activeInvoiceId ? (
+      {activeInvoiceId && activeInvoice ? (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Compact invoice preview on the right */}
         <div className="order-2 lg:order-none lg:col-span-4 lg:col-start-9 lg:row-start-1 bg-white dark:bg-[#1a1d26] border border-outline-variant/80 dark:border-[#262c3b] rounded-lg p-3 sm:p-4 shadow-xs">
@@ -1636,9 +1602,14 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
               <div className="p-3 bg-secondary/10 rounded-xl border border-secondary/20 flex items-center gap-3">
                 <span className="material-symbols-outlined text-secondary text-[28px]">mark_chat_unread</span>
                 <div>
-                  <h4 className="font-bold text-on-surface text-[13px]">{text('14 verified patients pending pickup', '১৪ জন যাচাইকৃত রোগী চশমা সংগ্রহের অপেক্ষায়')}</h4>
+                  <h4 className="font-bold text-on-surface text-[13px]">
+                    {text(
+                      `${duePatientCount.toLocaleString('en-US')} patients have outstanding dues`,
+                      `${duePatientCount.toLocaleString('bn-BD')} জন রোগীর বকেয়া আছে`
+                    )}
+                  </h4>
                   <p className="text-[11px] text-on-surface-variant">
-                    {text('Eyeglasses are glazed, inspected, and stored in workshop trays.', 'চশমা তৈরি ও পরীক্ষা শেষে ওয়ার্কশপের ট্রেতে রাখা হয়েছে।')}
+                    {text('Counted by unique patient with an unpaid balance.', 'বকেয়া থাকা স্বতন্ত্র রোগীর সংখ্যা দেখানো হয়েছে।')}
                   </p>
                 </div>
               </div>
@@ -1651,7 +1622,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                   readOnly
                   rows={4}
                   className="w-full p-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-body-sm text-on-surface font-sans"
-                  value={`প্রিয় গ্রাহক, মদিনা অপটিক্স থেকে জানানো যাচ্ছে যে আপনার চশমা (ট্রে #B-14) ডেলিভারির জন্য প্রস্তুত রয়েছে। অনুগ্রহ করে কাউন্টারে এসে বকেয়া পরিশোধ করে আপনার চশমা সংগ্রহ করুন। হটলাইন: +880 9610-009988`}
+                  value={`প্রিয় গ্রাহক, মদিনা অপটিক্স থেকে জানানো যাচ্ছে যে আপনার চশমা ডেলিভারির জন্য প্রস্তুত রয়েছে। অনুগ্রহ করে কাউন্টারে এসে বকেয়া পরিশোধ করে আপনার চশমা সংগ্রহ করুন। `}
                 />
               </div>
 
@@ -1669,14 +1640,19 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
                 {text('Cancel', 'বাতিল')}
               </button>
               <button
+                type="button"
+                disabled={duePatientCount === 0}
                 onClick={() => {
                   setIsBatchSmsModalOpen(false);
-                  showToast(text('14 due reminders sent to patients via SMS.', '১৪টি বকেয়া স্মরণবার্তা SMS-এর মাধ্যমে পাঠানো হয়েছে।'));
+                  showToast(text(
+                    `${duePatientCount} due reminders sent to patients via SMS.`,
+                    `${duePatientCount.toLocaleString('bn-BD')}টি বকেয়া স্মরণবার্তা SMS-এর মাধ্যমে পাঠানো হয়েছে।`
+                  ));
                 }}
-                className="px-4 py-2 bg-secondary hover:bg-secondary-container text-on-secondary rounded-lg text-label-md font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                className="px-4 py-2 bg-secondary hover:bg-secondary-container text-on-secondary rounded-lg text-label-md font-bold flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-[18px]">send</span>
-                <span>{text('Send 14 SMS', '১৪টি SMS পাঠান')}</span>
+                <span>{text(`Send ${duePatientCount} SMS`, `${duePatientCount.toLocaleString('bn-BD')}টি SMS পাঠান`)}</span>
               </button>
             </div>
           </div>

@@ -6,6 +6,8 @@ import { InventoryMovementHistoryView } from './InventoryMovementHistoryView';
 
 interface InventoryRegistryTableProps {
   items: InventoryItem[];
+  inventoryLoading: boolean;
+  inventoryLoadError: string | null;
   damageRecords: InventoryDamageRecord[];
   movementRecords: InventoryMovementRecord[];
   language: 'bn' | 'en';
@@ -26,6 +28,8 @@ interface InventoryRegistryTableProps {
 
 export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   items,
+  inventoryLoading,
+  inventoryLoadError,
   damageRecords,
   movementRecords,
   language,
@@ -72,6 +76,10 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   const canWriteOffDamage = currentUser?.permissions?.canEditInventory === true;
   const BDT_RATE = 118;
   const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
+  const getUnitRetailPriceBDT = (item: InventoryItem) =>
+    item.askingPriceBDT ?? item.sellPrice * BDT_RATE;
+  const getUnitPurchaseCostBDT = (item: InventoryItem) =>
+    item.purchaseCostBDT ?? item.costPrice * BDT_RATE;
 
   // Dynamic Brands extracted from current items
   const uniqueBrands = useMemo(() => {
@@ -81,11 +89,17 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
 
   // Stock Financial Valuation Calculations
   const totalStockUnits = items.reduce((acc, curr) => acc + (curr.stockQty || 0), 0);
-  const totalRetailValuationUSD = items.reduce((acc, curr) => acc + (curr.stockQty || 0) * (curr.sellPrice || 0), 0);
-  const totalRetailValuationBDT = totalRetailValuationUSD * BDT_RATE;
+  const totalRetailValuationBDT = items.reduce(
+    (total, item) => total + (item.stockQty || 0) * getUnitRetailPriceBDT(item),
+    0
+  );
+  const totalRetailValuationUSD = totalRetailValuationBDT / BDT_RATE;
 
-  const totalCostValuationUSD = items.reduce((acc, curr) => acc + (curr.stockQty || 0) * (curr.costPrice || 0), 0);
-  const totalCostValuationBDT = totalCostValuationUSD * BDT_RATE;
+  const totalCostValuationBDT = items.reduce(
+    (total, item) => total + (item.stockQty || 0) * getUnitPurchaseCostBDT(item),
+    0
+  );
+  const totalCostValuationUSD = totalCostValuationBDT / BDT_RATE;
 
   const potentialProfitBDT = totalRetailValuationBDT - totalCostValuationBDT;
   const overallMarginPct = totalRetailValuationBDT > 0 ? Math.round((potentialProfitBDT / totalRetailValuationBDT) * 100) : 0;
@@ -93,15 +107,15 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   // Category Breakdown
   const frameItems = items.filter((i) => i.category.includes('Frame'));
   const frameUnits = frameItems.reduce((acc, i) => acc + (i.stockQty || 0), 0);
-  const frameValueBDT = frameItems.reduce((acc, i) => acc + (i.stockQty || 0) * (i.sellPrice || 0) * BDT_RATE, 0);
+  const frameValueBDT = frameItems.reduce((acc, i) => acc + (i.stockQty || 0) * getUnitRetailPriceBDT(i), 0);
 
   const lensItems = items.filter((i) => i.category === 'Finished Lens');
   const lensUnits = lensItems.reduce((acc, i) => acc + (i.stockQty || 0), 0);
-  const lensValueBDT = lensItems.reduce((acc, i) => acc + (i.stockQty || 0) * (i.sellPrice || 0) * BDT_RATE, 0);
+  const lensValueBDT = lensItems.reduce((acc, i) => acc + (i.stockQty || 0) * getUnitRetailPriceBDT(i), 0);
 
   const otherItems = items.filter((i) => !i.category.includes('Frame') && i.category !== 'Finished Lens');
   const otherUnits = otherItems.reduce((acc, i) => acc + (i.stockQty || 0), 0);
-  const otherValueBDT = otherItems.reduce((acc, i) => acc + (i.stockQty || 0) * (i.sellPrice || 0) * BDT_RATE, 0);
+  const otherValueBDT = otherItems.reduce((acc, i) => acc + (i.stockQty || 0) * getUnitRetailPriceBDT(i), 0);
 
   const filteredItems = items.filter((item) => {
     // Quick filter chip
@@ -394,6 +408,17 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           </div>
         </div>
 
+        {inventoryLoading && (
+          <p role="status" className="mt-3 text-xs font-medium text-slate-600 dark:text-slate-300">
+            {text('Syncing stock products from the database…', 'ডাটাবেস থেকে স্টক পণ্যের তথ্য সিঙ্ক হচ্ছে…')}
+          </p>
+        )}
+        {inventoryLoadError && (
+          <p role="alert" className="mt-3 text-xs font-medium text-rose-700 dark:text-rose-300">
+            {text('Database sync failed; showing the last available stock data:', 'ডাটাবেস সিঙ্ক হয়নি; সর্বশেষ পাওয়া স্টকের তথ্য দেখানো হচ্ছে:')} {inventoryLoadError}
+          </p>
+        )}
+
         {/* Valuation KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-4">
           {/* 1. Total Retail Valuation */}
@@ -502,7 +527,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               type="text"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder={text('Scan barcode (F4)...', 'বারকোড স্ক্যান করুন (F4)...')}
+              placeholder={text('Scan barcode...', 'বারকোড স্ক্যান করুন ...')}
               className="w-40 sm:w-52 h-7.5 pl-9 pr-12 bg-[#f8fafc] dark:bg-[#14171f] border border-outline-variant/80 dark:border-[#2e3547] rounded-lg text-on-surface placeholder:text-outline focus:border-extej-orange focus:ring-1 focus:ring-orange-500/20 transition-all font-data-rx text-[11px] outline-hidden"
             />
             {searchFilter ? (
@@ -689,9 +714,9 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           </thead>
           <tbody className="divide-y divide-surface-container text-body-sm font-body-sm">
             {filteredItems.map((item) => {
-              const purchaseCostBDT = item.purchaseCostBDT ?? Math.round(item.costPrice * BDT_RATE);
+              const purchaseCostBDT = getUnitPurchaseCostBDT(item);
               const totalPurchaseCostBDT = purchaseCostBDT * item.stockQty;
-              const askingPriceBDT = item.askingPriceBDT ?? Math.round(item.sellPrice * BDT_RATE);
+              const askingPriceBDT = getUnitRetailPriceBDT(item);
               const isLow = item.stockQty <= item.minThreshold;
               const isSelected = selectedItemIds.has(item.id);
 
@@ -999,7 +1024,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
 
                 {isAdmin && (
                   <p className="mt-3 p-3 rounded-lg bg-rose-500/10 text-xs text-rose-800 dark:text-rose-200">
-                    {text('Estimated inventory loss:', 'আনুমানিক মজুদ ক্ষতি:')} ৳{((damageItem.purchaseCostBDT ?? damageItem.costPrice * BDT_RATE) * (Number(damageQuantity) || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {text('Estimated inventory loss:', 'আনুমানিক মজুদ ক্ষতি:')} ৳{(getUnitPurchaseCostBDT(damageItem) * (Number(damageQuantity) || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 )}
                 {damageError && (

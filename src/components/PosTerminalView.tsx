@@ -511,7 +511,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
             className="px-3 py-1.5 bg-surface-container-low hover:bg-surface-container border border-outline-variant rounded-xl text-[11px] font-semibold text-on-surface flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">barcode_scanner</span>
-            <span>Scan 35x15mm Tag (F4)</span>
+            <span>Scan 35x15mm Tag </span>
           </button>
         </div>
       </div>

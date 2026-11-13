@@ -185,6 +185,9 @@ export default function App() {
     }
     return initialInventory;
   });
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventoryLoadError, setInventoryLoadError] = useState<string | null>(null);
+  const [inventorySyncWarning, setInventorySyncWarning] = useState(false);
   const [inventoryDamageRecords, setInventoryDamageRecords] = useState<InventoryDamageRecord[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('madina_inventory_damage_ledger') || '[]') as InventoryDamageRecord[];
@@ -590,7 +593,11 @@ export default function App() {
       if (Array.isArray(dbData.inventory)) {
         setInventory(dbData.inventory);
         localStorage.setItem('madina_inventory', JSON.stringify(dbData.inventory));
+        setInventoryLoadError(null);
+      } else {
+        setInventoryLoadError(dbData.inventoryLoadError || 'Could not load inventory from the database.');
       }
+      setInventoryLoading(false);
 
       // 3. Sales Records — DB is the authority
       const databaseSales: SaleRecord[] = Array.isArray(dbData.sales) ? dbData.sales : [];
@@ -712,6 +719,11 @@ export default function App() {
 
       // Hydration done: allow future user modifications to sync to database
       isHydratedFromDb.current = true;
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[Inventory] Could not load inventory from the database:', error);
+      setInventoryLoadError(message);
+      setInventoryLoading(false);
     });
   }, []);
 
@@ -773,7 +785,7 @@ export default function App() {
     localStorage.setItem('madina_inventory', JSON.stringify(inventory));
     if (!isHydratedFromDb.current) return;
     const timer = setTimeout(() => {
-      bulkSyncInventoryToDb(inventory);
+      void bulkSyncInventoryToDb(inventory).then((synced) => setInventorySyncWarning(!synced));
     }, 2000);
     return () => clearTimeout(timer);
   }, [inventory]);
@@ -1099,6 +1111,8 @@ export default function App() {
       // Reset application state to clean slate
       setJobs([]);
       setInventory([]);
+      setInventoryLoadError(null);
+      setInventoryLoading(false);
       setSalesRecords([]);
       setFinancialCollections([]);
       setSalesmen([]);
@@ -1396,8 +1410,66 @@ export default function App() {
     setJobs((prev) => [jobWithAudit, ...prev]);
   };
 
-  const handleRecordSale = (sale: SaleRecord) => {
-    if (recordedSaleIds.current.has(sale.id) || salesRecords.some((existingSale) => existingSale.id === sale.id)) return;
+  const handleRecordSale = (sale: SaleRecord): boolean => {
+    if (recordedSaleIds.current.has(sale.id) || salesRecords.some((existingSale) => existingSale.id === sale.id)) return true;
+
+    const soldQuantities = new Map<string, number>();
+    for (const line of sale.itemLines || []) {
+      if (!line.inventoryItemId) continue;
+      if (!Number.isInteger(line.quantity) || line.quantity < 1) {
+        window.alert(`Cannot complete sale: invalid quantity for ${line.name}.`);
+        return false;
+      }
+      soldQuantities.set(
+        line.inventoryItemId,
+        (soldQuantities.get(line.inventoryItemId) || 0) + line.quantity
+      );
+    }
+
+    const itemsById = new Map<string, InventoryItem>(
+      inventory.map((item): [string, InventoryItem] => [item.id, item])
+    );
+    for (const [itemId, quantity] of soldQuantities) {
+      const item = itemsById.get(itemId);
+      if (!item || quantity > item.stockQty) {
+        window.alert(`Cannot complete sale: ${item?.name || 'An inventory item'} has only ${item?.stockQty ?? 0} unit(s) in stock.`);
+        return false;
+      }
+    }
+
+    const soldAt = new Date().toISOString();
+    const movementRecords: InventoryMovementRecord[] = Array.from(soldQuantities, ([itemId, quantity]) => {
+      const item = itemsById.get(itemId)!;
+      return {
+        id: `movement-sale-${sale.id}-${itemId}`,
+        timestamp: soldAt,
+        inventoryItemId: item.id,
+        sku: item.sku,
+        itemName: item.name,
+        category: item.category,
+        type: 'sale',
+        quantity,
+        reason: `Invoice ${sale.invoiceNumber}`,
+        recordedBy: authenticatedUser?.name || 'POS',
+      };
+    });
+
+    setInventory((previous) =>
+      previous.map((item) => {
+        const soldQuantity = soldQuantities.get(item.id);
+        if (soldQuantity === undefined) return item;
+        const stockQty = item.stockQty - soldQuantity;
+        const status =
+          stockQty <= Math.floor(item.minThreshold / 2)
+            ? 'critical'
+            : stockQty < item.minThreshold
+              ? 'low'
+              : 'healthy';
+        return { ...item, stockQty, status };
+      })
+    );
+    setInventoryMovementRecords((previous) => [...movementRecords, ...previous]);
+
     recordedSaleIds.current.add(sale.id);
     // Tag with branch if user is branch-scoped
     const taggedSale = userAssignedBranchId
@@ -1434,6 +1506,7 @@ export default function App() {
           : salesman
       )
     );
+    return true;
   };
 
   const handleAddSalesman = (newSm: Salesman) => {
@@ -1875,11 +1948,11 @@ export default function App() {
         type: move.type,
         actorName: move.recordedBy || 'Inventory Officer',
         actorRole: 'Storage & Supply',
-        action: move.type === 'restock' ? 'restocked optical stock' : move.type === 'damage' ? 'logged damaged stock for' : 'adjusted inventory count for',
+        action: move.type === 'restock' ? 'restocked optical stock' : move.type === 'damage' ? 'logged damaged stock for' : move.type === 'sale' ? 'sold optical stock' : 'adjusted inventory count for',
         target: `${move.itemName} (${move.quantity} pcs)`,
         details: `SKU: ${move.sku} · Category: ${move.category} · ${move.reason || 'Warehouse Log'}`,
-        badgeText: `${move.quantity > 0 ? `+${move.quantity}` : move.quantity} Units`,
-        badgeType: move.type === 'damage' ? 'warning' : 'info',
+        badgeText: `${move.type === 'damage' || move.type === 'sale' ? '-' : '+'}${move.quantity} Units`,
+        badgeType: move.type === 'damage' ? 'warning' : move.type === 'sale' ? 'success' : 'info',
         timestamp: move.timestamp || 'Today',
         epochMs: epoch,
         linkView: 'stock-master',
@@ -1913,6 +1986,29 @@ export default function App() {
           </button>
         </div>
       )}
+      {inventorySyncWarning && (
+        <div
+          role="alert"
+          className="fixed bottom-20 right-4 z-[100] flex max-w-md items-start gap-3 rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-950 shadow-lg dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100"
+        >
+          <span>স্টকের পরিবর্তন এই ডিভাইসে সংরক্ষিত আছে; ডাটাবেসে সিঙ্ক হয়নি।</span>
+          <button
+            type="button"
+            onClick={() => void bulkSyncInventoryToDb(inventory).then((synced) => setInventorySyncWarning(!synced))}
+            className="shrink-0 font-bold underline"
+          >
+            আবার চেষ্টা করুন
+          </button>
+          <button
+            type="button"
+            aria-label="স্টক সিঙ্ক সতর্কতা বন্ধ করুন"
+            onClick={() => setInventorySyncWarning(false)}
+            className="shrink-0 font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {/* 1. Fixed Top Application Bar */}
       <TopNavBar
         currentView={currentView}
@@ -1922,12 +2018,12 @@ export default function App() {
           else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
           else setCurrentView(v);
         }}
-        onOpenNewInvoice={() => {
+        onOpenPOS={() => {
           if (!currentUser.permissions.canProcessPOS) {
             alert(`Access Restricted (RBAC):\nRole "${currentUser.roleTitle}" cannot generate POS invoices.`);
             return;
           }
-          setIsNewInvoiceOpen(true);
+          setCurrentView('pos-terminal');
         }}
         onOpenQuickScan={(code) => {
           setCameraScannedCode(code || '');
@@ -1996,6 +2092,8 @@ export default function App() {
           && currentView !== 'financial-accounting'
           && currentView !== 'returns-refunds'
           && currentView !== 'due-collections'
+          && currentView !== 'pos-terminal'
+          && currentView !== 'prescriptions'
           && currentView !== 'salesmen'
           && currentView !== 'reports'
           && currentView !== 'settings-roles'
@@ -2195,10 +2293,10 @@ export default function App() {
                 <button
                   onClick={() => setIsQuickScanOpen(true)}
                   className="h-7.5 px-2.5 bg-[#f1f4f9] dark:bg-[#202533] border border-outline-variant/60 dark:border-[#2b3243] text-on-surface rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs hover:bg-slate-200 transition-all"
-                  title="Quick Barcode (F4)"
+                  title="Quick Barcode "
                 >
                   <span className="material-symbols-outlined text-[15px] text-[#169b90]">barcode_scanner</span>
-                  <span>{language === 'bn' ? 'কুইক বারকোড (F4)' : 'Quick Barcode (F4)'}</span>
+                  <span>{language === 'bn' ? 'কুইক বারকোড' : 'Quick Barcode'}</span>
                 </button>
                 <button
                   onClick={() => setIsNewInvoiceOpen(true)}
@@ -2391,6 +2489,8 @@ export default function App() {
         {currentView === 'stock-master' && (
           <InventoryRegistryTable
             items={userAssignedBranchId ? inventory.filter(item => !item.branchId || item.branchId === userAssignedBranchId) : inventory}
+            inventoryLoading={inventoryLoading}
+            inventoryLoadError={inventoryLoadError}
             damageRecords={inventoryDamageRecords}
             movementRecords={inventoryMovementRecords}
             language={language}
@@ -2526,7 +2626,9 @@ export default function App() {
 
         {currentView === 'financial-accounting' && (
           <FinancialAccountingView
-            financialSummary={financialSummary}
+            inventory={userAssignedBranchId ? inventory.filter(item => !item.branchId || item.branchId === userAssignedBranchId) : inventory}
+            inventoryLoading={inventoryLoading}
+            inventoryLoadError={inventoryLoadError}
             expenses={expenses}
             salesRecords={salesRecords}
             dispensations={dispensations}

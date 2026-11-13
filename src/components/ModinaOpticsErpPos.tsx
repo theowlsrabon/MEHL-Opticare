@@ -35,6 +35,11 @@ interface LensPackage {
   index: string;
 }
 
+interface SelectedInventorySaleLine {
+  quantity: number;
+  unitPriceBDT: number;
+}
+
 interface PrescriptionRow {
   eye: 'OD (Right)' | 'OS (Left)';
   sph: string;
@@ -50,7 +55,7 @@ interface Props {
   salesRecords: SaleRecord[];
   onManageSalesmen?: () => void;
   onAddSalesman?: (salesman: Salesman) => void;
-  onRecordSale?: (sale: SaleRecord) => void;
+  onRecordSale?: (sale: SaleRecord) => boolean | void;
   onOpenQuickScan?: () => void;
   onOpenLiveCamera?: () => void;
   onOpenNewInvoice?: () => void;
@@ -244,6 +249,12 @@ const LENS_PACKAGES: LensPackage[] = [
   { id: 'highindex', name: 'Ultra-Thin Hi-Index 1.67 Aspheric', price: 4900, coating: 'Super EMI Diamond Clear', index: '1.67' },
 ];
 
+const getInventorySellingPriceBDT = (item: InventoryItem) =>
+  item.askingPriceBDT ?? item.sellPrice * 120;
+
+const getInventoryCostPriceBDT = (item: InventoryItem) =>
+  item.purchaseCostBDT ?? item.costPrice * 120;
+
 export const ModinaOpticsErpPos: React.FC<Props> = ({
   salesmenList,
   canManageSalesmen = false,
@@ -281,11 +292,37 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   const [scanMessage, setScanMessage] = useState<string>('');
   const [scannedFrame, setScannedFrame] = useState<FrameProduct | null>(null);
   const [negotiatedPrice, setNegotiatedPrice] = useState<number>(0);
+  const [scannedFrameQuantity, setScannedFrameQuantity] = useState<number>(1);
+  const [selectedStockProducts, setSelectedStockProducts] = useState<Record<string, SelectedInventorySaleLine>>({});
+  const [stockSaleQuantity, setStockSaleQuantity] = useState<number>(1);
+  const [stockSaleMessage, setStockSaleMessage] = useState<string>('');
+  const [selectedFrameInventoryId, setSelectedFrameInventoryId] = useState<string>('');
+  const [selectedLensInventoryId, setSelectedLensInventoryId] = useState<string>('');
   const [showAdminConfidential, setShowAdminConfidential] = useState<boolean>(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const recentFrameSuggestions = useMemo(
-    () => inventory.filter((item) => item.category === 'Optical Frame' || item.category === 'Premium Frame').slice(0, 6),
+    () => inventory.filter((item) => (item.category === 'Optical Frame' || item.category === 'Premium Frame') && item.stockQty > 0).slice(0, 6),
     [inventory]
+  );
+  const selectedStockLines = useMemo(
+    () => Object.keys(selectedStockProducts).flatMap((id) => {
+      const item = inventory.find((inventoryItem) => inventoryItem.id === id);
+      const saleLine = selectedStockProducts[id];
+      return item ? [{ item, ...saleLine }] : [];
+    }),
+    [inventory, selectedStockProducts]
+  );
+  const selectedFrameStockLines = useMemo(
+    () => selectedStockLines.filter(({ item }) => item.category === 'Optical Frame' || item.category === 'Premium Frame'),
+    [selectedStockLines]
+  );
+  const selectedLensStockLines = useMemo(
+    () => selectedStockLines.filter(({ item }) => item.category === 'Finished Lens'),
+    [selectedStockLines]
+  );
+  const availableLensStock = inventory.filter((item) => item.category === 'Finished Lens' && item.stockQty > 0);
+  const availableFrameStock = inventory.filter(
+    (item) => (item.category === 'Optical Frame' || item.category === 'Premium Frame') && item.stockQty > 0
   );
 
   // 3. Ophthalmic Lens Selection & Prescription Grid (ছবি অনুযায়ী ৪-ধাপের সিলেকশন)
@@ -435,12 +472,25 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
   // Active prices based on markable step inclusion
   const activeFramePrice = useMemo(() => {
-    return includeFrame && scannedFrame ? (Number(negotiatedPrice) || 0) : 0;
-  }, [includeFrame, scannedFrame, negotiatedPrice]);
+    const scannedFrameTotal = includeFrame && scannedFrame && inventory.some((item) => item.sku === scannedFrame.barcode)
+      ? (Number(negotiatedPrice) || 0) * scannedFrameQuantity
+      : 0;
+    const catalogFrameTotal = includeFrame && scannedFrame && !inventory.some((item) => item.sku === scannedFrame.barcode)
+      ? (Number(negotiatedPrice) || 0) * scannedFrameQuantity
+      : 0;
+    return scannedFrameTotal + catalogFrameTotal + (includeFrame
+      ? selectedFrameStockLines
+        .filter((line) => line.item.sku !== scannedFrame?.barcode)
+        .reduce((total, line) => total + line.unitPriceBDT * line.quantity, 0)
+      : 0);
+  }, [includeFrame, scannedFrame, inventory, negotiatedPrice, scannedFrameQuantity, selectedFrameStockLines]);
 
   const activeLensPrice = useMemo(() => {
-    return includeLens ? lensPrice : 0;
-  }, [includeLens, lensPrice]);
+    const configuredLensPrice = selectedLens.id !== 'no-lens' ? lensPrice : 0;
+    return includeLens
+      ? configuredLensPrice + selectedLensStockLines.reduce((total, line) => total + line.unitPriceBDT * line.quantity, 0)
+      : 0;
+  }, [includeLens, lensPrice, selectedLens.id, selectedLensStockLines]);
 
   const paidServicesTotal = useMemo(() => {
     if (!includePaidServices) return 0;
@@ -456,8 +506,22 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       invoiceNumber: currentInvoiceNumber,
       patientName,
       patientPhone,
-      frameName: includeFrame && scannedFrame ? `${scannedFrame.brand} ${scannedFrame.model}` : '',
-      lensName: includeLens && activeLensPrice > 0 ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}` : '',
+      frameName: includeFrame
+        ? [
+            ...(scannedFrame ? [`${scannedFrame.brand} ${scannedFrame.model} × ${scannedFrameQuantity}`] : []),
+            ...selectedFrameStockLines
+              .filter((line) => line.item.sku !== scannedFrame?.barcode)
+              .map((line) => `${line.item.name} × ${line.quantity}`),
+          ].join(', ')
+        : '',
+      lensName: includeLens
+        ? [
+            ...(selectedLens.id !== 'no-lens' && lensPrice > 0
+              ? [`${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}`]
+              : []),
+            ...selectedLensStockLines.map((line) => `${line.item.name} × ${line.quantity}`),
+          ].join(', ')
+        : '',
       paidServices: includePaidServices
         ? (Object.values(selectedPaidServices) as Array<{ service: PaidServiceDef; quantity: number; price: number }>).map((s) => `${s.service.nameBn} x${s.quantity}`)
         : [],
@@ -476,8 +540,14 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
     patientPhone,
     includeFrame,
     scannedFrame,
+    scannedFrameQuantity,
+    selectedStockProducts,
+    selectedFrameStockLines,
+    selectedLensStockLines,
+    inventory,
     includeLens,
     activeLensPrice,
+    lensPrice,
     selectedLens,
     rxGrid,
     includePaidServices,
@@ -509,15 +579,61 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   }, [netTotal, currentSalesman]);
 
   // Admin Profit Calculations
-  const wholesaleCost = (includeFrame && scannedFrame?.wholesaleCost) || 0;
+  const wholesaleCost = (includeFrame
+    ? selectedFrameStockLines
+      .filter((line) => line.item.sku !== scannedFrame?.barcode)
+      .reduce((total, line) => total + getInventoryCostPriceBDT(line.item) * line.quantity, 0)
+      + (scannedFrame && inventory.some((item) => item.sku === scannedFrame.barcode)
+        ? (scannedFrame.wholesaleCost || 0) * scannedFrameQuantity
+        : 0)
+    : 0);
   const grossProfit = Math.max(0, activeFramePrice - wholesaleCost);
   const profitMarginPct = activeFramePrice > 0 ? (grossProfit / activeFramePrice) * 100 : 0;
+
+  const addInventoryProductToSale = (
+    item: InventoryItem,
+    quantity: number,
+    unitPriceBDT: number,
+    allowScannedFrame = false
+  ): boolean => {
+    if (!allowScannedFrame && item.sku === scannedFrame?.barcode) {
+      setStockSaleMessage(`${item.name} is already selected in the frame scanner.`);
+      return false;
+    }
+    const currentQuantity = selectedStockProducts[item.id]?.quantity || 0;
+    if (!Number.isInteger(quantity) || quantity < 1 || currentQuantity + quantity > item.stockQty) {
+      setStockSaleMessage(`${item.name}: only ${Math.max(0, item.stockQty - currentQuantity)} unit(s) available.`);
+      return false;
+    }
+
+    setSelectedStockProducts((previous) => ({
+      ...previous,
+      [item.id]: {
+        quantity: (previous[item.id]?.quantity || 0) + quantity,
+        unitPriceBDT: previous[item.id]?.unitPriceBDT ?? unitPriceBDT,
+      },
+    }));
+    setStockSaleMessage(`${item.name} added to this sale.`);
+    return true;
+  };
+
+  const updateStockSaleLine = (itemId: string, updates: Partial<SelectedInventorySaleLine>) => {
+    setSelectedStockProducts((previous) => {
+      const current = previous[itemId];
+      if (!current) return previous;
+      return { ...previous, [itemId]: { ...current, ...updates } };
+    });
+  };
 
   // Barcode Handler (Instant or Enter)
   const handleBarcodeSearch = (code: string) => {
     setIsScanning(true);
     const cleaned = code.trim();
-    const stockItem = inventory.find((item) => item.sku.toLowerCase() === cleaned.toLowerCase());
+    const stockItem = inventory.find(
+      (item) =>
+        item.sku.toLowerCase() === cleaned.toLowerCase() &&
+        (item.category === 'Optical Frame' || item.category === 'Premium Frame')
+    );
     const catalogItem = INVENTORY_CATALOG.find(
       (item) =>
         item.barcode.toLowerCase() === cleaned.toLowerCase() ||
@@ -530,8 +646,8 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
           model: stockItem.model || stockItem.name,
           frameType: 'Full Rim',
           color: stockItem.color || 'Standard',
-          guidePrice: stockItem.sellPrice * 120,
-          wholesaleCost: stockItem.costPrice * 120,
+          guidePrice: getInventorySellingPriceBDT(stockItem),
+          wholesaleCost: getInventoryCostPriceBDT(stockItem),
           secretCode: stockItem.adminCostCode || '',
           binLocation: stockItem.storageBin || '',
           stockQty: stockItem.stockQty || 0,
@@ -543,6 +659,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       if (matched) {
         setScannedFrame(matched);
         setNegotiatedPrice(matched.guidePrice);
+        setScannedFrameQuantity(1);
         setScanMessage(`Verified item: ${matched.brand} (${matched.model})`);
       } else {
         setScannedFrame(null);
@@ -767,11 +884,11 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       );
     }
 
-    if (includeFrame && !scannedFrame) {
+    if (includeFrame && !scannedFrame && selectedFrameStockLines.length === 0) {
       errors.push(text('Frame selection is required when frame is included.', 'ফ্রেম অন্তর্ভুক্ত থাকায় ফ্রেম নির্বাচন আবশ্যক।'));
     }
 
-    if (includeLens && (selectedLens.id === 'no-lens' || !selectedLens.name.trim())) {
+    if (includeLens && selectedLensStockLines.length === 0 && (selectedLens.id === 'no-lens' || !selectedLens.name.trim())) {
       errors.push(text('Lens configuration is required when lens is included.', 'লেন্স অন্তর্ভুক্ত থাকায় লেন্স কনফিগারেশন আবশ্যক।'));
     }
 
@@ -796,7 +913,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   const handleGenerateInvoice = () => {
     if (!currentSalesman) return;
     if (!includeFrame && !includeLens && !includePaidServices) return;
-    if (includeFrame && !scannedFrame) return;
+    if (includeFrame && !scannedFrame && selectedFrameStockLines.length === 0) return;
     if (includePaidServices && Object.keys(selectedPaidServices).length === 0) return;
 
     const invId = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -809,11 +926,22 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
     // Build dynamic items summary
     const summaryParts: string[] = [];
-    if (includeFrame && scannedFrame) {
+    if (includeFrame && scannedFrame && !inventory.some((item) => item.sku === scannedFrame.barcode)) {
       summaryParts.push(`${scannedFrame.brand} ${scannedFrame.model}`);
     }
-    if (includeLens && selectedLens.price > 0) {
+    if (includeFrame && scannedFrame && inventory.some((item) => item.sku === scannedFrame.barcode)) {
+      summaryParts.push(`${scannedFrame.brand} ${scannedFrame.model} × ${scannedFrameQuantity}`);
+    }
+    if (includeFrame) {
+      selectedFrameStockLines
+        .filter((line) => line.item.sku !== scannedFrame?.barcode)
+        .forEach((line) => summaryParts.push(`${line.item.name} × ${line.quantity}`));
+    }
+    if (includeLens && selectedLens.id !== 'no-lens' && lensPrice > 0) {
       summaryParts.push(selectedLens.name);
+    }
+    if (includeLens) {
+      selectedLensStockLines.forEach((line) => summaryParts.push(`${line.item.name} × ${line.quantity}`));
     }
     if (includePaidServices && Object.keys(selectedPaidServices).length > 0) {
       const srvNames = (Object.values(selectedPaidServices) as Array<{ service: PaidServiceDef; quantity: number; price: number }>)
@@ -825,26 +953,63 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
     const itemLines: SaleItemLine[] = [];
     if (includeFrame && scannedFrame) {
+      const inventoryItem = inventory.find((item) => item.sku === scannedFrame.barcode);
       itemLines.push({
-        inventoryItemId: inventory.find((item) => item.sku === scannedFrame.barcode)?.id,
+        inventoryItemId: inventoryItem?.id,
         sku: scannedFrame.barcode,
         name: `${scannedFrame.brand} ${scannedFrame.model}`,
         brand: scannedFrame.brand,
-        category: inventory.find((item) => item.sku === scannedFrame.barcode)?.category || 'Optical Frame',
-        quantity: 1,
-        unitPriceBDT: activeFramePrice,
-        unitCostBDT: wholesaleCost,
-        discountBDT: grossTotal > 0 ? (activeFramePrice / grossTotal) * itemDiscount : 0,
+        category: inventoryItem?.category || 'Optical Frame',
+        quantity: scannedFrameQuantity,
+        unitPriceBDT: Number(negotiatedPrice) || 0,
+        unitCostBDT: inventoryItem ? getInventoryCostPriceBDT(inventoryItem) : scannedFrame.wholesaleCost,
+        discountBDT: grossTotal > 0
+          ? (((Number(negotiatedPrice) || 0) * scannedFrameQuantity) / grossTotal) * itemDiscount
+          : 0,
       });
     }
-    if (includeLens && activeLensPrice > 0) {
+    if (includeFrame) {
+      selectedFrameStockLines
+        .filter((line) => line.item.sku !== scannedFrame?.barcode)
+        .forEach(({ item, quantity, unitPriceBDT }) => {
+          const lineTotal = quantity * unitPriceBDT;
+          itemLines.push({
+            inventoryItemId: item.id,
+            sku: item.sku,
+            name: item.name,
+            brand: item.brand,
+            category: item.category,
+            quantity,
+            unitPriceBDT,
+            unitCostBDT: getInventoryCostPriceBDT(item),
+            discountBDT: grossTotal > 0 ? (lineTotal / grossTotal) * itemDiscount : 0,
+          });
+        });
+    }
+    if (includeLens && selectedLens.id !== 'no-lens' && lensPrice > 0) {
       itemLines.push({
         sku: `LENS-${selectedLens.id}`,
         name: selectedLens.name,
         category: 'Finished Lens' as const,
         quantity: 1,
-        unitPriceBDT: activeLensPrice,
-        discountBDT: grossTotal > 0 ? (activeLensPrice / grossTotal) * itemDiscount : 0,
+        unitPriceBDT: lensPrice,
+        discountBDT: grossTotal > 0 ? (lensPrice / grossTotal) * itemDiscount : 0,
+      });
+    }
+    if (includeLens) {
+      selectedLensStockLines.forEach(({ item, quantity, unitPriceBDT }) => {
+        const lineTotal = quantity * unitPriceBDT;
+        itemLines.push({
+          inventoryItemId: item.id,
+          sku: item.sku,
+          name: item.name,
+          brand: item.brand,
+          category: item.category,
+          quantity,
+          unitPriceBDT,
+          unitCostBDT: getInventoryCostPriceBDT(item),
+          discountBDT: grossTotal > 0 ? (lineTotal / grossTotal) * itemDiscount : 0,
+        });
       });
     }
     if (includePaidServices) {
@@ -881,8 +1046,16 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       totalAmount: netTotal,
       advancePaid: Number(advancePaid) || 0,
       dueAmount: dueBalance,
-      framesCount: includeFrame && scannedFrame ? 1 : 0,
-      lensesCount: includeLens && activeLensPrice > 0 ? 2 : 0,
+      framesCount: includeFrame
+        ? (scannedFrame ? scannedFrameQuantity : 0)
+          + selectedFrameStockLines
+            .filter((line) => line.item.sku !== scannedFrame?.barcode)
+            .reduce((sum, line) => sum + line.quantity, 0)
+        : 0,
+      lensesCount: includeLens
+        ? (selectedLens.id !== 'no-lens' && lensPrice > 0 ? 2 : 0)
+          + selectedLensStockLines.reduce((sum, line) => sum + line.quantity * 2, 0)
+        : 0,
       accessoriesCount: totalServiceUnits,
       itemsSummary,
       paymentMethod: (['Cash', 'bKash', 'Card', 'Nagad'].includes(paymentMethod) ? paymentMethod : 'Cash') as any,
@@ -896,15 +1069,27 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       invoiceNumber: invId,
       patientName: patientName || '',
       patientPhone: patientPhone || '',
-      hasFrame: includeFrame && !!scannedFrame,
+      hasFrame: includeFrame && (!!scannedFrame || selectedFrameStockLines.length > 0),
       hasLens: includeLens && activeLensPrice > 0,
       hasPaidServices: includePaidServices && Object.keys(selectedPaidServices).length > 0,
-      frameName: includeFrame && scannedFrame ? `${scannedFrame.brand} ${scannedFrame.model}` : '',
+      frameName: includeFrame
+        ? [
+            ...(scannedFrame ? [`${scannedFrame.brand} ${scannedFrame.model} × ${scannedFrameQuantity}`] : []),
+            ...selectedFrameStockLines
+              .filter((line) => line.item.sku !== scannedFrame?.barcode)
+              .map((line) => `${line.item.name} × ${line.quantity}`),
+          ].join(', ')
+        : '',
       frameSpecs: includeFrame && scannedFrame ? scannedFrame.frameType : '',
       frameDetails: includeFrame && scannedFrame ? scannedFrame.color : '',
       frameAmount: activeFramePrice,
-      lensName: includeLens && selectedLens.price > 0
-        ? `${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}`
+      lensName: includeLens
+        ? [
+            ...(selectedLens.id !== 'no-lens' && lensPrice > 0
+              ? [`${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating})` : ''}`]
+              : []),
+            ...selectedLensStockLines.map((line) => `${line.item.name} × ${line.quantity}`),
+          ].join(', ')
         : '',
       lensSpecs: includeLens && selectedLens.price > 0 ? `Index ${selectedLens.index}` : '',
       lensAmount: activeLensPrice,
@@ -931,7 +1116,15 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
       // Keep POS generation usable if browser storage is unavailable.
     }
 
-    onRecordSale?.(fullSaleRecord);
+    if (onRecordSale?.(fullSaleRecord) === false) {
+      setInvoiceValidationErrors([
+        text(
+          'Stock changed or is insufficient. Review the stock quantities and try again.',
+          'স্টকের পরিমাণ পরিবর্তিত হয়েছে বা যথেষ্ট নেই। স্টকের পরিমাণ যাচাই করে আবার চেষ্টা করুন।'
+        ),
+      ]);
+      return;
+    }
     setShowInvoiceSummary(false);
     setShowPrintModal(true);
   };
@@ -966,7 +1159,7 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
             <div className="flex items-center gap-1 bg-slate-100/90 dark:bg-[#111827] p-1 rounded-xl border border-slate-200/80 dark:border-slate-800">
               <button
                 type="button"
-                onClick={onOpenNewInvoice || onOpenQuickScan}
+                onClick={() => onOpenQuickScan?.()}
                 className="h-7.5 px-2.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-[#166534] to-[#14532d] text-white hover:brightness-105 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
                 title="Quick Scan / Quick Invoice"
               >
@@ -1193,22 +1386,132 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         <div className="flex items-center gap-1.5 flex-wrap mt-2 text-[11px]">
                           <span className="text-slate-400">{text('Recently added products:', 'সম্প্রতি যোগ করা পণ্য:')}</span>
                           {recentFrameSuggestions.map((item) => (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => {
-                                setBarcodeInput(item.sku);
-                                handleBarcodeSearch(item.sku);
-                              }}
-                              className={`px-2 py-0.5 rounded-md border text-[11px] font-mono transition-all cursor-pointer ${
-                                scannedFrame?.barcode === item.sku
-                                  ? 'bg-teal-600 text-white border-teal-600 font-bold'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-teal-400'
-                              }`}
-                              title={`${item.name} · ${item.stockQty} ${text('in stock', 'টি মজুদ')}`}
-                            >
-                              {item.name} · {item.sku}
-                            </button>
+                            <span key={item.id} className="inline-flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBarcodeInput(item.sku);
+                                  handleBarcodeSearch(item.sku);
+                                }}
+                                className={`px-2 py-0.5 rounded-l-md border text-[11px] font-mono transition-all cursor-pointer ${
+                                  scannedFrame?.barcode === item.sku
+                                    ? 'bg-teal-600 text-white border-teal-600 font-bold'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-teal-400'
+                                }`}
+                                title={`${item.name} · ${item.stockQty} ${text('in stock', 'টি মজুদ')}`}
+                              >
+                                {item.name} · {item.sku}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={item.sku === scannedFrame?.barcode}
+                                onClick={() => addInventoryProductToSale(item, stockSaleQuantity, getInventorySellingPriceBDT(item))}
+                                className="px-2 py-0.5 rounded-r-md border border-l-0 border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] text-teal-700 dark:text-teal-300 text-[11px] font-bold disabled:opacity-40 cursor-pointer"
+                                aria-label={`${text('Add', 'যোগ করুন')} ${item.name}`}
+                              >
+                                +
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                        <label htmlFor="frame-sale-quantity" className="font-semibold text-slate-600 dark:text-slate-300">
+                          {text('Units to add:', 'যোগ করার পরিমাণ:')}
+                        </label>
+                        <input
+                          id="frame-sale-quantity"
+                          type="number"
+                          min={1}
+                          value={stockSaleQuantity}
+                          onChange={(event) => setStockSaleQuantity(Math.max(1, Number(event.target.value) || 1))}
+                          className="w-16 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#141824] px-2 py-1 text-center font-mono text-slate-900 dark:text-white"
+                        />
+                        <span className="text-slate-400">{text('Use + to add another stock frame.', '+ চাপ দিয়ে অতিরিক্ত ফ্রেম যোগ করুন।')}</span>
+                      </div>
+                      <div className="mt-3 flex flex-col sm:flex-row sm:items-end gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141824] p-3">
+                        <label htmlFor="frame-inventory-select" className="flex-1 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          {text('Add another frame from inventory', 'ইনভেন্টরি থেকে আরেকটি ফ্রেম যোগ করুন')}
+                          <select
+                            id="frame-inventory-select"
+                            value={selectedFrameInventoryId}
+                            onChange={(event) => setSelectedFrameInventoryId(event.target.value)}
+                            className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#1a202c] px-3 py-2 text-sm text-slate-900 dark:text-white"
+                          >
+                            <option value="">{text('Choose a frame SKU', 'ফ্রেম SKU নির্বাচন করুন')}</option>
+                            {availableFrameStock.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} · {item.sku} · {item.stockQty} {text('in stock', 'টি মজুদ')}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          disabled={!selectedFrameInventoryId}
+                          onClick={() => {
+                            const item = availableFrameStock.find((candidate) => candidate.id === selectedFrameInventoryId);
+                            if (item) addInventoryProductToSale(item, stockSaleQuantity, getInventorySellingPriceBDT(item));
+                          }}
+                          className="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {text('Add frame', 'ফ্রেম যোগ করুন')}
+                        </button>
+                      </div>
+                      {scannedFrame && inventory.some((item) => item.sku === scannedFrame.barcode) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const item = inventory.find((candidate) => candidate.sku === scannedFrame.barcode);
+                            if (item && addInventoryProductToSale(item, scannedFrameQuantity, Number(negotiatedPrice) || 0, true)) {
+                              setScannedFrame(null);
+                              setNegotiatedPrice(0);
+                              setScannedFrameQuantity(1);
+                            }
+                          }}
+                          className="mt-2 rounded-lg border border-teal-300 dark:border-teal-700 px-3 py-2 text-xs font-bold text-teal-800 dark:text-teal-200 hover:bg-teal-50 dark:hover:bg-teal-950/30"
+                        >
+                          {text('Add scanned frame and scan another', 'স্ক্যান করা ফ্রেম যোগ করে আরেকটি স্ক্যান করুন')}
+                        </button>
+                      )}
+                      {stockSaleMessage && (
+                        <p role="status" className="mt-2 text-[11px] font-medium text-teal-700 dark:text-teal-300">
+                          {stockSaleMessage}
+                        </p>
+                      )}
+
+                      {includeFrame && selectedFrameStockLines.some((line) => line.item.sku !== scannedFrame?.barcode) && (
+                        <div className="mt-3 space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+                          <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">{text('Additional frames in this sale', 'এই বিক্রির অতিরিক্ত ফ্রেম')}</h4>
+                          {selectedFrameStockLines.filter((line) => line.item.sku !== scannedFrame?.barcode).map(({ item, quantity, unitPriceBDT }) => (
+                            <div key={item.id} className="grid grid-cols-[1fr_5rem_6rem_auto] items-center gap-2 text-xs">
+                              <span className="truncate text-slate-700 dark:text-slate-200">{item.name} · {item.sku}</span>
+                              <input
+                                aria-label={`${item.name} quantity`}
+                                type="number"
+                                min={1}
+                                max={item.stockQty}
+                                value={quantity}
+                                onChange={(event) => updateStockSaleLine(item.id, { quantity: Math.min(item.stockQty, Math.max(1, Number(event.target.value) || 1)) })}
+                                className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#141824] px-1.5 py-1 text-center font-mono"
+                              />
+                              <input
+                                aria-label={`${item.name} unit price`}
+                                type="number"
+                                min={0}
+                                value={unitPriceBDT}
+                                onChange={(event) => updateStockSaleLine(item.id, { unitPriceBDT: Math.max(0, Number(event.target.value) || 0) })}
+                                className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#141824] px-1.5 py-1 text-right font-mono"
+                              />
+                              <button type="button" onClick={() => setSelectedStockProducts((previous) => {
+                                const next = { ...previous };
+                                delete next[item.id];
+                                return next;
+                              })} className="text-rose-600 hover:text-rose-700" aria-label={`${text('Remove', 'বাদ দিন')} ${item.name}`}>
+                                &times;
+                              </button>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -1277,6 +1580,22 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                                 className="w-full pl-8 pr-3 py-2 text-base font-mono font-bold bg-white dark:bg-[#1a202c] border border-teal-300 dark:border-teal-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                               />
                             </div>
+                            {inventory.some((item) => item.sku === scannedFrame.barcode) && (
+                              <label className="mt-2 flex items-center justify-between gap-2 text-[11px] text-teal-800 dark:text-teal-200">
+                                <span>{text('Quantity', 'পরিমাণ')} ({inventory.find((item) => item.sku === scannedFrame.barcode)?.stockQty} {text('available', 'মজুদ')})</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={inventory.find((item) => item.sku === scannedFrame.barcode)?.stockQty || 1}
+                                  value={scannedFrameQuantity}
+                                  onChange={(event) => setScannedFrameQuantity(Math.min(
+                                    inventory.find((item) => item.sku === scannedFrame.barcode)?.stockQty || 1,
+                                    Math.max(1, Number(event.target.value) || 1)
+                                  ))}
+                                  className="w-20 rounded-lg border border-teal-300 dark:border-teal-700 bg-white dark:bg-[#141824] px-2 py-1 text-right font-mono"
+                                />
+                              </label>
+                            )}
                             <span className="text-[10px] text-teal-700 dark:text-teal-400 mt-1 block font-medium">
                               Customer agreed frame retail price for this transaction.
                             </span>
@@ -1395,6 +1714,75 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         onSelectDesign={setLensDesign}
                         onConfigurationChange={(cfg) => setLensCustomConfig(cfg)}
                       />
+                    </div>
+
+                    <div className="mb-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141824] p-3">
+                      <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                        <label className="flex-1 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          {text('Add finished lens from stock', 'স্টক থেকে তৈরি লেন্স যোগ করুন')}
+                          <select
+                            value={selectedLensInventoryId}
+                            onChange={(event) => setSelectedLensInventoryId(event.target.value)}
+                            className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#1a202c] px-3 py-2 text-sm text-slate-900 dark:text-white"
+                          >
+                            <option value="">{text('Select a lens SKU', 'লেন্স SKU নির্বাচন করুন')}</option>
+                            {availableLensStock.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} · {item.sku} · {item.stockQty} {text('in stock', 'টি মজুদ')}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          disabled={!selectedLensInventoryId}
+                          onClick={() => {
+                            const item = availableLensStock.find((candidate) => candidate.id === selectedLensInventoryId);
+                            if (item) addInventoryProductToSale(item, stockSaleQuantity, getInventorySellingPriceBDT(item));
+                          }}
+                          className="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {text('Add to sale', 'বিক্রিতে যোগ করুন')}
+                        </button>
+                      </div>
+                      {stockSaleMessage && (
+                        <p role="status" className="mt-2 text-[11px] font-medium text-teal-700 dark:text-teal-300">
+                          {stockSaleMessage}
+                        </p>
+                      )}
+                      {selectedLensStockLines.length > 0 && (
+                        <div className="mt-3 space-y-2 border-t border-slate-200 dark:border-slate-700 pt-3">
+                          {selectedLensStockLines.map(({ item, quantity, unitPriceBDT }) => (
+                            <div key={item.id} className="grid grid-cols-[1fr_5rem_6rem_auto] items-center gap-2 text-xs">
+                              <span className="truncate text-slate-700 dark:text-slate-200">{item.name} · {item.sku}</span>
+                              <input
+                                aria-label={`${item.name} quantity`}
+                                type="number"
+                                min={1}
+                                max={item.stockQty}
+                                value={quantity}
+                                onChange={(event) => updateStockSaleLine(item.id, { quantity: Math.min(item.stockQty, Math.max(1, Number(event.target.value) || 1)) })}
+                                className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#1a202c] px-1.5 py-1 text-center font-mono"
+                              />
+                              <input
+                                aria-label={`${item.name} unit price`}
+                                type="number"
+                                min={0}
+                                value={unitPriceBDT}
+                                onChange={(event) => updateStockSaleLine(item.id, { unitPriceBDT: Math.max(0, Number(event.target.value) || 0) })}
+                                className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#1a202c] px-1.5 py-1 text-right font-mono"
+                              />
+                              <button type="button" onClick={() => setSelectedStockProducts((previous) => {
+                                const next = { ...previous };
+                                delete next[item.id];
+                                return next;
+                              })} className="text-rose-600 hover:text-rose-700" aria-label={`${text('Remove', 'বাদ দিন')} ${item.name}`}>
+                                &times;
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Exact Prescription Grid Table Matrix (OD and OS) */}
@@ -2357,6 +2745,11 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
               </button>
             </div>
             <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3 text-xs max-h-[70vh] overflow-y-auto">
+              {invoiceValidationErrors.length > 0 && (
+                <div role="alert" className="sm:col-span-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
+                  {invoiceValidationErrors.map((error) => <p key={error}>{error}</p>)}
+                </div>
+              )}
               <div><span className="block text-slate-500">{text('Patient', 'রোগী')}</span><strong className="text-slate-900 dark:text-white">{patientName}</strong></div>
               <div><span className="block text-slate-500">{text('Phone', 'ফোন')}</span><strong className="text-slate-900 dark:text-white">{patientPhone}</strong></div>
               <div><span className="block text-slate-500">{text('Salesman', 'বিক্রয়কর্মী')}</span><strong className="text-slate-900 dark:text-white">{currentSalesman.name}</strong></div>
@@ -2366,21 +2759,41 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                 <div className="sm:col-span-2 bg-slate-50 dark:bg-[#141824] p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
                   <span className="block text-slate-500 text-[10px] uppercase font-bold">{text('Frame Selection', 'ফ্রেম সিলেকশন')}</span>
                   <div className="flex justify-between font-bold text-slate-900 dark:text-white mt-0.5">
-                    <span>{scannedFrame.brand} {scannedFrame.model} ({scannedFrame.color})</span>
-                    <span className="font-mono">৳{activeFramePrice.toLocaleString()}</span>
+                    <span>{scannedFrame.brand} {scannedFrame.model} ({scannedFrame.color}) × {scannedFrameQuantity}</span>
+                    <span className="font-mono">৳{((Number(negotiatedPrice) || 0) * scannedFrameQuantity).toLocaleString()}</span>
                   </div>
                 </div>
               )}
 
-              {includeLens && activeLensPrice > 0 && (
+              {includeFrame && selectedFrameStockLines.filter((line) => line.item.sku !== scannedFrame?.barcode).map(({ item, quantity, unitPriceBDT }) => (
+                <div key={item.id} className="sm:col-span-2 bg-slate-50 dark:bg-[#141824] p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <span className="block text-slate-500 text-[10px] uppercase font-bold">{text('Frame from inventory', 'ইনভেন্টরির ফ্রেম')}</span>
+                  <div className="flex justify-between font-bold text-slate-900 dark:text-white mt-0.5">
+                    <span>{item.name} × {quantity}</span>
+                    <span className="font-mono">৳{(unitPriceBDT * quantity).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+
+              {includeLens && selectedLens.id !== 'no-lens' && lensPrice > 0 && (
                 <div className="sm:col-span-2 bg-slate-50 dark:bg-[#141824] p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
                   <span className="block text-slate-500 text-[10px] uppercase font-bold">{text('Ophthalmic Lens', 'অপথালমিক লেন্স')}</span>
                   <div className="flex justify-between font-bold text-slate-900 dark:text-white mt-0.5">
                     <span>{selectedLens.name}</span>
-                    <span className="font-mono">৳{activeLensPrice.toLocaleString()}</span>
+                    <span className="font-mono">৳{lensPrice.toLocaleString()}</span>
                   </div>
                 </div>
               )}
+
+              {includeLens && selectedLensStockLines.map(({ item, quantity, unitPriceBDT }) => (
+                <div key={item.id} className="sm:col-span-2 bg-slate-50 dark:bg-[#141824] p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <span className="block text-slate-500 text-[10px] uppercase font-bold">{text('Finished lens from inventory', 'ইনভেন্টরির তৈরি লেন্স')}</span>
+                  <div className="flex justify-between font-bold text-slate-900 dark:text-white mt-0.5">
+                    <span>{item.name} × {quantity}</span>
+                    <span className="font-mono">৳{(unitPriceBDT * quantity).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
 
               {includePaidServices && Object.keys(selectedPaidServices).length > 0 && (
                 <div className="sm:col-span-2 bg-slate-50 dark:bg-[#141824] p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
@@ -2520,20 +2933,40 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                             <span className="font-bold block">{scannedFrame.brand}</span>
                             <span className="text-[10px] text-slate-500">{scannedFrame.model} ({scannedFrame.color})</span>
                           </td>
-                          <td className="p-2 text-center text-slate-600 dark:text-slate-400">{scannedFrame.frameType}</td>
-                          <td className="p-2 text-right font-mono font-bold">৳{activeFramePrice?.toLocaleString()}</td>
+                          <td className="p-2 text-center text-slate-600 dark:text-slate-400">{scannedFrame.frameType} × {scannedFrameQuantity}</td>
+                          <td className="p-2 text-right font-mono font-bold">৳{((Number(negotiatedPrice) || 0) * scannedFrameQuantity).toLocaleString()}</td>
                         </tr>
                       )}
-                      {includeLens && activeLensPrice > 0 && (
+                      {includeFrame && selectedFrameStockLines.filter((line) => line.item.sku !== scannedFrame?.barcode).map(({ item, quantity, unitPriceBDT }) => (
+                        <tr key={item.id}>
+                          <td className="p-2">
+                            <span className="font-bold block">{item.name}</span>
+                            <span className="text-[10px] text-slate-500">{item.sku}</span>
+                          </td>
+                          <td className="p-2 text-center text-slate-600 dark:text-slate-400">× {quantity}</td>
+                          <td className="p-2 text-right font-mono font-bold">৳{(unitPriceBDT * quantity).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                      {includeLens && selectedLens.id !== 'no-lens' && lensPrice > 0 && (
                         <tr>
                           <td className="p-2">
                             <span className="font-bold block">{selectedLens.name}</span>
                             <span className="text-[10px] text-slate-500">{selectedLens.coating}</span>
                           </td>
                           <td className="p-2 text-center text-slate-600 dark:text-slate-400">Index {selectedLens.index}</td>
-                          <td className="p-2 text-right font-mono font-bold">৳{activeLensPrice.toLocaleString()}</td>
+                          <td className="p-2 text-right font-mono font-bold">৳{lensPrice.toLocaleString()}</td>
                         </tr>
                       )}
+                      {includeLens && selectedLensStockLines.map(({ item, quantity, unitPriceBDT }) => (
+                        <tr key={item.id}>
+                          <td className="p-2">
+                            <span className="font-bold block">{item.name}</span>
+                            <span className="text-[10px] text-slate-500">{item.sku}</span>
+                          </td>
+                          <td className="p-2 text-center text-slate-600 dark:text-slate-400">× {quantity}</td>
+                          <td className="p-2 text-right font-mono font-bold">৳{(unitPriceBDT * quantity).toLocaleString()}</td>
+                        </tr>
+                      ))}
                       {includePaidServices && Object.values(selectedPaidServices).map(({ service, quantity, price }) => (
                         <tr key={service.id}>
                           <td className="p-2">
@@ -2660,7 +3093,12 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
                         <div className="mt-2 p-2.5 bg-teal-50 dark:bg-teal-950/30 rounded-lg border border-teal-200 dark:border-teal-900 text-xs">
                           <span className="font-bold text-teal-900 dark:text-teal-200 block">Lens Specification:</span>
                           <span className="text-teal-700 dark:text-teal-400 font-medium">
-                            {selectedLens.name} ({selectedLens.coating} • Index {selectedLens.index})
+                            {[
+                              ...(selectedLens.id !== 'no-lens'
+                                ? [`${selectedLens.name}${selectedLens.coating ? ` (${selectedLens.coating} • Index ${selectedLens.index})` : ''}`]
+                                : []),
+                              ...selectedLensStockLines.map((line) => `${line.item.name} × ${line.quantity}`),
+                            ].join(', ')}
                           </span>
                         </div>
                       )}

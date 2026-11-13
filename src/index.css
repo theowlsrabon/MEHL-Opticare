@@ -1131,6 +1131,82 @@ html.dark span[class*="bg-emerald-500/"][class*="text-emerald-400"] > span:first
   box-shadow: 0 0 8px rgba(0, 245, 180, 0.95);
 }
 
+@media screen {
+  .dark :is(
+    [class~="bg-white"],
+    [class~="bg-white/80"],
+    [class~="bg-white/90"],
+    [class~="bg-white/95"],
+    [class~="bg-slate-50"],
+    [class~="bg-slate-50/40"],
+    [class~="bg-slate-50/50"],
+    [class~="bg-slate-50/70"],
+    [class~="bg-slate-50/80"],
+    [class~="bg-slate-100"],
+    [class~="bg-gray-50"],
+    [class~="bg-gray-100"]
+  ) {
+    background-color: #151d2b !important;
+    border-color: #2b394d !important;
+    color: #e2e8f0;
+  }
+
+  .dark :is(
+    [class~="bg-white"],
+    [class~="bg-white/80"],
+    [class~="bg-white/90"],
+    [class~="bg-white/95"],
+    [class~="bg-slate-50"],
+    [class~="bg-slate-50/40"],
+    [class~="bg-slate-50/50"],
+    [class~="bg-slate-50/70"],
+    [class~="bg-slate-50/80"],
+    [class~="bg-slate-100"],
+    [class~="bg-gray-50"],
+    [class~="bg-gray-100"]
+  ) :is(
+    [class~="text-slate-900"],
+    [class~="text-slate-800"],
+    [class~="text-slate-700"],
+    [class~="text-gray-900"],
+    [class~="text-gray-800"],
+    [class~="text-gray-700"],
+    [class~="text-black"],
+    [class~="dark:text-slate-900"],
+    [class~="dark:text-slate-800"],
+    [class~="dark:text-gray-900"],
+    [class~="dark:text-gray-800"]
+  ) {
+    color: #f1f5f9 !important;
+  }
+
+  .dark :is(
+    [class~="bg-white"],
+    [class~="bg-white/80"],
+    [class~="bg-white/90"],
+    [class~="bg-white/95"],
+    [class~="bg-slate-50"],
+    [class~="bg-slate-50/40"],
+    [class~="bg-slate-50/50"],
+    [class~="bg-slate-50/70"],
+    [class~="bg-slate-50/80"],
+    [class~="bg-slate-100"],
+    [class~="bg-gray-50"],
+    [class~="bg-gray-100"]
+  ) :is(
+    [class~="text-slate-600"],
+    [class~="text-slate-500"],
+    [class~="text-gray-600"],
+    [class~="text-gray-500"],
+    [class~="dark:text-slate-600"],
+    [class~="dark:text-slate-500"],
+    [class~="dark:text-gray-600"],
+    [class~="dark:text-gray-500"]
+  ) {
+    color: #aab8ca !important;
+  }
+}
+
 /* =====================================================================
    PRINT STYLES
    ===================================================================== */

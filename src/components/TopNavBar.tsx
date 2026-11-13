@@ -33,7 +33,7 @@ import { useLanguage } from '../context/LanguageContext';
 interface TopNavBarProps {
   currentView: ViewMode;
   onSelectView: (view: ViewMode) => void;
-  onOpenNewInvoice: () => void;
+  onOpenPOS: () => void;
   onOpenQuickScan: (initialCode?: string) => void;
   onOpenShiftSummary: () => void;
   searchQuery: string;
@@ -59,7 +59,7 @@ interface TopNavBarProps {
 export const TopNavBar: React.FC<TopNavBarProps> = ({
   currentView,
   onSelectView,
-  onOpenNewInvoice,
+  onOpenPOS,
   onOpenQuickScan,
   onOpenShiftSummary,
   searchQuery,
@@ -352,10 +352,10 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         {/* Rounded Teal Action Button (+) */}
         <button
           type="button"
-          onClick={onOpenNewInvoice}
+          onClick={onOpenPOS}
           className="w-9 h-9 rounded-xl bg-[#00c49f] hover:bg-[#00af8e] active:scale-95 flex items-center justify-center text-white font-bold cursor-pointer transition-all shadow-sm shadow-[#00c49f]/20 shrink-0"
-          title={language === 'bn' ? 'নতুন প্রেসক্রিপশন বা অর্ডার তৈরি করুন' : 'Create New Prescription / Order'}
-          aria-label="New Order"
+          title={language === 'bn' ? 'POS পেজ খুলুন' : 'Open POS'}
+          aria-label={language === 'bn' ? 'POS পেজ খুলুন' : 'Open POS'}
         >
           <Plus size={18} strokeWidth={2.8} />
         </button>

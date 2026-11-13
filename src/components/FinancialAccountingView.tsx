@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { DispensationRecord, FinancialSummary, ExpenseItem, SaleRecord, PurchaseOrder, SalesReturn, PurchaseReturn } from '../types';
+import { DispensationRecord, ExpenseItem, InventoryItem, SaleRecord, PurchaseOrder, SalesReturn, PurchaseReturn } from '../types';
 import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { useLanguage } from '../context/LanguageContext';
 import { DueCollectionRecord } from './DueCollectionsView';
 
 interface FinancialAccountingViewProps {
-  financialSummary: FinancialSummary;
+  inventory: InventoryItem[];
+  inventoryLoading: boolean;
+  inventoryLoadError: string | null;
   expenses: ExpenseItem[];
   salesRecords: SaleRecord[];
   dispensations: DispensationRecord[];
@@ -32,8 +34,13 @@ const formatReportDate = (date: string, locale: string) =>
     year: 'numeric',
   });
 
+const LENS_COST_ESTIMATE_RATE = 0.8;
+const PAID_SERVICE_COST_ESTIMATE_RATE = 0.9;
+
 export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = ({
-  financialSummary,
+  inventory,
+  inventoryLoading,
+  inventoryLoadError,
   expenses,
   salesRecords,
   dispensations,
@@ -49,7 +56,6 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   const numberLocale = language === 'bn' ? 'bn-BD' : 'en-US';
   const formatAmount = (amount?: number) => amount?.toLocaleString(numberLocale);
   const [activeTab, setActiveTab] = useState<'pnl' | 'brand_margins' | 'expenses'>('pnl');
-  const [showSecretCipher, setShowSecretCipher] = useState(false);
   const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [reportStartDate, setReportStartDate] = useState(() => {
     const now = new Date();
@@ -74,6 +80,7 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   const filteredCollections = validReportPeriod
     ? financialCollections.filter((collection) => collection.date >= reportStartDate && collection.date <= reportEndDate)
     : [];
+  const filteredDuePageCollections = filteredCollections.filter((collection) => collection.id.startsWith('pay-'));
   const filteredSalesReturns = validReportPeriod
     ? salesReturns.filter((record) => record.date >= reportStartDate && record.date <= reportEndDate && record.status !== 'pending')
     : [];
@@ -83,6 +90,10 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   const filteredPurchaseReturns = validReportPeriod
     ? purchaseReturns.filter((record) => record.date >= reportStartDate && record.date <= reportEndDate && record.status === 'credit_adjusted')
     : [];
+  const brandMarginItems = useMemo(
+    () => [...inventory].sort((a, b) => a.name.localeCompare(b.name)),
+    [inventory]
+  );
   const reportCollectionsReceived = filteredCollections.reduce((total, record) => total + (Number(record.amountBDT) || 0), 0);
   const reportSalesRefunds = filteredSalesReturns.reduce((total, record) => total + (Number(record.totalRefundBDT) || 0), 0);
   const reportSupplierPurchases = filteredPurchaseOrders.reduce((total, order) => total + (Number(order.totalAmountBDT) || 0), 0);
@@ -92,7 +103,10 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
     collectionsByTender[collection.tenderMode] = (collectionsByTender[collection.tenderMode] || 0) + (Number(collection.amountBDT) || 0);
   });
   const reportOpticalRevenue = filteredSales.reduce((total, sale) => total + (Number(sale.totalAmount) || 0), 0);
-  const reportDueCollections = reportCollectionsReceived;
+  const reportDueCollections = filteredDuePageCollections.reduce(
+    (total, collection) => total + (Number(collection.amountBDT) || 0),
+    0
+  );
   const reportGrossSalesRevenue = reportOpticalRevenue + reportDueCollections;
 
   // Supplier payments (both cash and due payments made within period)
@@ -138,21 +152,33 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   const reportPharmacyRevenue = filteredDispensations.reduce((total, record) => total + (Number(record.totalPriceBDT) || 0), 0);
   const reportRecordedRevenue = reportGrossSalesRevenue;
 
-  // COGS for physical goods (frames, lenses, inventory items with recorded cost)
-  const reportPhysicalCogs = filteredSales.reduce((total, sale) => (
-    total + (sale.itemLines || []).reduce((saleTotal, line) => {
-      // Exclude paid service lines from physical cogs (handled below)
-      const sku = (line.sku || '').toUpperCase();
-      const isPaidServiceLine = sku.startsWith('SRV-');
-      if (isPaidServiceLine) return saleTotal;
+  // Use stored unit costs when available; estimate missing lens costs from discounted selling price.
+  const { reportPhysicalCogs, reportLensCostEstimate } = filteredSales.reduce(
+    (totals, sale) => {
+      (sale.itemLines || []).forEach((line) => {
+        const sku = (line.sku || '').toUpperCase();
+        if (sku.startsWith('SRV-')) return;
 
-      return typeof line.unitCostBDT === 'number' && Number.isFinite(line.unitCostBDT)
-        ? saleTotal + line.unitCostBDT * line.quantity
-        : saleTotal;
-    }, 0)
-  ), 0);
+        const quantity = Number(line.quantity) || 0;
+        if (typeof line.unitCostBDT === 'number' && Number.isFinite(line.unitCostBDT)) {
+          totals.reportPhysicalCogs += line.unitCostBDT * quantity;
+          return;
+        }
 
-  // Cost of Paid Services: calculated as 90% of selling price (e.g. Super Clean, Nose Pad Replacement, etc.)
+        const isLensLine = sku.startsWith('LENS-') || line.category === 'Finished Lens';
+        const unitPrice = Number(line.unitPriceBDT);
+        if (isLensLine && Number.isFinite(unitPrice)) {
+          const lineDiscount = Number(line.discountBDT) || 0;
+          const netSellingPrice = Math.max(0, unitPrice * quantity - lineDiscount);
+          totals.reportLensCostEstimate += netSellingPrice * LENS_COST_ESTIMATE_RATE;
+        }
+      });
+      return totals;
+    },
+    { reportPhysicalCogs: 0, reportLensCostEstimate: 0 }
+  );
+
+  // Cost of Paid Services: estimated as 90% of selling price (e.g. Super Clean, Nose Pad Replacement, etc.)
   const reportPaidServicesCost = filteredSales.reduce((total, sale) => {
     let serviceRevenue = 0;
 
@@ -174,10 +200,10 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
       serviceRevenue = Number((sale as any).paidServicesTotal) || 0;
     }
 
-    return total + (serviceRevenue * 0.90);
+    return total + (serviceRevenue * PAID_SERVICE_COST_ESTIMATE_RATE);
   }, 0);
 
-  const reportTotalCogs = reportPhysicalCogs + reportPaidServicesCost;
+  const reportTotalCogs = reportPhysicalCogs + reportLensCostEstimate + reportPaidServicesCost;
   const reportRecordedCogs = reportTotalCogs;
   const reportNetRevenue = reportGrossSalesRevenue - reportTotalRevenueDeductions;
   const reportGrossProfitEstimate = reportNetRevenue - reportRecordedCogs;
@@ -232,75 +258,12 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowSecretCipher(!showSecretCipher)}
-            className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              showSecretCipher
-                ? 'bg-amber-500/20 border-amber-500/40 text-amber-700 dark:text-amber-300'
-                : 'bg-surface-container border-outline-variant/80 text-outline hover:text-on-surface'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">
-              {showSecretCipher ? 'visibility' : 'visibility_off'}
-            </span>
-            <span>{text(`Cost cipher ${showSecretCipher ? 'visible' : 'hidden'}`, `কস্ট সাইফার ${showSecretCipher ? 'দেখুন' : 'লুকান'}`)}</span>
-          </button>
-
-          <button
             onClick={() => setIsAddingExpense(true)}
             className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">receipt</span>
             <span>{text('Record Operating Expense', 'পরিচালন খরচ যোগ করুন')}</span>
           </button>
-        </div>
-      </div>
-
-      {/* Top Financial KPI Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
-        <div className="bg-surface-container-lowest dark:bg-[#15181f] p-4 rounded-xl border border-outline-variant/70 dark:border-[#252a36]">
-          <span className="text-[10px] font-extrabold text-outline uppercase tracking-wider">{text('Total Revenue', 'মোট রাজস্ব')}</span>
-          <div className="text-2xl font-black text-on-surface mt-1">
-            ৳{formatAmount(financialSummary.grossOpticalRevenue + financialSummary.pharmacyRevenue + financialSummary.consultationRevenue)}
-          </div>
-          <div className="text-[11px] text-teal-600 font-semibold mt-1">{text('Optical retail + clinical consultation', 'অপটিক্যাল বিক্রি + চিকিৎসা পরামর্শ')}</div>
-        </div>
-
-        <div className="bg-surface-container-lowest dark:bg-[#15181f] p-4 rounded-xl border border-outline-variant/70 dark:border-[#252a36]">
-          <span className="text-[10px] font-extrabold text-outline uppercase tracking-wider">{text('Gross Profit', 'মোট মুনাফা')}</span>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
-            ৳{formatAmount(financialSummary.grossProfitBDT)}
-          </div>
-          <div className="text-[11px] text-emerald-700 dark:text-emerald-300 font-semibold mt-1">
-            {text('Gross margin:', 'মোট মুনাফার হার:')} {financialSummary.grossMarginPct}%
-          </div>
-        </div>
-
-        <div className="bg-surface-container-lowest dark:bg-[#15181f] p-4 rounded-xl border border-outline-variant/70 dark:border-[#252a36]">
-          <span className="text-[10px] font-extrabold text-outline uppercase tracking-wider">{text('Operating Expenses (OPEX)', 'পরিচালন ব্যয়')}</span>
-          <div className="text-2xl font-black text-red-600 dark:text-red-400 mt-1">
-            ৳{formatAmount(financialSummary.operatingExpensesBDT)}
-          </div>
-          <div className="text-[11px] text-red-700 dark:text-red-300 font-semibold mt-1">{text('Salaries, rent, and machinery', 'বেতন, ভাড়া ও যন্ত্রপাতি')}</div>
-        </div>
-
-        <div className="bg-surface-container-lowest dark:bg-[#15181f] p-4 rounded-xl border border-outline-variant/70 dark:border-[#252a36]">
-          <span className="text-[10px] font-extrabold text-outline uppercase tracking-wider">{text('Net Operating Profit', 'নিট পরিচালন মুনাফা')}</span>
-          <div className="text-2xl font-black text-teal-700 dark:text-teal-300 mt-1">
-            ৳{formatAmount(financialSummary.netOperatingProfit)}
-          </div>
-          <div className="text-[11px] text-teal-800 dark:text-teal-200 font-bold mt-1">
-            {text('Net margin:', 'নিট মুনাফার হার:')} {financialSummary.profitMarginPct}%
-          </div>
-        </div>
-
-        <div className="bg-surface-container-lowest dark:bg-[#15181f] p-4 rounded-xl border border-outline-variant/70 dark:border-[#252a36]">
-          <span className="text-[10px] font-extrabold text-outline uppercase tracking-wider">{text('Cash in Drawer', 'ড্রয়ারে নগদ')}</span>
-          <div className="text-2xl font-black text-blue-700 dark:text-blue-300 mt-1">
-            ৳{formatAmount(financialSummary.cashCollectedBDT)}
-          </div>
-          <div className="text-[11px] text-outline font-semibold mt-1">
-            {text('Current balance after cash transactions', 'নগদ লেনদেনের পর বর্তমান ব্যালেন্স')}
-          </div>
         </div>
       </div>
 
@@ -321,7 +284,7 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
             activeTab === 'brand_margins' ? 'bg-teal-600 text-white shadow-xs' : 'text-outline hover:text-on-surface'
           }`}
         >
-          {text('Brand Margins & Cost Cipher', 'ব্র্যান্ডভিত্তিক মুনাফা ও কস্ট সাইফার')}
+          {text('Brand Margins & Costs', 'ব্র্যান্ডভিত্তিক মুনাফা ও খরচ')}
         </button>
 
         <button
@@ -445,6 +408,12 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <span className="text-on-surface">{text('Cost recorded on sale lines (Frames & Inventory)', 'বিক্রয়-লাইনে সংরক্ষিত ফ্রেম ও পণ্যের খরচ')}</span>
                   <span className="font-data-rx font-bold text-on-surface">৳{formatAmount(reportPhysicalCogs)}</span>
                 </div>
+                {reportLensCostEstimate > 0 && (
+                  <div className="flex justify-between pl-3 text-amber-700 dark:text-amber-300">
+                    <span>{text('Estimated lens cost (80% of selling price; when cost is missing)', 'আনুমানিক লেন্স খরচ (ক্রয়মূল্য না থাকলে বিক্রয়মূল্যের ৮০%)')}</span>
+                    <span className="font-data-rx font-bold">৳{formatAmount(reportLensCostEstimate)}</span>
+                  </div>
+                )}
                 {reportPaidServicesCost > 0 && (
                   <div className="flex justify-between pl-3 text-amber-700 dark:text-amber-300">
                     <span>{text('Cost of Paid Services (90% of selling price)', 'পেইড সার্ভিস খরচ (বিক্রয়মূল্যের ৯০%)')}</span>
@@ -456,7 +425,10 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
                   <span className="font-data-rx text-amber-700 dark:text-amber-300">৳{formatAmount(reportRecordedCogs)}</span>
                 </div>
                 <p className="text-[10px] text-outline">
-                  {text('Includes recorded physical goods cost plus 90% cost estimate on paid services (Super Clean, Nose Pad, etc.).', 'সংরক্ষিত ফ্রেম ও পণ্যের খরচের পাশাপাশি পেইড সার্ভিসের (সুপার ক্লিন, নোজ প্যাড ইত্যাদি) ৯০% খরচ অন্তর্ভুক্ত।')}
+                  {text(
+                    'Uses recorded costs where available; missing lens costs are estimated at 80% of discounted selling price, and paid service costs at 90%.',
+                    'যেখানে সংরক্ষিত ক্রয়মূল্য আছে তা ব্যবহার করা হয়; লেন্সের ক্রয়মূল্য না থাকলে ছাড়-পরবর্তী বিক্রয়মূল্যের ৮০% এবং পেইড সার্ভিসের ৯০% খরচ ধরা হয়।'
+                  )}
                 </p>
               </div>
             </div>
@@ -545,14 +517,14 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
         </div>
       )}
 
-      {/* TAB 2: BRAND MARGINS & CIPHER */}
+      {/* TAB 2: DATABASE-BACKED BRAND MARGINS */}
       {activeTab === 'brand_margins' && (
         <div className="bg-surface-container-lowest dark:bg-[#15181f] rounded-2xl border border-outline-variant/70 dark:border-[#252a36] shadow-2xs overflow-hidden">
           <div className="p-4 border-b border-outline-variant/60 dark:border-[#252a36] flex items-center justify-between bg-[#fbfcfe] dark:bg-[#181c25]">
-            <h3 className="text-sm font-bold text-on-surface">অপটিক্যাল ব্র্যান্ড গ্রস মার্জিন ও গোপন হোলসেল কস্ট ডিকোডার</h3>
+            <h3 className="text-sm font-bold text-on-surface">{text('Brand margins & wholesale cost', 'ব্র্যান্ড মার্জিন ও পাইকারি ক্রয়মূল্য')}</h3>
             <div className="text-[11px] text-amber-600 font-bold flex items-center gap-1">
               <span className="material-symbols-outlined text-[15px]">lock</span>
-              <span>মদিনা সিক্রেট কস্ট সাইফার অ্যালগরিদম: *M-M-P*</span>
+              <span>{text('Wholesale cost is confidential', 'পাইকারি ক্রয়মূল্য গোপনীয়')}</span>
             </div>
           </div>
 
@@ -560,52 +532,82 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-surface-container/60 dark:bg-[#1c202a] text-outline uppercase font-extrabold text-[10px] tracking-wider border-b border-outline-variant/60 dark:border-[#272d3a]">
-                  <th className="py-3 px-4">ব্র্যান্ড ও ক্যাটাগরি</th>
-                  <th className="py-3 px-4 text-center">গোপন সাইফার কোড</th>
-                  <th className="py-3 px-4 text-right">হোলসেল ক্রয়মূল্য (Confidential)</th>
-                  <th className="py-3 px-4 text-right">বিক্রয়মূল্য (Selling Price)</th>
-                  <th className="py-3 px-4 text-right">গ্রস মার্জিন %</th>
-                  <th className="py-3 px-4 text-center">লাভের স্তর</th>
+                  <th className="py-3 px-4">{text('Brand / product', 'ব্র্যান্ড / পণ্য')}</th>
+                  <th className="py-3 px-4">{text('Category', 'ক্যাটাগরি')}</th>
+                  <th className="py-3 px-4 text-right">{text('Stock', 'মজুদ')}</th>
+                  <th className="py-3 px-4 text-right">{text('Wholesale cost', 'পাইকারি ক্রয়মূল্য')}</th>
+                  <th className="py-3 px-4 text-right">{text('Selling price', 'বিক্রয়মূল্য')}</th>
+                  <th className="py-3 px-4 text-right">{text('Gross margin', 'গ্রস মার্জিন')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/40 dark:divide-[#242936]">
-                {[
-                  { brand: 'Ray-Ban Italy (Luxottica)', cat: 'Premium Metal Frames', cipher: '*R-B-K*', cost: 5200, sell: 8800, margin: 40.9, tier: 'High Margin' },
-                  { brand: 'Titan Eyeplus (Flex Titan)', cat: 'Memory Metal Eyewear', cipher: '*M-T-P*', cost: 2300, sell: 4200, margin: 45.2, tier: 'High Margin' },
-                  { brand: 'Gucci Eyewear (Kering)', cat: 'Luxury Acetate Sunglasses', cipher: '*G-C-X*', cost: 12000, sell: 21000, margin: 42.9, tier: 'High Margin' },
-                  { brand: 'Zeiss DuraVision Platinum 1.60', cat: 'Premium Anti-Reflective Lens', cipher: '*Z-S-P*', cost: 2600, sell: 4800, margin: 45.8, tier: 'Superior Margin' },
-                  { brand: 'Alcon Total30 Silicone Hydrogel', cat: 'Contact Lens Packs', cipher: '*A-L-C*', cost: 1750, sell: 2600, margin: 32.7, tier: 'Contact Lens' },
-                ].map((item, idx) => (
-                  <tr key={idx} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60">
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-on-surface">{item.brand}</div>
-                      <div className="text-[10px] text-outline">{item.cat}</div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="font-mono font-black text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded tracking-widest text-[11px]">
-                        {item.cipher}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right font-data-rx font-bold">
-                      {showSecretCipher ? (
-                        <span className="text-red-600">৳{formatAmount(item.cost)}</span>
-                      ) : (
-                        <span className="text-outline font-mono">৳ ****</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right font-data-rx font-bold text-teal-700 dark:text-teal-400">
-                      ৳{formatAmount(item.sell)}
-                    </td>
-                    <td className="py-3 px-4 text-right font-data-rx font-black text-emerald-600">
-                      {item.margin}%
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
-                        {item.tier}
-                      </span>
+                {inventoryLoading ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 px-4 text-center text-outline">
+                      {text('Loading inventory from the database…', 'ডাটাবেস থেকে মজুদের তথ্য আনা হচ্ছে…')}
                     </td>
                   </tr>
-                ))}
+                ) : inventoryLoadError ? (
+                  <tr>
+                    <td colSpan={6} role="alert" className="py-8 px-4 text-center text-rose-600 dark:text-rose-400">
+                      {text('Could not load inventory:', 'মজুদের তথ্য লোড করা যায়নি:')} {inventoryLoadError}
+                    </td>
+                  </tr>
+                ) : brandMarginItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 px-4 text-center text-outline">
+                      {text('No inventory items are stored in the database yet.', 'ডাটাবেসে এখনো কোনো মজুদের পণ্য নেই।')}
+                    </td>
+                  </tr>
+                ) : (
+                  brandMarginItems.map((item) => {
+                    const cost = item.costPrice;
+                    const sell = item.sellPrice;
+                    const stockQty = item.stockQty;
+                    const hasCost = typeof cost === 'number' && Number.isFinite(cost);
+                    const hasSellPrice = typeof sell === 'number' && Number.isFinite(sell);
+                    const grossMarginPct =
+                      hasCost && hasSellPrice && sell > 0
+                        ? ((sell - cost) / sell) * 100
+                        : null;
+
+                    return (
+                      <tr key={item.id} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60">
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-on-surface">{item.brand?.trim() || item.name}</div>
+                          <div className="text-[10px] text-outline">{item.name} · {item.sku}</div>
+                        </td>
+                        <td className="py-3 px-4 text-on-surface">{item.category}</td>
+                        <td className="py-3 px-4 text-right font-data-rx font-bold text-on-surface">
+                          {typeof stockQty === 'number' && Number.isFinite(stockQty)
+                            ? stockQty.toLocaleString(numberLocale)
+                            : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-right font-data-rx font-bold">
+                          {hasCost ? (
+                            <span className="text-outline font-mono">৳ ****</span>
+                          ) : (
+                            <span className="text-outline">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-data-rx font-bold text-teal-700 dark:text-teal-400">
+                          {hasSellPrice ? `৳${formatAmount(sell)}` : '—'}
+                        </td>
+                        <td className={`py-3 px-4 text-right font-data-rx font-black ${
+                          grossMarginPct === null
+                            ? 'text-outline'
+                            : grossMarginPct >= 0
+                              ? 'text-emerald-600'
+                              : 'text-red-600'
+                        }`}>
+                          {grossMarginPct === null
+                            ? '—'
+                            : `${grossMarginPct.toLocaleString(numberLocale, { maximumFractionDigits: 1 })}%`}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
