@@ -3,6 +3,7 @@ import { InventoryItem, InventoryDamageRecord, InventoryMovementRecord, UserProf
 import { BatchBarcodePrintModal } from './BatchBarcodePrintModal';
 import { BulkReorderModal } from './BulkReorderModal';
 import { InventoryMovementHistoryView } from './InventoryMovementHistoryView';
+import { PageResetButton, AuditLogPayload } from './PageResetButton';
 
 interface InventoryRegistryTableProps {
   items: InventoryItem[];
@@ -27,6 +28,10 @@ interface InventoryRegistryTableProps {
   onViewItemWiseSales?: () => void;
   onBatchPrint?: (items: InventoryItem[]) => void;
   onDeleteStockItem?: (id: string) => void;
+  currentUserRole?: string;
+  currentUserName?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
 }
 
 export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
@@ -52,6 +57,10 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   onViewItemWiseSales,
   onBatchPrint,
   onDeleteStockItem,
+  currentUserRole = 'staff',
+  currentUserName = '',
+  onPurgeComplete,
+  onAddAuditLog,
 }) => {
   const [filterChip, setFilterChip] = useState<'all' | 'low'>('all');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
@@ -359,6 +368,19 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onPurgeComplete && onAddAuditLog && (
+            <PageResetButton
+              config={{
+                action: 'inventory-stock-only',
+                pageLabel: 'Stock Master — Zero Stock',
+                description: 'Zero out all batch stock quantities and adjustments (keeps the medicine product catalog).',
+              }}
+              currentUserRole={currentUserRole}
+              currentUserName={currentUserName}
+              onPurgeComplete={onPurgeComplete}
+              onAddAuditLog={onAddAuditLog}
+            />
+          )}
           <button
             type="button"
             onClick={() => setIsInventoryHistoryOpen(true)}

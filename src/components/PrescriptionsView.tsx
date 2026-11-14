@@ -3,15 +3,24 @@ import { initialPrescriptions } from '../data/initialData';
 import { PrescriptionRecord } from '../types';
 import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
+import { PageResetButton, AuditLogPayload } from './PageResetButton';
 
 interface PrescriptionsViewProps {
   onOpenGlazingAssistant: () => void;
   prescriptions?: PrescriptionRecord[];
+  currentUserRole?: string;
+  currentUserName?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
 }
 
 export const PrescriptionsView: React.FC<PrescriptionsViewProps> = ({
   onOpenGlazingAssistant,
   prescriptions: externalPrescriptions,
+  currentUserRole = 'staff',
+  currentUserName = '',
+  onPurgeComplete,
+  onAddAuditLog,
 }) => {
   const [internalPrescriptions] = useState<PrescriptionRecord[]>(initialPrescriptions);
   const prescriptions = externalPrescriptions && externalPrescriptions.length > 0
@@ -38,6 +47,19 @@ export const PrescriptionsView: React.FC<PrescriptionsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onPurgeComplete && onAddAuditLog && (
+            <PageResetButton
+              config={{
+                action: 'prescriptions',
+                pageLabel: 'Prescriptions',
+                description: 'Delete all prescription records (clinical refractions, lens prescriptions, keratometry entries).',
+              }}
+              currentUserRole={currentUserRole}
+              currentUserName={currentUserName}
+              onPurgeComplete={onPurgeComplete}
+              onAddAuditLog={onAddAuditLog}
+            />
+          )}
           <button
             onClick={onOpenGlazingAssistant}
             className="px-3.5 py-2 bg-gradient-to-r from-extej-orange to-[#ff914d] hover:from-extej-orange-hover hover:to-extej-orange text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"

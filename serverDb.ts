@@ -1664,3 +1664,29 @@ export async function dbGetDatabaseMetrics(): Promise<{
     salesmenCount,
   };
 }
+
+// ----------------- AUDIT LOG INSERT -----------------
+export async function dbInsertAuditLog(entry: {
+  id: string;
+  timestamp: string;
+  actor: string;
+  action_type: string;
+  details: string;
+}): Promise<void> {
+  try {
+    await p.query(
+      `INSERT INTO system_audit_logs (id, timestamp, actor, action_type, details)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        entry.id,
+        entry.timestamp ? new Date(entry.timestamp) : new Date(),
+        entry.actor,
+        entry.action_type,
+        entry.details,
+      ]
+    );
+  } catch (e: any) {
+    console.warn('[dbInsertAuditLog] Failed to persist audit entry:', e.message);
+  }
+}

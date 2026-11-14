@@ -4,6 +4,7 @@ import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { useLanguage } from '../context/LanguageContext';
 import { DueCollectionRecord } from './DueCollectionsView';
+import { PageResetButton, AuditLogPayload } from './PageResetButton';
 
 interface FinancialAccountingViewProps {
   inventory: InventoryItem[];
@@ -18,6 +19,10 @@ interface FinancialAccountingViewProps {
   purchaseReturns: PurchaseReturn[];
   onAddExpense: (expense: ExpenseItem) => void;
   onDeleteExpense?: (expenseId: string) => void;
+  currentUserRole?: string;
+  currentUserName?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
 }
 
 const toDateInputValue = (date: Date) => {
@@ -50,6 +55,10 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
   purchaseReturns,
   onAddExpense,
   onDeleteExpense,
+  currentUserRole = 'staff',
+  currentUserName = '',
+  onPurgeComplete,
+  onAddAuditLog,
 }) => {
   const { language } = useLanguage();
   const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
@@ -257,6 +266,19 @@ export const FinancialAccountingView: React.FC<FinancialAccountingViewProps> = (
         </div>
 
         <div className="flex items-center gap-2">
+          {onPurgeComplete && onAddAuditLog && (
+            <PageResetButton
+              config={{
+                action: 'expenses',
+                pageLabel: 'Financial Accounts — Expenses',
+                description: 'Delete all recorded operating expenses (petty cash, overheads, payroll entries).',
+              }}
+              currentUserRole={currentUserRole}
+              currentUserName={currentUserName}
+              onPurgeComplete={onPurgeComplete}
+              onAddAuditLog={onAddAuditLog}
+            />
+          )}
           <button
             onClick={() => setIsAddingExpense(true)}
             className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"

@@ -4,6 +4,7 @@ import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { CameraBarcodeScanner } from './CameraBarcodeScanner';
 import { useLanguage } from '../context/LanguageContext';
+import { PageResetButton, AuditLogPayload } from './PageResetButton';
 
 interface ReturnsRefundsViewProps {
   salesReturns: SalesReturn[];
@@ -11,6 +12,10 @@ interface ReturnsRefundsViewProps {
   salesRecords: SaleRecord[];
   onAddSalesReturn: (ret: SalesReturn) => void;
   onAddPurchaseReturn: (ret: PurchaseReturn) => void;
+  currentUserRole?: string;
+  currentUserName?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
 }
 
 export const ReturnsRefundsView: React.FC<ReturnsRefundsViewProps> = ({
@@ -19,6 +24,10 @@ export const ReturnsRefundsView: React.FC<ReturnsRefundsViewProps> = ({
   salesRecords,
   onAddSalesReturn,
   onAddPurchaseReturn,
+  currentUserRole = 'staff',
+  currentUserName = '',
+  onPurgeComplete,
+  onAddAuditLog,
 }) => {
   const { language } = useLanguage();
   const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
@@ -240,6 +249,19 @@ export const ReturnsRefundsView: React.FC<ReturnsRefundsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onPurgeComplete && onAddAuditLog && (
+            <PageResetButton
+              config={{
+                action: 'pos-only',
+                pageLabel: 'Returns & Refunds',
+                description: 'Delete all sales return (credit notes) and purchase return (debit notes) records.',
+              }}
+              currentUserRole={currentUserRole}
+              currentUserName={currentUserName}
+              onPurgeComplete={onPurgeComplete}
+              onAddAuditLog={onAddAuditLog}
+            />
+          )}
           {activeTab === 'sales' ? (
             <button
               onClick={() => {

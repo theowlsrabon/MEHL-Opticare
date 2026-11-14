@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Salesman, SaleRecord } from '../types';
+import { PageResetButton, AuditLogPayload } from './PageResetButton';
 
 interface SalesmanManagementViewProps {
   canManage?: boolean;
@@ -11,6 +12,10 @@ interface SalesmanManagementViewProps {
   onToggleStatus?: (id: string) => void;
   onRemoveSalesman?: (id: string) => void;
   onViewPerformanceReport: () => void;
+  currentUserRole?: string;
+  currentUserName?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
 }
 
 export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
@@ -23,6 +28,10 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
   onToggleStatus,
   onRemoveSalesman,
   onViewPerformanceReport,
+  currentUserRole = 'staff',
+  currentUserName = '',
+  onPurgeComplete,
+  onAddAuditLog,
 }) => {
   const toggleStatus = onToggleSalesmanStatus || onToggleStatus;
   const [searchQuery, setSearchQuery] = useState('');
@@ -167,6 +176,19 @@ export const SalesmanManagementView: React.FC<SalesmanManagementViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          {onPurgeComplete && onAddAuditLog && (
+            <PageResetButton
+              config={{
+                action: 'salesmen',
+                pageLabel: 'Salesman Management',
+                description: 'Delete all salesman records (staff profiles, commission rates, performance history).',
+              }}
+              currentUserRole={currentUserRole}
+              currentUserName={currentUserName}
+              onPurgeComplete={onPurgeComplete}
+              onAddAuditLog={onAddAuditLog}
+            />
+          )}
           <button
             onClick={onViewPerformanceReport}
             className="px-3.5 py-2 bg-surface-container-low hover:bg-surface-container dark:bg-[#1e2330] dark:hover:bg-[#282f40] border border-outline-variant/80 dark:border-[#2d3546] text-on-surface rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"

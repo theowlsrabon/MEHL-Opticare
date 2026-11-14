@@ -610,7 +610,7 @@ export interface SecurityAuditLog {
   userId: string;
   userName: string;
   userRole: string;
-  actionType: 'ROLE_SWITCH' | 'COST_CIPHER_REVEAL' | 'IBT_DISPATCH' | 'FEFO_OVERRIDE' | 'CREDIT_NOTE_ISSUED' | 'PRICE_MODIFIED' | 'BACKUP_CREATED';
+  actionType: 'ROLE_SWITCH' | 'COST_CIPHER_REVEAL' | 'IBT_DISPATCH' | 'FEFO_OVERRIDE' | 'CREDIT_NOTE_ISSUED' | 'PRICE_MODIFIED' | 'BACKUP_CREATED' | 'DATA_PURGE';
   details: string;
   ipAddress: string;
   status: 'success' | 'flagged' | 'denied';

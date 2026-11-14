@@ -72,6 +72,7 @@ import { CameraBarcodeScanner } from './components/CameraBarcodeScanner';
 import { PosTerminalView } from './components/PosTerminalView';
 import { ModinaOpticsErpPos } from './components/ModinaOpticsErpPos';
 import { PrescriptionsView } from './components/PrescriptionsView';
+import { PageResetButton, AuditLogPayload } from './components/PageResetButton';
 import { DailyClosingSummaryModal, computeLocalDailyClosingData } from './components/DailyClosingSummaryModal';
 import { SmsNotificationModal } from './components/SmsNotificationModal';
 import { ActivityFeed, ActivityFeedItem } from './components/ActivityFeed';
@@ -968,6 +969,7 @@ export default function App() {
   };
 
   const isSuperAdmin = currentUserRole === 'super_admin' || authenticatedUser?.username === 'srabon';
+  const isAdmin = currentUserRole === 'admin' || isSuperAdmin;
 
   const handleDeleteStockItem = (id: string) => {
     setInventory((prev) => prev.filter((item) => item.id !== id));
@@ -1102,6 +1104,24 @@ export default function App() {
       default:
         break;
     }
+  };
+
+  // Per-page reset audit log handler — adds entry to SecurityAuditLog state
+  const handleAddPageResetAuditLog = (entry: { id: string; timestamp: string; actor: string; action_type: string; details: string }) => {
+    setAuditLogs((prev) => [
+      {
+        id: entry.id,
+        timestamp: entry.timestamp,
+        userId: currentUser?.id || 'admin',
+        userName: entry.actor,
+        userRole: currentUserRole,
+        actionType: 'DATA_PURGE' as const,
+        details: entry.details,
+        ipAddress: '—',
+        status: 'success' as const,
+      },
+      ...prev,
+    ]);
   };
 
   // Full Database Factory Reset / Reboot state & clear handler
@@ -2593,6 +2613,10 @@ export default function App() {
           <PrescriptionsView
             prescriptions={prescriptions}
             onOpenGlazingAssistant={() => setIsGlazingAssistantOpen(true)}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -2619,6 +2643,10 @@ export default function App() {
             onAddNewGlasses={() => setIsAddGlassesOpen(true)}
             onViewItemWiseSales={() => setCurrentView('reports')}
             onDeleteStockItem={isSuperAdmin ? handleDeleteStockItem : undefined}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -2626,6 +2654,10 @@ export default function App() {
           <DueCollectionsView
             onCollectionRecorded={handleDueCollectionRecorded}
             salesRecords={salesRecords}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -2660,6 +2692,10 @@ export default function App() {
             onToggleStatus={handleToggleSalesmanStatus}
             onRemoveSalesman={handleRemoveSalesman}
             onViewPerformanceReport={() => setCurrentView('reports')}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -2734,6 +2770,10 @@ export default function App() {
             onPayPurchaseOrderDue={handlePayPurchaseOrderDue}
             onReceiveGrn={handleReceiveGrn}
             onDeletePurchaseOrder={isSuperAdmin ? handleDeletePurchaseOrder : undefined}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -2751,6 +2791,10 @@ export default function App() {
             purchaseReturns={purchaseReturns}
             onAddExpense={handleAddExpense}
             onDeleteExpense={isSuperAdmin ? handleDeleteExpense : undefined}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -2761,6 +2805,10 @@ export default function App() {
             salesRecords={salesRecords}
             onAddSalesReturn={handleAddSalesReturn}
             onAddPurchaseReturn={handleAddPurchaseReturn}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -3344,3 +3392,5 @@ export default function App() {
     </div>
   );
 }
+
+

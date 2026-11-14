@@ -70,6 +70,7 @@ import {
   dbResetOperationalData,
   dbTargetedPurge,
   dbGetDatabaseMetrics,
+  dbInsertAuditLog,
 } from "./serverDb";
 
 dotenv.config();
@@ -433,6 +434,30 @@ app.post("/api/admin/targeted-purge", async (req: any, res: any) => {
   } catch (err: any) {
     console.error("[targeted-purge error]:", err);
     res.status(500).json({ success: false, error: err.message || "Targeted purge failed." });
+  }
+});
+
+// --- POST /api/admin/log-audit — persist a page-reset audit log entry ---
+app.post("/api/admin/log-audit", async (req, res) => {
+  try {
+    const { username, password, entry } = req.body as {
+      username: string;
+      password: string;
+      entry: { id: string; timestamp: string; actor: string; action_type: string; details: string };
+    };
+    if (!username || !password || !entry) {
+      return res.status(400).json({ success: false, error: "Missing fields." });
+    }
+    // Auth check (same helper)
+    const authResult = await verifyAdminAuth(username, password);
+    if (!authResult.ok) {
+      return res.status(401).json({ success: false, error: authResult.error || "Unauthorized." });
+    }
+    await dbInsertAuditLog(entry);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[log-audit error]:", err);
+    res.status(500).json({ success: false, error: err.message || "Failed to log audit entry." });
   }
 });
 

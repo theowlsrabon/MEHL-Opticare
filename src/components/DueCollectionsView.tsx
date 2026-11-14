@@ -5,6 +5,7 @@ import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { SaleRecord } from '../types';
 import { CameraBarcodeScanner } from './CameraBarcodeScanner';
 import { useLanguage } from '../context/LanguageContext';
+import { PageResetButton, AuditLogPayload } from './PageResetButton';
 
 export interface InvoiceItem {
   id: string;
@@ -103,9 +104,13 @@ const INITIAL_AUDIT_LOG: SettledAuditRecord[] = [];
 interface DueCollectionsViewProps {
   onCollectionRecorded?: (collection: DueCollectionRecord) => void;
   salesRecords?: SaleRecord[];
+  currentUserRole?: string;
+  currentUserName?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
 }
 
-export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollectionRecorded, salesRecords = [] }) => {
+export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollectionRecorded, salesRecords = [], currentUserRole = 'staff', currentUserName = '', onPurgeComplete, onAddAuditLog }) => {
   const { language } = useLanguage();
   const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
   // Active selected invoice
@@ -606,6 +611,19 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
 
           {/* Quick Top Actions */}
           <div className="flex flex-wrap items-center gap-2.5 self-start xl:self-auto">
+            {onPurgeComplete && onAddAuditLog && (
+              <PageResetButton
+                config={{
+                  action: 'dues-only',
+                  pageLabel: 'Due Collections',
+                  description: 'Reset all customer due balances and loyalty points to zero (keeps customer profiles).',
+                }}
+                currentUserRole={currentUserRole}
+                currentUserName={currentUserName}
+                onPurgeComplete={onPurgeComplete}
+                onAddAuditLog={onAddAuditLog}
+              />
+            )}
             <button
               onClick={() => setIsInvoiceScannerOpen(true)}
               className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#1a1d26] border border-teal-500/30 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-50 dark:hover:bg-teal-950/30 flex items-center gap-2 shadow-xs transition-all cursor-pointer"
