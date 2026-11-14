@@ -1469,48 +1469,84 @@ export async function dbResetOperationalData(): Promise<{
 }
 
 // ----------------- TARGETED DATA PURGE BY SCOPE / CATEGORY / TIME -----------------
-export async function dbTargetedPurge(action: string, params?: any): Promise<{
+export async function dbTargetedPurge(action: string, params?: any, actor: string = 'Admin'): Promise<{
   action: string;
   purgedTables?: string[];
   affectedCount?: number;
   message: string;
 }> {
   const p = getDbPool();
+  let result: { action: string; purgedTables?: string[]; affectedCount?: number; message: string };
+
   switch (action) {
     case 'full-wipe': {
       const res = await dbResetOperationalData();
-      return { action, purgedTables: res.purgedTables, message: 'All operational tables wiped cleanly.' };
+      result = { action, purgedTables: res.purgedTables, message: 'All operational tables wiped cleanly.' };
+      break;
     }
     case 'transactions-only': {
       await p.query('DELETE FROM sales_records');
       await p.query('DELETE FROM financial_collections');
       await p.query('DELETE FROM drawer_closings');
       await p.query('DELETE FROM drawer_balance_resets');
-      return {
+      result = {
         action,
         purgedTables: ['sales_records', 'financial_collections', 'drawer_closings', 'drawer_balance_resets'],
         message: 'All financial transaction records cleared.',
       };
+      break;
     }
     case 'pos-only': {
       await p.query('DELETE FROM sales_records');
       await p.query('DELETE FROM sales_returns');
       await p.query('DELETE FROM optical_jobs');
-      return {
+      result = {
         action,
         purgedTables: ['sales_records', 'sales_returns', 'optical_jobs'],
         message: 'POS invoices, job queue, and sales returns cleared.',
       };
+      break;
+    }
+    case 'lab-jobs': {
+      const res = await p.query('DELETE FROM optical_jobs');
+      result = {
+        action,
+        purgedTables: ['optical_jobs'],
+        affectedCount: res.rowCount || 0,
+        message: 'Lab glazing job queue and conveyor trays cleared.',
+      };
+      break;
+    }
+    case 'returns-refunds': {
+      await p.query('DELETE FROM sales_returns');
+      await p.query('DELETE FROM purchase_returns');
+      result = {
+        action,
+        purgedTables: ['sales_returns', 'purchase_returns'],
+        message: 'All sales returns (credit notes) and purchase returns (debit notes) cleared.',
+      };
+      break;
+    }
+    case 'ibt-orders': {
+      const res = await p.query('DELETE FROM ibt_orders');
+      result = {
+        action,
+        purgedTables: ['ibt_orders'],
+        affectedCount: res.rowCount || 0,
+        message: 'All inter-branch transfer (IBT) orders and requisitions cleared.',
+      };
+      break;
     }
     case 'procurement': {
       await p.query('DELETE FROM purchase_orders');
       await p.query('DELETE FROM goods_received_notes');
       await p.query('DELETE FROM purchase_returns');
-      return {
+      result = {
         action,
         purgedTables: ['purchase_orders', 'goods_received_notes', 'purchase_returns'],
         message: 'Purchase orders, GRNs, and purchase returns cleared.',
       };
+      break;
     }
     case 'dues-only': {
       const sales = await p.query('SELECT id, data_json FROM sales_records');
@@ -1526,7 +1562,9 @@ export async function dbTargetedPurge(action: string, params?: any): Promise<{
           }
         } catch {}
       }
-      return { action, affectedCount: count, message: `Cleared customer dues on ${count} invoices.` };
+      try { await p.query('DELETE FROM financial_collections'); } catch {}
+      result = { action, affectedCount: count, message: `Cleared customer dues on ${count} invoices and collection ledger.` };
+      break;
     }
     case 'time-window': {
       const hours = Number(params?.hours) || 24;
@@ -1535,7 +1573,8 @@ export async function dbTargetedPurge(action: string, params?: any): Promise<{
       const eRes = await p.query(`DELETE FROM expenses WHERE created_at >= NOW() - INTERVAL '${hours} hours'`);
       const fRes = await p.query(`DELETE FROM financial_collections WHERE created_at >= NOW() - INTERVAL '${hours} hours'`);
       const total = (sRes.rowCount || 0) + (jRes.rowCount || 0) + (eRes.rowCount || 0) + (fRes.rowCount || 0);
-      return { action, affectedCount: total, message: `Removed ${total} records from the last ${hours} hours.` };
+      result = { action, affectedCount: total, message: `Removed ${total} records from the last ${hours} hours.` };
+      break;
     }
     case 'inventory-stock-only': {
       const items = await p.query('SELECT id, data_json FROM inventory_items');
@@ -1549,47 +1588,76 @@ export async function dbTargetedPurge(action: string, params?: any): Promise<{
           count++;
         } catch {}
       }
-      return { action, affectedCount: count, message: `Stock quantities set to 0 for ${count} catalog items.` };
+      result = { action, affectedCount: count, message: `Stock quantities set to 0 for ${count} catalog items.` };
+      break;
     }
     case 'inventory-full': {
       const res = await p.query('DELETE FROM inventory_items');
-      return { action, affectedCount: res.rowCount || 0, message: 'All inventory items and catalog wiped.' };
+      result = { action, affectedCount: res.rowCount || 0, message: 'All inventory items and catalog wiped.' };
+      break;
     }
     case 'loss-ledger': {
       await p.query("DELETE FROM system_audit_logs WHERE action_type LIKE '%DAMAGE%' OR action_type LIKE '%LOSS%'");
-      return { action, message: 'Damaged item loss ledger purged.' };
+      result = { action, message: 'Damaged item loss ledger purged.' };
+      break;
     }
     case 'inventory-category': {
       const category = params?.category;
       if (!category) throw new Error('Category is required');
       const res = await p.query('DELETE FROM inventory_items WHERE category = $1', [category]);
-      return { action, affectedCount: res.rowCount || 0, message: `Deleted ${res.rowCount || 0} items in category "${category}".` };
+      result = { action, affectedCount: res.rowCount || 0, message: `Deleted ${res.rowCount || 0} items in category "${category}".` };
+      break;
     }
     case 'prescriptions': {
       const res = await p.query('DELETE FROM prescriptions');
-      return { action, affectedCount: res.rowCount || 0, message: 'All patient prescriptions cleared.' };
+      result = { action, affectedCount: res.rowCount || 0, message: 'All patient prescriptions cleared.' };
+      break;
     }
     case 'expenses': {
       const res = await p.query('DELETE FROM expenses');
-      return { action, affectedCount: res.rowCount || 0, message: 'All operational expenses cleared.' };
+      result = { action, affectedCount: res.rowCount || 0, message: 'All operational expenses cleared.' };
+      break;
     }
     case 'salesmen': {
       const res = await p.query('DELETE FROM salesmen');
-      return { action, affectedCount: res.rowCount || 0, message: 'Sales staff and commission records cleared.' };
+      result = { action, affectedCount: res.rowCount || 0, message: 'Sales staff and commission records cleared.' };
+      break;
     }
     case 'audit-logs': {
       await p.query('DELETE FROM system_audit_logs');
       await p.query('DELETE FROM sms_logs');
-      return { action, message: 'System audit logs and SMS dispatch logs cleared.' };
+      result = { action, message: 'System audit logs and SMS dispatch logs cleared.' };
+      break;
     }
     case 'branches-suppliers': {
       await p.query('DELETE FROM hospital_branches');
       await p.query('DELETE FROM suppliers');
-      return { action, message: 'Hospital branches and registered suppliers cleared.' };
+      result = { action, message: 'Hospital branches and registered suppliers cleared.' };
+      break;
+    }
+    case 'staff-accounts': {
+      const res = await p.query("DELETE FROM user_accounts WHERE role NOT IN ('admin', 'super_admin') AND username NOT IN ('admin', 'srabon')");
+      result = { action, affectedCount: res.rowCount || 0, message: `Non-admin custom staff accounts cleared (${res.rowCount || 0} accounts removed).` };
+      break;
     }
     default:
       throw new Error(`Unknown purge action: ${action}`);
   }
+
+  // Automatically record this purge action into system_audit_logs (unless we just wiped audit-logs)
+  if (action !== 'audit-logs') {
+    const now = new Date();
+    const ts = now.toISOString().replace('T', ' ').substring(0, 19);
+    await dbInsertAuditLog({
+      id: `pur-${Date.now()}`,
+      timestamp: ts,
+      actor: actor || 'Admin',
+      action_type: 'DATA_PURGE',
+      details: `[Purge Center] Executed reset for: ${action}${params?.category ? ` (${params.category})` : ''} - ${result.message}`,
+    });
+  }
+
+  return result;
 }
 
 // ----------------- LIVE DATABASE METRICS COUNTER -----------------

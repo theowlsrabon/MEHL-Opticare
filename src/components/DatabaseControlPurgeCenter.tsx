@@ -59,6 +59,7 @@ interface DatabaseControlPurgeCenterProps {
   onBackToDashboard: () => void;
   onPurgeComplete: (action: string, params?: any) => void;
   onFullResetComplete: () => void;
+  onAddAuditLog?: (entry: { id: string; timestamp: string; actor: string; action_type: string; details: string }) => void;
 }
 
 interface PurgeTargetConfig {
@@ -95,6 +96,7 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
   onBackToDashboard,
   onPurgeComplete,
   onFullResetComplete,
+  onAddAuditLog,
 }) => {
   const isSuperAdmin = currentUserRole === 'super_admin' || authenticatedUser?.username === 'srabon';
 
@@ -253,6 +255,15 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
           throw new Error(parsed.data?.error || `Error ${res.status}: Factory wipe failed.`);
         }
         onFullResetComplete();
+        const now = new Date();
+        const ts = now.toISOString().replace('T', ' ').substring(0, 19);
+        onAddAuditLog?.({
+          id: `pur-${Date.now()}`,
+          timestamp: ts,
+          actor: authenticatedUser?.username || authenticatedUser?.name || 'admin',
+          action_type: 'DATA_PURGE',
+          details: '[Factory Wipe] Full system database factory reset executed.',
+        });
         setActivePurgeTarget(null);
         fetchMetrics();
         alert(language === 'bn' ? 'সম্পূর্ণ ডাটাবেস সফলভাবে ফ্যাক্টরি রিসেট করা হয়েছে!' : 'Full database factory wipe executed successfully!');
@@ -273,6 +284,15 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
 
       // Trigger frontend state synchronization
       onPurgeComplete(activePurgeTarget.action, activePurgeTarget.params);
+      const now = new Date();
+      const ts = now.toISOString().replace('T', ' ').substring(0, 19);
+      onAddAuditLog?.({
+        id: `pur-${Date.now()}`,
+        timestamp: ts,
+        actor: authenticatedUser?.username || authenticatedUser?.name || 'admin',
+        action_type: 'DATA_PURGE',
+        details: `[Purge Center: ${activePurgeTarget.titleEn}] ${activePurgeTarget.descEn}`,
+      });
       setActivePurgeTarget(null);
       fetchMetrics();
       alert(
@@ -996,42 +1016,42 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-          {/* Module 1: Prescriptions Page */}
-          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {/* Page 1: POS & ERP Suite */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-emerald-500/40 transition-colors">
             <div>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                  {language === 'bn' ? 'প্রেসক্রিপশন পেজের ডাটা মুছুন' : 'Clear Prescriptions Page'}
+                  {language === 'bn' ? 'পিওএস ও ইনভয়েস পেজ' : 'POS & ERP Suite Invoices'}
                 </h3>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-700 dark:text-cyan-400">
-                  Rx Clean
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                  POS Clean
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                 {language === 'bn'
-                  ? 'রোগীদের সমস্ত অপটিক্যাল পাওয়ার ও রিফ্রাকশন প্রেসক্রিপশন হিস্ট্রি মুছুন।'
-                  : 'Purges all clinical ophthalmic prescriptions and doctor power records.'}
+                  ? 'কাউন্টারের সমস্ত সেলস রসিদ, ইনভয়েস এবং ট্রানজ্যাকশন রেকর্ড মুছুন।'
+                  : 'Purges all sales invoices, held orders, and counter checkout receipts.'}
               </p>
             </div>
             <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
               <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                {prescriptions.length} {language === 'bn' ? 'প্রেসক্রিপশন' : 'Rx'}
+                {salesRecords.length} {language === 'bn' ? 'বিক্রয়' : 'Invoices'}
               </span>
               <button
                 type="button"
                 onClick={() =>
                   initiatePurge({
-                    id: 'prescriptions',
-                    action: 'prescriptions',
+                    id: 'pos-only',
+                    action: 'pos-only',
                     category: 'per-page',
-                    badge: 'Rx Clean',
-                    badgeColor: 'bg-cyan-500/10 text-cyan-700',
-                    titleEn: 'Clear Prescriptions View Data',
-                    titleBn: 'প্রেসক্রিপশন পেজের ডাটা মুছুন',
-                    descEn: 'Deletes all patient ophthalmic prescriptions from database.',
-                    descBn: 'সমস্ত প্রেসক্রিপশন রেকর্ড ডাটাবেস থেকে মুছে যাবে।',
-                    matchingCount: prescriptions.length,
+                    badge: 'POS Clean',
+                    badgeColor: 'bg-emerald-500/10 text-emerald-700',
+                    titleEn: 'Clear POS & Sales Invoices Page',
+                    titleBn: 'পিওএস ও ইনভয়েস পেজের ডাটা মুছুন',
+                    descEn: 'Deletes all POS invoices and sales receipts without touching inventory.',
+                    descBn: 'ইনভেন্টরি অক্ষত রেখে সমস্ত সেলস ইনভয়েস মুছে ফেলা হবে।',
+                    matchingCount: salesRecords.length,
                   })
                 }
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
@@ -1042,12 +1062,237 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
             </div>
           </div>
 
-          {/* Module 2: Expenses & Accounts Page */}
-          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs">
+          {/* Page 2: Due Collections */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-amber-500/40 transition-colors">
             <div>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                  {language === 'bn' ? 'দৈনিক খরচ ও পেটি ক্যাশ খাতা মুছুন' : 'Clear Expenses & Petty Cash'}
+                  {language === 'bn' ? 'বকেয়া আদায় পেজ' : 'Due Collections Ledger'}
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                  Receivables
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'গ্রাহকদের সমস্ত বাকি ব্যালেন্স শূন্য করুন এবং দৈনিক আদায়ের হিসাব মুছুন।'
+                  : 'Resets all customer unpaid balances to 0 and clears the daily cash collection ledger.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                {salesRecords.filter((s) => (s.dueAmount || 0) > 0).length} {language === 'bn' ? 'বকেয়া' : 'Dues'}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  initiatePurge({
+                    id: 'dues-only',
+                    action: 'dues-only',
+                    category: 'per-page',
+                    badge: 'Receivables',
+                    badgeColor: 'bg-amber-500/10 text-amber-700',
+                    titleEn: 'Reset Due Collections Page',
+                    titleBn: 'বকেয়া আদায় খাতা রিসেট করুন',
+                    descEn: 'Resets all customer credit/due amounts to 0 and clears the collection ledger.',
+                    descBn: 'সমস্ত কাস্টমার বকেয়া শূন্য করা হবে ও আদায়ের লেজার রিসেট হবে।',
+                    matchingCount: salesRecords.filter((s) => (s.dueAmount || 0) > 0).length,
+                  })
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{language === 'bn' ? 'রিসেট' : 'Reset'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Page 3: Lab Glazing Conveyor */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-purple-500/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'ল্যাব গ্লেজিং কনভেয়ার পেজ' : 'Lab Glazing Conveyor'}
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-700 dark:text-purple-400">
+                  Lab Trays
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'ল্যাবের কনভেয়ার ট্রের সমস্ত চলমান অপটিক্যাল জব কার্ড ও ফিটিং কিউ মুছুন।'
+                  : 'Purges all optical job cards, lens cutting tasks, and tray conveyor pipeline stages.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                {jobs.length} {language === 'bn' ? 'ট্রে' : 'Trays'}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  initiatePurge({
+                    id: 'lab-jobs',
+                    action: 'lab-jobs',
+                    category: 'per-page',
+                    badge: 'Lab Clean',
+                    badgeColor: 'bg-purple-500/10 text-purple-700',
+                    titleEn: 'Clear Lab Glazing Conveyor Page',
+                    titleBn: 'ল্যাব গ্লেজিং ট্রে কিউ মুছুন',
+                    descEn: 'Purges all optical jobs and tray cards currently in the lab pipeline.',
+                    descBn: 'ল্যাবের পাইপলাইনে থাকা সমস্ত অপটিক্যাল জব কার্ড ও ট্রে মুছে ফেলা হবে।',
+                    matchingCount: jobs.length,
+                  })
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{language === 'bn' ? 'মুছুন' : 'Clear'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Page 4: Returns, Refunds & Credit */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-rose-500/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'রিটার্ন, রিফান্ড ও ক্রেডিট পেজ' : 'Returns, Refunds & Credit'}
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-700 dark:text-rose-400">
+                  CN / DN
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'গ্রাহক ফেরত স্লিপ (ক্রেডিট নোট) ও সরবরাহকারী ফেরত (ডেবিট নোট) হিস্ট্রি মুছুন।'
+                  : 'Purges all customer sales return credit notes and vendor return debit notes.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                Ready to execute
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  initiatePurge({
+                    id: 'returns-refunds',
+                    action: 'returns-refunds',
+                    category: 'per-page',
+                    badge: 'CN / DN Clean',
+                    badgeColor: 'bg-rose-500/10 text-rose-700',
+                    titleEn: 'Clear Returns & Refunds Page',
+                    titleBn: 'রিটার্ন ও রিফান্ড খাতা মুছুন',
+                    descEn: 'Purges all customer credit notes and purchase return records.',
+                    descBn: 'সমস্ত গ্রাহক রিটার্ন ও সরবরাহকারী ডেবিট নোট মুছে ফেলা হবে।',
+                    matchingCount: 0,
+                  })
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{language === 'bn' ? 'মুছুন' : 'Clear'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Page 5: Multi-Branch & IBT Transfers */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-blue-500/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'মাল্টি-ব্রাঞ্চ ও আইবিটি পেজ' : 'Multi-Branch & IBT Orders'}
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-700 dark:text-blue-400">
+                  IBT Clean
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'শাখাগুলোর মধ্যে পণ্য স্থানান্তরের সমস্ত রিকুইজিশন ও চালান রেকর্ড মুছুন।'
+                  : 'Purges all inter-branch transfer requisitions, dispatches, and warehouse transit records.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                {branches.length} {language === 'bn' ? 'শাখা' : 'Branches'}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  initiatePurge({
+                    id: 'ibt-orders',
+                    action: 'ibt-orders',
+                    category: 'per-page',
+                    badge: 'IBT Clean',
+                    badgeColor: 'bg-blue-500/10 text-blue-700',
+                    titleEn: 'Clear Inter-Branch Transfer Orders',
+                    titleBn: 'আইবিটি স্থানান্তর আদেশ মুছুন',
+                    descEn: 'Purges all inter-branch transfer orders and requisitions.',
+                    descBn: 'শাখাগুলোর মধ্যকার সমস্ত স্থানান্তর রিকুইজিশন মুছে ফেলা হবে।',
+                    matchingCount: 0,
+                  })
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{language === 'bn' ? 'মুছুন' : 'Clear'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Page 6: Suppliers & GRN */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-indigo-500/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'সাপ্লায়ার ও জিআরএন পেজ' : 'Suppliers & Purchase GRNs'}
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-400">
+                  Procurement
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'ক্রয় আদেশ (PO), গুডস রিসিভ নোট (GRN) এবং সাপ্লায়ার লেজার খাতা মুছুন।'
+                  : 'Clears inward purchase orders, delivery challans, and vendor payable histories.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                {purchaseOrders.length + grns.length} {language === 'bn' ? 'রেকর্ড' : 'Records'}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  initiatePurge({
+                    id: 'procurement',
+                    action: 'procurement',
+                    category: 'per-page',
+                    badge: 'Procurement',
+                    badgeColor: 'bg-indigo-500/10 text-indigo-700',
+                    titleEn: 'Clear Procurement & GRN Page',
+                    titleBn: 'ক্রয় ও জিআরএন পেজ মুছুন',
+                    descEn: 'Purges all purchase orders, goods received notes, and vendor ledgers.',
+                    descBn: 'সমস্ত ক্রয় আদেশ এবং জিআরএন রেকর্ড মুছে ফেলা হবে।',
+                    matchingCount: purchaseOrders.length + grns.length,
+                  })
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{language === 'bn' ? 'মুছুন' : 'Clear'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Page 7: Profit Analytics & Operating Expenses */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-rose-500/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'খরচ ও পেটি ক্যাশ পেজ' : 'Profit Analytics & Expenses'}
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-700 dark:text-rose-400">
                   Expenses
@@ -1087,12 +1332,102 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
             </div>
           </div>
 
-          {/* Module 3: Salesmen & Staff Commission Page */}
-          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs">
+          {/* Page 8: Stock & Frame Registry */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-amber-500/40 transition-colors">
             <div>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                  {language === 'bn' ? 'সেলসম্যান ও কমিশন খাতা মুছুন' : 'Clear Sales Staff & Commission'}
+                  {language === 'bn' ? 'স্টক ও ফ্রেম রেজিস্ট্রি পেজ' : 'Stock & Frame Quantities'}
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                  Zero Stock
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'ফ্রেম ও লেন্স ক্যাটালগ অক্ষত রেখে সমস্ত স্টকের সংখ্যা শূন্য (০) করুন।'
+                  : 'Zeroes out all current stock counts while keeping the product master catalog intact.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                {inventory.length} {language === 'bn' ? 'আইটেম' : 'Items'}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  initiatePurge({
+                    id: 'inventory-stock-only',
+                    action: 'inventory-stock-only',
+                    category: 'per-page',
+                    badge: 'Zero Stock',
+                    badgeColor: 'bg-amber-500/10 text-amber-700',
+                    titleEn: 'Zero Out Stock Quantities',
+                    titleBn: 'স্টকের পরিমাণ শূন্য করুন',
+                    descEn: 'Sets all inventory stock quantities to 0 across all frames and lenses.',
+                    descBn: 'ক্যাটালগ অক্ষত রেখে সব ফ্রেম ও লেন্সের বর্তমান মজুদ ০ করা হবে।',
+                    matchingCount: inventory.length,
+                  })
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{language === 'bn' ? 'শূন্য করুন' : 'Zero Out'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Page 9: Prescriptions Page */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-cyan-500/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'প্রেসক্রিপশন পেজের ডাটা' : 'Prescriptions & Refractions'}
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-700 dark:text-cyan-400">
+                  Rx Clean
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'রোগীদের সমস্ত অপটিক্যাল পাওয়ার ও রিফ্রাকশন প্রেসক্রিপশন হিস্ট্রি মুছুন।'
+                  : 'Purges all clinical ophthalmic prescriptions and doctor power records.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                {prescriptions.length} {language === 'bn' ? 'প্রেসক্রিপশন' : 'Rx'}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  initiatePurge({
+                    id: 'prescriptions',
+                    action: 'prescriptions',
+                    category: 'per-page',
+                    badge: 'Rx Clean',
+                    badgeColor: 'bg-cyan-500/10 text-cyan-700',
+                    titleEn: 'Clear Prescriptions View Data',
+                    titleBn: 'প্রেসক্রিপশন পেজের ডাটা মুছুন',
+                    descEn: 'Deletes all patient ophthalmic prescriptions from database.',
+                    descBn: 'সমস্ত প্রেসক্রিপশন রেকর্ড ডাটাবেস থেকে মুছে যাবে।',
+                    matchingCount: prescriptions.length,
+                  })
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{language === 'bn' ? 'মুছুন' : 'Clear'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Page 10: Salesmen & Staff Commission */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-teal-500/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'সেলসম্যান ও কমিশন পেজ' : 'Sales Staff & Commission'}
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-500/10 text-teal-700 dark:text-teal-400">
                   Staff Clean
@@ -1132,12 +1467,12 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
             </div>
           </div>
 
-          {/* Module 4: System Audit Logs & SMS Trail */}
-          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs">
+          {/* Page 11: System Audit Logs & SMS Trail */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-slate-500/40 transition-colors">
             <div>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                  {language === 'bn' ? 'সিস্টেম অডিট ও এসএমএস লগ মুছুন' : 'Clear System Audit & SMS Logs'}
+                  {language === 'bn' ? 'সিস্টেম অডিট ও এসএমএস লগ' : 'System Audit & SMS Logs'}
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-700 dark:text-slate-400">
                   Audit Clean
@@ -1177,12 +1512,12 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
             </div>
           </div>
 
-          {/* Module 5: Hospital Branches & Registered Suppliers */}
-          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs">
+          {/* Page 12: Hospital Branches & Registered Suppliers */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-amber-500/40 transition-colors">
             <div>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                  {language === 'bn' ? 'হাসপাতাল শাখা ও সাপ্লায়ার মুছুন' : 'Clear Branches & Suppliers'}
+                  {language === 'bn' ? 'হাসপাতাল শাখা ও সাপ্লায়ার' : 'Branches & Suppliers'}
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400">
                   Master Setup
@@ -1212,6 +1547,51 @@ export const DatabaseControlPurgeCenter: React.FC<DatabaseControlPurgeCenterProp
                     descEn: 'Deletes registered hospital branches and suppliers from database.',
                     descBn: 'সমস্ত শাখা এবং সাপ্লায়ার তালিকা মুছে ফেলা হবে।',
                     matchingCount: branches.length + suppliers.length,
+                  })
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{language === 'bn' ? 'মুছুন' : 'Clear'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Page 13: Staff User Accounts (Non-Admin Logins) */}
+          <div className="bg-white dark:bg-[#1a1f2c] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:border-red-500/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'কাস্টম স্টাফ একাউন্টস পেজ' : 'Custom Staff User Accounts'}
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-700 dark:text-rose-400">
+                  Staff Logins
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                {language === 'bn'
+                  ? 'এডমিন একাউন্ট ছাড়া অন্যান্য কাস্টম কর্মচারীদের সমস্ত লগইন আইডি ও পাসওয়ার্ড মুছুন।'
+                  : 'Purges custom non-admin employee logins while preserving administrator credentials.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                Non-Admin
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  initiatePurge({
+                    id: 'staff-accounts',
+                    action: 'staff-accounts',
+                    category: 'per-page',
+                    badge: 'Staff Logins',
+                    badgeColor: 'bg-rose-500/10 text-rose-700',
+                    titleEn: 'Clear Custom Staff Accounts',
+                    titleBn: 'কাস্টম স্টাফ একাউন্ট মুছুন',
+                    descEn: 'Deletes custom non-admin employee login accounts from database.',
+                    descBn: 'এডমিন ছাড়া অন্য সকল কর্মচারীর লগইন একাউন্ট মুছে ফেলা হবে।',
+                    matchingCount: 0,
                   })
                 }
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white transition-colors cursor-pointer"

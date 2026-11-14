@@ -61,7 +61,7 @@ export interface SaleRecord {
 
 export interface UnifiedActivityLogItem {
   id: string;
-  category: 'sales' | 'lab' | 'inventory' | 'payment';
+  category: 'sales' | 'lab' | 'inventory' | 'payment' | 'system';
   type: string;
   actorName: string;
   actorRole?: string;
@@ -349,6 +349,7 @@ export interface HospitalBranch {
   activeStaffCount: number;
   openTraysCount: number;
   totalStockUnits: number;
+  revenueBDT?: number;
 }
 
 export interface IBTItem {

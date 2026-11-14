@@ -5,6 +5,7 @@ import { InventoryItem, OpticalJob, Salesman, SaleRecord, SaleItemLine } from '.
 import { useLanguage } from '../context/LanguageContext';
 import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
+import { PageResetButton, AuditLogPayload } from './PageResetButton';
 import {
   OphthalmicLensSelector,
   LensConfiguration,
@@ -63,6 +64,10 @@ interface Props {
   jobs?: OpticalJob[];
   initialScannedBarcode?: string;
   onDeleteSaleRecord?: (invoiceId: string) => void;
+  currentUserRole?: string;
+  currentUserName?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
 }
 
 interface InvoiceCopyPrescriptionRow {
@@ -269,6 +274,10 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
   jobs = [],
   initialScannedBarcode = '',
   onDeleteSaleRecord,
+  currentUserRole = 'staff',
+  currentUserName = '',
+  onPurgeComplete,
+  onAddAuditLog,
 }) => {
   const { language } = useLanguage();
   const text = (english: string, bengali: string) => language === 'bn' ? bengali : english;
@@ -1156,6 +1165,19 @@ export const ModinaOpticsErpPos: React.FC<Props> = ({
 
           {/* Quick Action Icons & View Mode Tabs */}
           <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+            {onPurgeComplete && onAddAuditLog && (
+              <PageResetButton
+                config={{
+                  action: 'pos-only',
+                  pageLabel: 'POS & ERP Invoices',
+                  description: 'Clear all POS sales invoices, optical job queues, and sales returns records.',
+                }}
+                currentUserRole={currentUserRole}
+                currentUserName={currentUserName}
+                onPurgeComplete={onPurgeComplete}
+                onAddAuditLog={onAddAuditLog}
+              />
+            )}
             <div className="flex items-center gap-1 bg-slate-100/90 dark:bg-[#111827] p-1 rounded-xl border border-slate-200/80 dark:border-slate-800">
               <button
                 type="button"

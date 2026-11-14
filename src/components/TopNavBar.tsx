@@ -25,6 +25,8 @@ import {
   Sparkles,
   Filter,
   ArrowUpRight,
+  Trash2,
+  ShieldAlert,
 } from 'lucide-react';
 import { ViewMode, UserRole, UserAccount, UnifiedActivityLogItem } from '../types';
 import { MADINA_STAFF_PROFILES } from '../data/rolesData';
@@ -82,7 +84,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showActivityLog, setShowActivityLog] = useState(false);
-  const [activityFilter, setActivityFilter] = useState<'all' | 'sales' | 'lab' | 'inventory' | 'payment'>('all');
+  const [activityFilter, setActivityFilter] = useState<'all' | 'sales' | 'lab' | 'inventory' | 'payment' | 'system'>('all');
   const [activitySearch, setActivitySearch] = useState('');
   const [showHelp, setShowHelp] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
@@ -732,6 +734,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                   { id: 'lab', label: language === 'bn' ? 'ল্যাব' : 'Lab', count: activityLogs.filter(a => a.category === 'lab').length },
                   { id: 'inventory', label: language === 'bn' ? 'মজুদ' : 'Stock', count: activityLogs.filter(a => a.category === 'inventory').length },
                   { id: 'payment', label: language === 'bn' ? 'পেমেন্ট' : 'Payments', count: activityLogs.filter(a => a.category === 'payment').length },
+                  { id: 'system', label: language === 'bn' ? 'ডাটা রিসেট' : 'Resets / Purge', count: activityLogs.filter(a => a.category === 'system').length },
                 ].map((chip) => (
                   <button
                     key={chip.id}
@@ -822,6 +825,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                     ? 'bg-purple-600 text-white'
                                     : item.category === 'inventory'
                                     ? 'bg-amber-500 text-white'
+                                    : item.category === 'system'
+                                    ? 'bg-rose-500 text-white'
                                     : 'bg-[#00c49f] text-white'
                                 }`}
                               >
@@ -831,6 +836,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                   <Activity size={10} />
                                 ) : item.category === 'inventory' ? (
                                   <Package size={10} />
+                                ) : item.category === 'system' ? (
+                                  <Trash2 size={10} />
                                 ) : (
                                   <CircleDollarSign size={10} />
                                 )}
@@ -874,6 +881,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                         ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                                         : item.category === 'inventory'
                                         ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                        : item.category === 'system'
+                                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                                         : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
                                     }`}
                                   >
@@ -922,6 +931,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                     ? 'bg-purple-600 text-white'
                                     : item.category === 'inventory'
                                     ? 'bg-amber-500 text-white'
+                                    : item.category === 'system'
+                                    ? 'bg-rose-500 text-white'
                                     : 'bg-[#00c49f] text-white'
                                 }`}
                               >
@@ -931,6 +942,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                   <Activity size={10} />
                                 ) : item.category === 'inventory' ? (
                                   <Package size={10} />
+                                ) : item.category === 'system' ? (
+                                  <Trash2 size={10} />
                                 ) : (
                                   <CircleDollarSign size={10} />
                                 )}
@@ -971,6 +984,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                         ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                                         : item.category === 'inventory'
                                         ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                        : item.category === 'system'
+                                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                                         : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
                                     }`}
                                   >
@@ -1018,6 +1033,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                     ? 'bg-purple-600 text-white'
                                     : item.category === 'inventory'
                                     ? 'bg-amber-500 text-white'
+                                    : item.category === 'system'
+                                    ? 'bg-rose-500 text-white'
                                     : 'bg-[#00c49f] text-white'
                                 }`}
                               >
@@ -1027,6 +1044,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                   <Activity size={10} />
                                 ) : item.category === 'inventory' ? (
                                   <Package size={10} />
+                                ) : item.category === 'system' ? (
+                                  <Trash2 size={10} />
                                 ) : (
                                   <CircleDollarSign size={10} />
                                 )}
@@ -1067,6 +1086,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                                         ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                                         : item.category === 'inventory'
                                         ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                        : item.category === 'system'
+                                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                                         : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'
                                     }`}
                                   >

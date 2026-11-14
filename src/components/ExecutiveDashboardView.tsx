@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ViewMode, HospitalBranch, InterBranchTransferOrder, PharmacyDrug, FinancialSummary } from '../types';
+import { ViewMode, HospitalBranch, InterBranchTransferOrder, PharmacyDrug, FinancialSummary, SaleRecord } from '../types';
 import { BranchStatusBadge } from './BranchStatusBadge';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -7,6 +7,7 @@ interface ExecutiveDashboardViewProps {
   branches: HospitalBranch[];
   ibtOrders: InterBranchTransferOrder[];
   drugs: PharmacyDrug[];
+  salesRecords?: SaleRecord[];
   financialSummary: FinancialSummary;
   onNavigate: (view: ViewMode) => void;
 }
@@ -15,6 +16,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   branches,
   ibtOrders,
   drugs,
+  salesRecords = [],
   financialSummary,
   onNavigate,
 }) => {
@@ -61,6 +63,29 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
     this_month: isBangla ? 'এই মাস' : 'This Month',
     this_year: isBangla ? 'এই বছর' : 'This Year',
   }[timeRange];
+
+  const branchRevenueMap = new Map<string, number>();
+  branches.forEach((branch) => {
+    const branchSalesRevenue = (salesRecords || []).reduce((sum, sale) => {
+      const saleBranchId = sale.branchId?.trim();
+      const saleBranchName = sale.branchName?.trim();
+      const matchesBranch =
+        (saleBranchId && saleBranchId === branch.id) ||
+        (saleBranchName && (
+          saleBranchName === branch.name ||
+          saleBranchName === branch.banglaName ||
+          saleBranchName.includes(branch.name) ||
+          branch.name.includes(saleBranchName)
+        ));
+
+      return matchesBranch ? sum + (Number(sale.totalAmount) || 0) : sum;
+    }, 0);
+
+    branchRevenueMap.set(
+      branch.id,
+      typeof branch.revenueBDT === 'number' ? branch.revenueBDT : branchSalesRevenue
+    );
+  });
 
   return (
     <div className="executive-dashboard flex flex-col gap-4 w-full">
@@ -258,34 +283,39 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/40 dark:divide-[#242936]">
-                {branches.map((b) => (
-                  <tr key={b.id} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60 transition-colors">
-                    <td className="py-2 px-1.5 align-middle">
-                      <div className="text-[12px] font-bold leading-[15px] text-on-surface break-words">{b.name}</div>
-                      <div className="mt-0.5 text-[11px] leading-[14px] text-outline break-words">{b.location}</div>
-                    </td>
-                    <td className="py-2 px-1.5 align-middle">
-                      <span className="inline-block text-[10px] leading-4 font-bold text-teal-700 dark:text-teal-300 break-words">
-                        {isBangla
-                          ? (b.type === 'headquarters' ? 'হেডকোয়ার্টার' : b.type === 'central_lab' ? 'রোবোটিক ল্যাব' : b.type === 'specialty_center' ? 'স্পেশালিটি সেন্টার' : 'আউটপোস্ট')
-                          : (b.type === 'headquarters' ? 'Headquarters' : b.type === 'central_lab' ? 'Robotic Lab' : b.type === 'specialty_center' ? 'Specialty Center' : 'Outpost')}
-                      </span>
-                    </td>
-                    <td className="py-2 px-1 text-center text-[11px] font-bold text-on-surface">{b.activeStaffCount}</td>
-                    <td className="py-2 px-1 text-center">
-                      <span className="inline-flex min-w-5 justify-center px-1 py-0.5 rounded-full bg-amber-500/15 text-[11px] text-amber-700 dark:text-amber-400 font-bold">
-                        {b.openTraysCount}
-                      </span>
-                    </td>
-                    <td className="py-2 px-1 text-right text-[11px] font-data-rx font-bold text-on-surface">
-                      {b.totalStockUnits?.toLocaleString()}
-                    </td>
-                    <td className="py-2 px-1 text-right font-data-rx text-[11px] font-bold text-emerald-600 dark:text-emerald-400 break-words">
-                      ৳{(b.totalStockUnits * 480)?.toLocaleString()}
-                    </td>
-                    <td className="py-2 px-1 text-center">
-                      <BranchStatusBadge status={b.status} isActive={b.isActive} variant={isBangla ? 'compact' : 'english'} size="xs" />
-                    </td>
+                {branches.map((b) => {
+                  const branchRevenue = typeof b.revenueBDT === 'number'
+                    ? b.revenueBDT
+                    : (branchRevenueMap.get(b.id) ?? 0);
+
+                  return (
+                    <tr key={b.id} className="hover:bg-[#f8fafc] dark:hover:bg-[#1c202a]/60 transition-colors">
+                      <td className="py-2 px-1.5 align-middle">
+                        <div className="text-[12px] font-bold leading-[15px] text-on-surface break-words">{b.name}</div>
+                        <div className="mt-0.5 text-[11px] leading-[14px] text-outline break-words">{b.location}</div>
+                      </td>
+                      <td className="py-2 px-1.5 align-middle">
+                        <span className="inline-block text-[10px] leading-4 font-bold text-teal-700 dark:text-teal-300 break-words">
+                          {isBangla
+                            ? (b.type === 'headquarters' ? 'হেডকোয়ার্টার' : b.type === 'central_lab' ? 'রোবোটিক ল্যাব' : b.type === 'specialty_center' ? 'স্পেশালিটি সেন্টার' : 'আউটপোস্ট')
+                            : (b.type === 'headquarters' ? 'Headquarters' : b.type === 'central_lab' ? 'Robotic Lab' : b.type === 'specialty_center' ? 'Specialty Center' : 'Outpost')}
+                        </span>
+                      </td>
+                      <td className="py-2 px-1 text-center text-[11px] font-bold text-on-surface">{b.activeStaffCount}</td>
+                      <td className="py-2 px-1 text-center">
+                        <span className="inline-flex min-w-5 justify-center px-1 py-0.5 rounded-full bg-amber-500/15 text-[11px] text-amber-700 dark:text-amber-400 font-bold">
+                          {b.openTraysCount}
+                        </span>
+                      </td>
+                      <td className="py-2 px-1 text-right text-[11px] font-data-rx font-bold text-on-surface">
+                        {b.totalStockUnits?.toLocaleString()}
+                      </td>
+                      <td className="py-2 px-1 text-right font-data-rx text-[11px] font-bold text-emerald-600 dark:text-emerald-400 break-words">
+                        ৳{branchRevenue.toLocaleString()}
+                      </td>
+                      <td className="py-2 px-1 text-center">
+                        <BranchStatusBadge status={b.status} isActive={b.isActive} variant={isBangla ? 'compact' : 'english'} size="xs" />
+                      </td>
                     <td className="py-2 px-1 text-right">
                       <button
                         onClick={() => onNavigate('multi-branch-ibt')}
@@ -296,7 +326,8 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -425,7 +425,7 @@ app.post("/api/admin/targeted-purge", async (req: any, res: any) => {
       return res.status(auth.status || 401).json({ success: false, error: auth.error });
     }
 
-    const result = await dbTargetedPurge(action, params);
+    const result = await dbTargetedPurge(action, params, username);
     res.json({
       success: true,
       message: result.message,

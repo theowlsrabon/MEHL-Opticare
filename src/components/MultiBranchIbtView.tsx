@@ -4,6 +4,7 @@ import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
 import { BranchStatusBadge } from './BranchStatusBadge';
 import { useLanguage } from '../context/LanguageContext';
+import { PageResetButton, AuditLogPayload } from './PageResetButton';
 
 interface MultiBranchIbtViewProps {
   branches: HospitalBranch[];
@@ -17,6 +18,10 @@ interface MultiBranchIbtViewProps {
   onAddBranch?: (branch: HospitalBranch) => Promise<void>;
   onUpdateBranch?: (branch: HospitalBranch) => Promise<void>;
   onDeleteBranch?: (branchId: string) => Promise<void>;
+  currentUserRole?: string;
+  currentUserName?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
 }
 
 export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
@@ -31,6 +36,10 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   onAddBranch,
   onUpdateBranch,
   onDeleteBranch,
+  currentUserRole = 'staff',
+  currentUserName = '',
+  onPurgeComplete,
+  onAddAuditLog,
 }) => {
   const { language } = useLanguage();
   const text = (english: string, bangla: string) => language === 'bn' ? bangla : english;
@@ -58,6 +67,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   const [editBranchStatus, setEditBranchStatus] = useState<BranchStatus>('active');
   const [editBranchStaffCount, setEditBranchStaffCount] = useState<number>(0);
   const [editBranchStockUnits, setEditBranchStockUnits] = useState<number>(0);
+  const [editBranchRevenue, setEditBranchRevenue] = useState<number>(0);
 
   // New Transfer Form State
   const [sourceBranchId, setSourceBranchId] = useState('');
@@ -85,6 +95,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   const [newBranchManager, setNewBranchManager] = useState('');
   const [newBranchStaffCount, setNewBranchStaffCount] = useState(0);
   const [newBranchStockUnits, setNewBranchStockUnits] = useState(0);
+  const [newBranchRevenue, setNewBranchRevenue] = useState(0);
   const [newBranchType, setNewBranchType] = useState<HospitalBranch['type']>('specialty_center');
   const [newBranchStatus, setNewBranchStatus] = useState<BranchStatus>('active');
   const [items, setItems] = useState<IBTItem[]>([]);
@@ -271,6 +282,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
       activeStaffCount: newBranchStaffCount,
       openTraysCount: 0,
       totalStockUnits: newBranchStockUnits,
+      revenueBDT: Number(newBranchRevenue) || 0,
     };
 
     setBranchActionError(null);
@@ -287,6 +299,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
       setNewBranchManager('');
       setNewBranchStaffCount(0);
       setNewBranchStockUnits(0);
+      setNewBranchRevenue(0);
       setNewBranchType('specialty_center');
       setNewBranchStatus('active');
       setToastMessage(text('Branch saved to database.', 'শাখার তথ্য ডেটাবেজে সংরক্ষিত হয়েছে।'));
@@ -313,6 +326,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
     setEditBranchStatus(branch.status || (branch.isActive !== false ? 'active' : 'inactive'));
     setEditBranchStaffCount(branch.activeStaffCount ?? 0);
     setEditBranchStockUnits(branch.totalStockUnits ?? 0);
+    setEditBranchRevenue(typeof branch.revenueBDT === 'number' ? branch.revenueBDT : 0);
   };
 
   // Handle Save Edit Branch
@@ -334,6 +348,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
       status: editBranchStatus,
       activeStaffCount: Number(editBranchStaffCount) || 0,
       totalStockUnits: Number(editBranchStockUnits) || 0,
+      revenueBDT: Number(editBranchRevenue) || 0,
     };
 
     setBranchActionError(null);
@@ -502,7 +517,20 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
           </div>
         </div>
         
-        <div className="flex items-center gap-3 self-start sm:self-auto">
+        <div className="flex items-center gap-3 self-start sm:self-auto flex-wrap">
+          {onPurgeComplete && onAddAuditLog && (
+            <PageResetButton
+              config={{
+                action: 'ibt-orders',
+                pageLabel: 'Multi-Branch & IBT Transfers',
+                description: 'Delete all inter-branch transfer orders, requisition histories, and dispatch slips.',
+              }}
+              currentUserRole={currentUserRole}
+              currentUserName={currentUserName}
+              onPurgeComplete={onPurgeComplete}
+              onAddAuditLog={onAddAuditLog}
+            />
+          )}
           {activeTab === 'ibt' && (
             <button
               onClick={() => {
@@ -1774,6 +1802,17 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-on-surface">{text('Total Stock Units', 'মোট মজুদ ইউনিট')}</label>
                     <input type="number" min={0} value={newBranchStockUnits} onChange={(e) => setNewBranchStockUnits(Number(e.target.value))} className="w-full text-sm px-3 py-2 bg-surface dark:bg-[#1f242e] border border-outline-variant rounded-xl focus:border-blue-500 focus:outline-none text-on-surface font-mono" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-outline mb-1">{text('Revenue (BDT)', 'রাজস্ব (৳)')}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="100"
+                      value={newBranchRevenue}
+                      onChange={(e) => setNewBranchRevenue(Number(e.target.value))}
+                      className="w-full text-sm px-3 py-2 bg-surface dark:bg-[#1f242e] border border-outline-variant rounded-xl focus:border-blue-500 focus:outline-none text-on-surface font-mono"
+                    />
                   </div>
                 </div>
                 <div className="space-y-1.5">

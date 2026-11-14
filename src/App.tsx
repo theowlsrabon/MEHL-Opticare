@@ -1043,6 +1043,26 @@ export default function App() {
         setSalesRecords((prev) =>
           prev.map((s) => ({ ...s, dueAmount: 0, status: 'Paid' }))
         );
+        setFinancialCollections([]);
+        localStorage.removeItem('madina_financial_collections');
+        localStorage.removeItem('madina_due_invoices');
+        break;
+      case 'lab-jobs':
+        setJobs([]);
+        localStorage.removeItem('madina_jobs');
+        break;
+      case 'returns-refunds':
+        setSalesReturns([]);
+        setPurchaseReturns([]);
+        localStorage.removeItem('madina_sales_returns');
+        localStorage.removeItem('madina_purchase_returns');
+        break;
+      case 'ibt-orders':
+        setIbtOrders([]);
+        localStorage.removeItem('madina_ibt_orders');
+        break;
+      case 'staff-accounts':
+        // Custom non-admin accounts cleared in DB
         break;
       case 'time-window': {
         const hours = Number(params?.hours) || 24;
@@ -2088,8 +2108,29 @@ export default function App() {
       });
     });
 
+    // 4. System Security & Data Purge Operations Audit Trail
+    (auditLogs || []).forEach((log) => {
+      const epoch = parseEpoch(log.timestamp, log.id);
+      list.push({
+        id: `log-audit-${log.id}`,
+        category: 'system',
+        type: log.actionType,
+        actorName: log.userName || 'System Admin',
+        actorRole: log.userRole || 'Admin',
+        action: log.actionType === 'DATA_PURGE' ? 'executed data reset' : 'performed security action',
+        target: log.details || 'System',
+        details: `${log.details} · Status: ${log.status}`,
+        badgeText: log.actionType === 'DATA_PURGE' ? 'PURGE RESET' : log.actionType,
+        badgeType: log.actionType === 'DATA_PURGE' ? 'warning' : 'purple',
+        timestamp: log.timestamp,
+        epochMs: epoch,
+        linkView: 'database-purge-center',
+        linkId: log.id,
+      });
+    });
+
     return list.sort((a, b) => b.epochMs - a.epochMs);
-  }, [salesRecords, jobs, inventoryMovementRecords]);
+  }, [salesRecords, jobs, inventoryMovementRecords, auditLogs]);
 
   // Gated Landing: Land on LoginPage first if not authenticated
   if (!authenticatedUser) {
@@ -2514,8 +2555,22 @@ export default function App() {
                   </div>
 
                   {/* Right Quick Filter Pills */}
-                  <div className="flex items-center p-1 bg-[#f1f4f9] dark:bg-[#202533] rounded-xl border border-outline-variant/60 dark:border-[#2b3346] self-start md:self-auto">
-                    <button
+                  <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+                    {(isAdmin || isSuperAdmin) && (
+                      <PageResetButton
+                        config={{
+                          action: 'lab-jobs',
+                          pageLabel: 'Lab Glazing Conveyor',
+                          description: 'Delete all active optical job cards, tray pipeline queues, and edging records.',
+                        }}
+                        currentUserRole={currentUserRole}
+                        currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+                        onPurgeComplete={handleTargetedPurgeComplete}
+                        onAddAuditLog={handleAddPageResetAuditLog}
+                      />
+                    )}
+                    <div className="flex items-center p-1 bg-[#f1f4f9] dark:bg-[#202533] rounded-xl border border-outline-variant/60 dark:border-[#2b3346]">
+                      <button
                       type="button"
                       onClick={() => setPipelineFilter('all')}
                       className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -2552,6 +2607,7 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+              </div>
 
                 {/* 5-Stage Kanban Board */}
                 <LabPipelineBoard
@@ -2606,6 +2662,10 @@ export default function App() {
             jobs={jobs}
             initialScannedBarcode={posScannedBarcode}
             onDeleteSaleRecord={isSuperAdmin ? handleDeleteSaleRecord : undefined}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -2701,11 +2761,11 @@ export default function App() {
 
         {currentView === 'executive-dashboard' && (
           <ExecutiveDashboardView
-            jobs={jobs}
             branches={branches}
             ibtOrders={ibtOrders}
             financialSummary={financialSummary}
             drugs={drugs}
+            salesRecords={salesRecords}
             onNavigate={(view) => setCurrentView(view)}
           />
         )}
@@ -2731,6 +2791,10 @@ export default function App() {
               setBranchesLoadError(null);
             }}
             onDeleteBranch={isSuperAdmin ? handleDeleteBranch : undefined}
+            currentUserRole={currentUserRole}
+            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
+            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
           />
         )}
 
@@ -2922,6 +2986,7 @@ export default function App() {
               onBackToDashboard={() => setCurrentView('executive-dashboard')}
               onPurgeComplete={handleTargetedPurgeComplete}
               onFullResetComplete={handleFullResetSuccess}
+              onAddAuditLog={handleAddPageResetAuditLog}
             />
           ) : (
             <div className="p-8 text-center bg-white dark:bg-[#1a1f2c] border border-rose-300 dark:border-rose-900/60 rounded-2xl">
