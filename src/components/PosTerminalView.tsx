@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { InventoryItem, OpticalJob, UserProfile, UserRole, PrescriptionRecord } from '../types';
-import { initialPrescriptions } from '../data/initialData';
 import { decodeAdminCostCipher, encodeAdminCostCipher } from '../utils/barcodeUtils';
 import { printElementById } from '../utils/printUtils';
 import { PrintFooterQuantum } from './PrintFooterQuantum';
@@ -25,6 +24,7 @@ export interface CartItem {
 interface PosTerminalViewProps {
   inventory?: InventoryItem[];
   currentUser?: UserProfile;
+  prescriptions?: PrescriptionRecord[];
   onInvoiceSaved?: (newJob: OpticalJob) => void;
   onOpenQuickScan?: () => void;
   onPrintBarcode?: (item: InventoryItem) => void;
@@ -34,6 +34,7 @@ interface PosTerminalViewProps {
 export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   inventory = [],
   currentUser,
+  prescriptions = [],
   onInvoiceSaved,
   onOpenQuickScan,
   onPrintBarcode,
@@ -42,36 +43,34 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
   const isAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.canViewPurchaseCost;
 
   // 1. Patient Form State
-  const [customerName, setCustomerName] = useState('Farhana Rahman');
+  const [customerName, setCustomerName] = useState('');
   const [gender, setGender] = useState<'Female' | 'Male' | 'Other'>('Female');
-  const [age, setAge] = useState('29 yrs');
-  const [mobileNumber, setMobileNumber] = useState('+880 1712-984521');
-  const [deliveryCommitment, setDeliveryCommitment] = useState('30 Oct 2024, 05:00 PM');
+  const [age, setAge] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [deliveryCommitment, setDeliveryCommitment] = useState('');
   const [printRxSlip, setPrintRxSlip] = useState(true);
 
   // 2. Rx Matrix State
-  const [odSph, setOdSph] = useState('-2.25');
-  const [odCyl, setOdCyl] = useState('-0.75');
-  const [odAxis, setOdAxis] = useState('85°');
-  const [odIpd, setOdIpd] = useState('31.5');
-  const [odDist, setOdDist] = useState('6/6');
-  const [odNear, setOdNear] = useState('N6');
-  const [odAdd, setOdAdd] = useState('+1.25');
-  const [odNotes, setOdNotes] = useState('Mild astigmatic strain reported');
+  const [odSph, setOdSph] = useState('');
+  const [odCyl, setOdCyl] = useState('');
+  const [odAxis, setOdAxis] = useState('');
+  const [odIpd, setOdIpd] = useState('');
+  const [odDist, setOdDist] = useState('');
+  const [odNear, setOdNear] = useState('');
+  const [odAdd, setOdAdd] = useState('');
+  const [odNotes, setOdNotes] = useState('');
 
-  const [osSph, setOsSph] = useState('-2.50');
-  const [osCyl, setOsCyl] = useState('-0.50');
-  const [osAxis, setOsAxis] = useState('90°');
-  const [osIpd, setOsIpd] = useState('31.0');
-  const [osDist, setOsDist] = useState('6/6');
-  const [osNear, setOsNear] = useState('N6');
-  const [osAdd, setOsAdd] = useState('+1.25');
-  const [osNotes, setOsNotes] = useState('Clear reflex, normal macula');
+  const [osSph, setOsSph] = useState('');
+  const [osCyl, setOsCyl] = useState('');
+  const [osAxis, setOsAxis] = useState('');
+  const [osIpd, setOsIpd] = useState('');
+  const [osDist, setOsDist] = useState('');
+  const [osNear, setOsNear] = useState('');
+  const [osAdd, setOsAdd] = useState('');
+  const [osNotes, setOsNotes] = useState('');
 
   // Lens treatment chips
-  const [lensTreatments, setLensTreatments] = useState<string[]>([
-    'Blue Cut Filter (Essilor)',
-  ]);
+  const [lensTreatments, setLensTreatments] = useState<string[]>([]);
 
   const toggleLensTreatment = (treatment: string) => {
     if (lensTreatments.includes(treatment)) {
@@ -657,7 +656,7 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
                   className="px-2.5 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-secondary text-label-md font-label-md font-medium hover:bg-surface-container flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-base">history</span>
-                  <span>Previous RX History ({initialPrescriptions.length} records found)</span>
+                  <span>Previous RX History ({prescriptions.length} records found)</span>
                 </button>
                 <button
                   type="button"
@@ -671,23 +670,25 @@ export const PosTerminalView: React.FC<PosTerminalViewProps> = ({
             </div>
 
             {/* Quick Load Prescription Preset Bar */}
-            <div className="mt-3 p-2.5 rounded-lg bg-surface-container-low border border-outline-variant flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] font-bold text-outline flex items-center gap-1">
-                <span className="material-symbols-outlined text-[15px] text-primary">clinical_notes</span>
-                Quick Load Patient Rx:
-              </span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {initialPrescriptions.map((rx) => (
-                  <button
-                    key={rx.id}
-                    onClick={() => handleLoadPatientRx(rx)}
-                    className="px-2 py-1 rounded bg-surface-container-lowest hover:bg-primary hover:text-on-primary border border-outline-variant text-[11px] font-semibold text-on-surface transition-all cursor-pointer"
-                  >
-                    {rx.patientName} ({rx.od.sph}/{rx.os.sph})
-                  </button>
-                ))}
+            {prescriptions.length > 0 && (
+              <div className="mt-3 p-2.5 rounded-lg bg-surface-container-low border border-outline-variant flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-outline flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[15px] text-primary">clinical_notes</span>
+                  Quick Load Patient Rx:
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {prescriptions.map((rx) => (
+                    <button
+                      key={rx.id}
+                      onClick={() => handleLoadPatientRx(rx)}
+                      className="px-2 py-1 rounded bg-surface-container-lowest hover:bg-primary hover:text-on-primary border border-outline-variant text-[11px] font-semibold text-on-surface transition-all cursor-pointer"
+                    >
+                      {rx.patientName} ({rx.od.sph}/{rx.os.sph})
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* 5-Field Patient Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-3">

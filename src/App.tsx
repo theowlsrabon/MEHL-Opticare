@@ -83,8 +83,11 @@ import {
   fetchBranchesFromDb,
   fetchSuppliersFromDb,
   bulkSyncJobsToDb,
+  deleteJobFromDb,
   bulkSyncInventoryToDb,
+  deleteInventoryItemFromDb,
   syncSaleToDb,
+  deleteSaleFromDb,
   syncFinancialCollectionToDb,
   syncSalesmanToDb,
   deleteSalesmanFromDb,
@@ -171,10 +174,10 @@ export default function App() {
       try {
         return JSON.parse(saved);
       } catch {
-        return initialJobs;
+        return [];
       }
     }
-    return initialJobs;
+    return [];
   });
   const [inventory, setInventory] = useState<InventoryItem[]>(() => {
     const saved = localStorage.getItem('madina_inventory');
@@ -182,10 +185,10 @@ export default function App() {
       try {
         return JSON.parse(saved);
       } catch {
-        return initialInventory;
+        return [];
       }
     }
-    return initialInventory;
+    return [];
   });
   const [inventoryLoading, setInventoryLoading] = useState(true);
   const [inventoryLoadError, setInventoryLoadError] = useState<string | null>(null);
@@ -215,10 +218,10 @@ export default function App() {
           return cleanedSalesman;
         });
       } catch {
-        return initialSalesmen;
+        return [];
       }
     }
-    return initialSalesmen;
+    return [];
   });
   const [salesRecords, setSalesRecords] = useState<SaleRecord[]>(() => {
     const saved = localStorage.getItem('madina_sales_records');
@@ -226,10 +229,10 @@ export default function App() {
       try {
         return JSON.parse(saved);
       } catch {
-        return initialSalesRecords;
+        return [];
       }
     }
-    return initialSalesRecords;
+    return [];
   });
   const [saleSyncWarning, setSaleSyncWarning] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -238,9 +241,9 @@ export default function App() {
   const [branches, setBranches] = useState<HospitalBranch[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(true);
   const [branchesLoadError, setBranchesLoadError] = useState<string | null>(null);
-  const [ibtOrders, setIbtOrders] = useState<InterBranchTransferOrder[]>(initialIbtOrders);
-  const [drugs, setDrugs] = useState<PharmacyDrug[]>(initialDrugs);
-  const [dispensations, setDispensations] = useState<DispensationRecord[]>(initialDispensations);
+  const [ibtOrders, setIbtOrders] = useState<InterBranchTransferOrder[]>([]);
+  const [drugs, setDrugs] = useState<PharmacyDrug[]>([]);
+  const [dispensations, setDispensations] = useState<DispensationRecord[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [suppliersLoading, setSuppliersLoading] = useState(true);
   const [suppliersLoadError, setSuppliersLoadError] = useState<string | null>(null);
@@ -250,23 +253,23 @@ export default function App() {
   const [grns, setGrns] = useState<GoodsReceivedNote[]>(() => {
     const saved = localStorage.getItem('madina_grns');
     if (saved) {
-      try { return JSON.parse(saved); } catch { return initialGrns; }
+      try { return JSON.parse(saved); } catch { return []; }
     }
-    return initialGrns;
+    return [];
   });
   const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>(() => {
     const saved = localStorage.getItem('madina_prescriptions');
     if (saved) {
-      try { return JSON.parse(saved); } catch { return initialPrescriptions; }
+      try { return JSON.parse(saved); } catch { return []; }
     }
-    return initialPrescriptions;
+    return [];
   });
   const [expenses, setExpenses] = useState<ExpenseItem[]>(() => {
     const saved = localStorage.getItem('madina_expenses');
     if (saved) {
-      try { return JSON.parse(saved); } catch { return initialExpenses; }
+      try { return JSON.parse(saved); } catch { return []; }
     }
-    return initialExpenses;
+    return [];
   });
   const [financialSummary, setFinancialSummary] = useState<FinancialSummary>(() => {
     try {
@@ -973,14 +976,17 @@ export default function App() {
 
   const handleDeleteStockItem = (id: string) => {
     setInventory((prev) => prev.filter((item) => item.id !== id));
+    void deleteInventoryItemFromDb(id);
   };
 
   const handleDeleteJob = (id: string) => {
     setJobs((prev) => prev.filter((job) => job.id !== id));
+    void deleteJobFromDb(id);
   };
 
   const handleDeleteSaleRecord = (invoiceId: string) => {
     setSalesRecords((prev) => prev.filter((s) => s.id !== invoiceId && s.invoiceNumber !== invoiceId));
+    void deleteSaleFromDb(invoiceId);
   };
 
   const handleDeleteBranch = async (id: string) => {

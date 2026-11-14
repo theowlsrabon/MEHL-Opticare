@@ -110,6 +110,18 @@ export async function bulkSyncInventoryToDb(inventory: any[]): Promise<boolean> 
   }
 }
 
+export async function deleteInventoryItemFromDb(id: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/api/inventory/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    return response.ok;
+  } catch (err) {
+    console.warn('[Sync Warning] Inventory item deletion pending on server:', err);
+    return false;
+  }
+}
+
 // Sales sync
 export async function syncSaleToDb(sale: SaleRecord): Promise<boolean> {
   try {
@@ -125,6 +137,18 @@ export async function syncSaleToDb(sale: SaleRecord): Promise<boolean> {
     return true;
   } catch (err) {
     console.warn('[Sync Warning] Sale remains saved locally; database sync is pending:', err);
+    return false;
+  }
+}
+
+export async function deleteSaleFromDb(id: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/api/sales/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    return response.ok;
+  } catch (err) {
+    console.warn('[Sync Warning] Sale deletion pending on server:', err);
     return false;
   }
 }

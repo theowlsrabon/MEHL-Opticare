@@ -13,8 +13,10 @@ import {
   dbGetInventory,
   dbUpsertInventoryItem,
   dbBulkUpsertInventory,
+  dbDeleteInventoryItem,
   dbGetSales,
   dbUpsertSale,
+  dbDeleteSale,
   dbGetFinancialCollections,
   dbGetDailyClosingData,
   dbUpsertFinancialCollection,
@@ -535,6 +537,16 @@ app.post("/api/inventory/bulk", async (req, res) => {
   }
 });
 
+app.delete("/api/inventory/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ok = await dbDeleteInventoryItem(id);
+    res.json({ success: ok, message: ok ? "Inventory item removed from database" : "Item not found" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Sales
 app.get("/api/sales", async (_req, res) => {
   try {
@@ -551,6 +563,16 @@ app.post("/api/sales", async (req, res) => {
     if (!sale || !sale.id) return res.status(400).json({ success: false, error: "Missing sale object or id" });
     await dbUpsertSale(sale);
     res.json({ success: true, message: `Sale record ${sale.invoiceNumber || sale.id} saved to Neon PostgreSQL` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/sales/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ok = await dbDeleteSale(id);
+    res.json({ success: ok, message: ok ? "Sale record removed from database" : "Sale not found" });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

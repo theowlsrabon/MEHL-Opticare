@@ -22,10 +22,7 @@ export const PrescriptionsView: React.FC<PrescriptionsViewProps> = ({
   onPurgeComplete,
   onAddAuditLog,
 }) => {
-  const [internalPrescriptions] = useState<PrescriptionRecord[]>(initialPrescriptions);
-  const prescriptions = externalPrescriptions && externalPrescriptions.length > 0
-    ? externalPrescriptions
-    : internalPrescriptions;
+  const prescriptions = externalPrescriptions || [];
   const [selectedRx, setSelectedRx] = useState<PrescriptionRecord | null>(null);
 
   return (

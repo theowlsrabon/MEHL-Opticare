@@ -432,11 +432,23 @@ export async function dbBulkUpsertInventory(items: any[]): Promise<number> {
   return items.length;
 }
 
+export async function dbDeleteInventoryItem(id: string): Promise<boolean> {
+  const p = getDbPool();
+  const result = await p.query('DELETE FROM inventory_items WHERE id = $1', [id]);
+  return (result.rowCount ?? 0) > 0;
+}
+
 // ----------------- SALES REPOSITORY -----------------
 export async function dbGetSales(): Promise<any[]> {
   const p = getDbPool();
   const res = await p.query('SELECT data_json FROM sales_records ORDER BY created_at DESC');
   return res.rows.map((r: any) => JSON.parse(r.data_json));
+}
+
+export async function dbDeleteSale(id: string): Promise<boolean> {
+  const p = getDbPool();
+  const result = await p.query('DELETE FROM sales_records WHERE id = $1 OR invoice_number = $1', [id]);
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function dbUpsertSale(sale: any): Promise<void> {
