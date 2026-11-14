@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { InventoryItem, InventoryDamageRecord, InventoryMovementRecord, UserProfile, Supplier, PurchaseOrder } from '../types';
+import { InventoryItem, InventoryDamageRecord, InventoryMovementRecord, UserProfile, Supplier, PurchaseOrder, HospitalBranch } from '../types';
 import { BatchBarcodePrintModal } from './BatchBarcodePrintModal';
 import { BulkReorderModal } from './BulkReorderModal';
 import { InventoryMovementHistoryView } from './InventoryMovementHistoryView';
@@ -14,6 +14,9 @@ interface InventoryRegistryTableProps {
   initialSearchQuery?: string;
   currentUser?: UserProfile;
   suppliers?: Supplier[];
+  branches?: HospitalBranch[];
+  userAssignedBranchId?: string | null;
+  assignedBranchName?: string | null;
   onRestock: (item: InventoryItem, qtyToAdd: number) => void;
   onDamageWriteOff: (itemId: string, quantity: number, reason: string) => boolean;
   onDamageWriteOffBatch: (entries: Array<{ itemId: string; quantity: number; reason: string }>) => boolean;
@@ -36,6 +39,9 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
   initialSearchQuery = '',
   currentUser,
   suppliers = [],
+  branches = [],
+  userAssignedBranchId,
+  assignedBranchName,
   onRestock,
   onDamageWriteOff,
   onDamageWriteOffBatch,
@@ -49,6 +55,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
 }) => {
   const [filterChip, setFilterChip] = useState<'all' | 'low'>('all');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
+  const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('all');
   const [searchFilter, setSearchFilter] = useState(initialSearchQuery);
   const [showCostValuation, setShowCostValuation] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -123,6 +130,11 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
 
     // Dynamic brand filter
     if (selectedBrand !== 'all' && item.brand !== selectedBrand) return false;
+
+    // Dynamic branch filter (for admin)
+    if (selectedBranchFilter !== 'all') {
+      if (item.branchId !== selectedBranchFilter) return false;
+    }
 
     // Search filter
     if (searchFilter.trim()) {
@@ -617,6 +629,32 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
               </option>
             ))}
           </select>
+
+          {/* Branch Scoping Pill (Staff) or Branch Filter (Admin) */}
+          {userAssignedBranchId ? (
+            <div className="flex items-center gap-1.5 h-7 px-2.5 bg-teal-500/10 border border-teal-500/30 text-teal-700 dark:text-teal-300 rounded-lg text-xs font-semibold whitespace-nowrap">
+              <span className="material-symbols-outlined text-[14px]">storefront</span>
+              <span>{assignedBranchName || text('Branch Locked', 'শাখা লক করা')}</span>
+            </div>
+          ) : branches && branches.length > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-outline font-semibold uppercase tracking-wider">
+                {text('Branch:', 'শাখা:')}
+              </span>
+              <select
+                value={selectedBranchFilter}
+                onChange={(e) => setSelectedBranchFilter(e.target.value)}
+                className="h-7 px-2.5 bg-white dark:bg-[#202430] border border-outline-variant/80 dark:border-[#2c3344] text-on-surface rounded-lg text-xs font-semibold focus:border-[#169b90] outline-hidden cursor-pointer"
+              >
+                <option value="all">{text(`All Branches (${branches.length})`, `সব শাখা (${branches.length})`)}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -750,8 +788,14 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                   </td>
 
                   <td className="px-4 py-2.5">
-                    <div className="font-bold text-on-surface text-xs flex items-center gap-2">
+                    <div className="font-bold text-on-surface text-xs flex items-center gap-2 flex-wrap">
                       <span>{item.name}</span>
+                      {item.branchName && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-700 dark:text-teal-300 bg-teal-500/10 px-1.5 py-0.5 rounded border border-teal-500/20">
+                          <span className="material-symbols-outlined text-[11px]">storefront</span>
+                          {item.branchName}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-outline">{item.specs}</div>
                   </td>

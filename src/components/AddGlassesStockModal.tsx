@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { InventoryItem, UserProfile } from '../types';
+import React, { useState, useEffect } from 'react';
+import { InventoryItem, UserProfile, HospitalBranch } from '../types';
 import { generateEyewearSKU, encodeAdminCostCipher } from '../utils/barcodeUtils';
 
 interface AddGlassesStockModalProps {
@@ -7,6 +7,9 @@ interface AddGlassesStockModalProps {
   onClose: () => void;
   onAddStock: (newItem: InventoryItem, printImmediately: boolean) => void;
   currentUser: UserProfile;
+  branches?: HospitalBranch[];
+  userAssignedBranchId?: string | null;
+  assignedBranchName?: string | null;
 }
 
 export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
@@ -14,6 +17,9 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
   onClose,
   onAddStock,
   currentUser,
+  branches = [],
+  userAssignedBranchId,
+  assignedBranchName,
 }) => {
   const isAdmin = currentUser.role === 'admin' || currentUser.permissions.canViewPurchaseCost;
 
@@ -28,6 +34,20 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
   const [purchasePriceBDT, setPurchasePriceBDT] = useState<number | ''>('');
   const [askingPriceBDT, setAskingPriceBDT] = useState<number | ''>('');
   const [printImmediately, setPrintImmediately] = useState<boolean>(true);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(userAssignedBranchId || '');
+  const [selectedBranchName, setSelectedBranchName] = useState<string>(assignedBranchName || '');
+
+  useEffect(() => {
+    if (isOpen) {
+      if (userAssignedBranchId) {
+        setSelectedBranchId(userAssignedBranchId);
+        setSelectedBranchName(assignedBranchName || '');
+      } else if (branches.length > 0 && !selectedBranchId) {
+        setSelectedBranchId(branches[0].id);
+        setSelectedBranchName(branches[0].name);
+      }
+    }
+  }, [isOpen, userAssignedBranchId, assignedBranchName, branches]);
 
   if (!isOpen) return null;
 
@@ -37,6 +57,11 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
       alert('Please provide both Frame Brand and Model Name/Number.');
       return;
     }
+
+    // Branch assignment verification
+    const finalBranchId = userAssignedBranchId || selectedBranchId || (branches[0]?.id || undefined);
+    const chosenBranch = branches.find((b) => b.id === finalBranchId);
+    const finalBranchName = assignedBranchName || chosenBranch?.name || selectedBranchName || undefined;
 
     const sku = generateEyewearSKU(brand, model);
     const purchaseCost = Number(purchasePriceBDT) || 0;
@@ -67,6 +92,8 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
       frameSize,
       frameMaterial: material,
       adminCostCode: adminCipher,
+      branchId: finalBranchId,
+      branchName: finalBranchName,
       status: (Number(stockQty) || 1) <= 2 ? 'low' : 'healthy',
     };
 
@@ -102,6 +129,45 @@ export const AddGlassesStockModal: React.FC<AddGlassesStockModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex flex-col gap-4">
+
+          {/* Branch Allocation Selector */}
+          <div className="p-3.5 rounded-xl border border-teal-500/30 bg-teal-50/60 dark:bg-teal-950/20">
+            <label className="text-[11px] font-bold text-teal-900 dark:text-teal-300 flex items-center gap-1.5 mb-1.5">
+              <span className="material-symbols-outlined text-[16px] text-teal-600 dark:text-teal-400">storefront</span>
+              <span>Target Hospital Branch (শাখা নির্বাচন) *</span>
+            </label>
+            {userAssignedBranchId ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-[#202430] border border-teal-500/40 rounded-xl text-xs font-semibold text-teal-800 dark:text-teal-200">
+                <span className="material-symbols-outlined text-[16px] text-teal-600">lock</span>
+                <span>{assignedBranchName || 'Assigned Branch'}</span>
+                <span className="text-[10px] text-outline font-normal ml-auto">(Staff branch locked)</span>
+              </div>
+            ) : (
+              <select
+                required
+                value={selectedBranchId}
+                onChange={(e) => {
+                  const bId = e.target.value;
+                  setSelectedBranchId(bId);
+                  const found = branches.find((b) => b.id === bId);
+                  setSelectedBranchName(found?.name || '');
+                }}
+                className="w-full h-9 px-3 text-xs bg-white dark:bg-[#202430] border border-teal-500/40 rounded-xl text-on-surface focus:border-[#169b90] font-medium outline-hidden cursor-pointer"
+              >
+                <option value="">— Select Target Branch for this Stock Intake —</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.code})
+                  </option>
+                ))}
+              </select>
+            )}
+            <p className="text-[10px] text-teal-700/80 dark:text-teal-400/80 mt-1">
+              {userAssignedBranchId
+                ? 'Your account is locked to this branch. Added stock will only appear in your branch inventory.'
+                : 'Staff assigned to this branch will manage and sell this stock. Other branches will not see it.'}
+            </p>
+          </div>
           
           {/* Brand & Model */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

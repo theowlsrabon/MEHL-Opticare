@@ -75,11 +75,12 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
-// CORS — allow requests from any origin in dev, or from the Vercel frontend URL in production
-const ALLOWED_ORIGIN = process.env.FRONTEND_URL || "*";
+// CORS — allow requests from any origin in dev or production (reflect origin for credentials support)
 app.use(
   cors({
-    origin: ALLOWED_ORIGIN,
+    origin: (_origin, callback) => {
+      callback(null, true);
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
@@ -90,7 +91,7 @@ app.use(
       "Accept",
       "Origin",
     ],
-    credentials: ALLOWED_ORIGIN !== "*",
+    credentials: true,
   })
 );
 

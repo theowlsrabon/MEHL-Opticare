@@ -1036,44 +1036,53 @@ export default function App() {
       };
 
       // Try /api/reset-database first, fallback to /api/admin/reset-operational-data
-      // Use AbortController for 60s timeout (Render cold starts can be slow)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
-      let res: Response;
-      try {
-        res = await fetch(`${API_BASE}/api/reset-database`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-      } catch (fetchErr: any) {
-        clearTimeout(timeoutId);
-        if (fetchErr?.name === 'AbortError') {
-          throw new Error('Request timed out (60s). Backend may be starting up — please try again in a moment.');
-        }
-        throw fetchErr;
-      }
-
-      if (res.status === 404) {
-        const controller2 = new AbortController();
-        const timeoutId2 = setTimeout(() => controller2.abort(), 60000);
+      // Retry up to 3 times with backoff to tolerate Render cold-start boot lag
+      let res: Response | null = null;
+      let lastFetchErr: any = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
         try {
-          res = await fetch(`${API_BASE}/api/admin/reset-operational-data`, {
+          res = await fetch(`${API_BASE}/api/reset-database`, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload),
-            signal: controller2.signal,
+            signal: controller.signal,
           });
-          clearTimeout(timeoutId2);
-        } catch (fetchErr2: any) {
-          clearTimeout(timeoutId2);
-          if (fetchErr2?.name === 'AbortError') {
-            throw new Error('Request timed out (60s). Backend may be starting up — please try again.');
+          clearTimeout(timeoutId);
+
+          if (res.status === 404) {
+            const controller2 = new AbortController();
+            const timeoutId2 = setTimeout(() => controller2.abort(), 60000);
+            try {
+              res = await fetch(`${API_BASE}/api/admin/reset-operational-data`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+                signal: controller2.signal,
+              });
+              clearTimeout(timeoutId2);
+            } catch (fetchErr2: any) {
+              clearTimeout(timeoutId2);
+              throw fetchErr2;
+            }
           }
-          throw fetchErr2;
+          if (res) break;
+        } catch (fetchErr: any) {
+          clearTimeout(timeoutId);
+          lastFetchErr = fetchErr;
+          console.warn(`[Reset DB attempt ${attempt} warning]:`, fetchErr);
+          if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+          }
         }
+      }
+
+      if (!res) {
+        if (lastFetchErr?.name === 'AbortError') {
+          throw new Error('Request timed out (60s). Render server is cold-starting — please try again in a moment.');
+        }
+        throw new Error(lastFetchErr?.message || 'Failed to connect to backend server. Render instance may still be waking up.');
       }
 
       const parsed = await safeParseJsonResponse<{ success?: boolean; error?: string; message?: string }>(res);
@@ -2472,7 +2481,7 @@ export default function App() {
             }}
             onOpenLiveCamera={() => setIsFloatingCameraActive((prev) => !prev)}
             onOpenNewInvoice={() => setIsNewInvoiceOpen(true)}
-            inventory={userAssignedBranchId ? inventory.filter(item => !item.branchId || item.branchId === userAssignedBranchId) : inventory}
+            inventory={userAssignedBranchId ? inventory.filter(item => item.branchId === userAssignedBranchId) : inventory}
             jobs={jobs}
             initialScannedBarcode={posScannedBarcode}
             onDeleteSaleRecord={isSuperAdmin ? handleDeleteSaleRecord : undefined}
@@ -2488,7 +2497,7 @@ export default function App() {
 
         {currentView === 'stock-master' && (
           <InventoryRegistryTable
-            items={userAssignedBranchId ? inventory.filter(item => !item.branchId || item.branchId === userAssignedBranchId) : inventory}
+            items={userAssignedBranchId ? inventory.filter(item => item.branchId === userAssignedBranchId) : inventory}
             inventoryLoading={inventoryLoading}
             inventoryLoadError={inventoryLoadError}
             damageRecords={inventoryDamageRecords}
@@ -2497,6 +2506,9 @@ export default function App() {
             initialSearchQuery={searchQuery}
             currentUser={currentUser}
             suppliers={suppliers}
+            branches={branches}
+            userAssignedBranchId={userAssignedBranchId}
+            assignedBranchName={authenticatedUser?.assignedBranchName || null}
             onRestock={handleRestock}
             onDamageWriteOff={handleInventoryDamageWriteOff}
             onDamageWriteOffBatch={handleInventoryDamageWriteOffBatch}
@@ -2851,11 +2863,15 @@ export default function App() {
         isOpen={isAddGlassesOpen}
         onClose={() => setIsAddGlassesOpen(false)}
         currentUser={currentUser}
+        branches={branches}
+        userAssignedBranchId={userAssignedBranchId}
+        assignedBranchName={authenticatedUser?.assignedBranchName || null}
         onAddStock={(newItem, printImmediately) => {
-          // Tag with branch if user is branch-scoped
-          const taggedItem = userAssignedBranchId
-            ? { ...newItem, branchId: userAssignedBranchId, branchName: authenticatedUser?.assignedBranchName || undefined }
-            : newItem;
+          // Tag with branch if staff has assigned branch or preserve branch selected in modal
+          const finalBranchId = userAssignedBranchId || newItem.branchId || undefined;
+          const chosenBranch = branches.find((b) => b.id === finalBranchId);
+          const finalBranchName = authenticatedUser?.assignedBranchName || newItem.branchName || chosenBranch?.name || undefined;
+          const taggedItem = { ...newItem, branchId: finalBranchId, branchName: finalBranchName };
           setInventory((prev) => [taggedItem, ...prev]);
           setInventoryMovementRecords((previous) => [{
             id: `movement-stock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
