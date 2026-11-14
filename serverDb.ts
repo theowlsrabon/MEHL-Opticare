@@ -1467,3 +1467,200 @@ export async function dbResetOperationalData(): Promise<{
     preservedUsersCount,
   };
 }
+
+// ----------------- TARGETED DATA PURGE BY SCOPE / CATEGORY / TIME -----------------
+export async function dbTargetedPurge(action: string, params?: any): Promise<{
+  action: string;
+  purgedTables?: string[];
+  affectedCount?: number;
+  message: string;
+}> {
+  const p = getDbPool();
+  switch (action) {
+    case 'full-wipe': {
+      const res = await dbResetOperationalData();
+      return { action, purgedTables: res.purgedTables, message: 'All operational tables wiped cleanly.' };
+    }
+    case 'transactions-only': {
+      await p.query('DELETE FROM sales_records');
+      await p.query('DELETE FROM financial_collections');
+      await p.query('DELETE FROM drawer_closings');
+      await p.query('DELETE FROM drawer_balance_resets');
+      return {
+        action,
+        purgedTables: ['sales_records', 'financial_collections', 'drawer_closings', 'drawer_balance_resets'],
+        message: 'All financial transaction records cleared.',
+      };
+    }
+    case 'pos-only': {
+      await p.query('DELETE FROM sales_records');
+      await p.query('DELETE FROM sales_returns');
+      await p.query('DELETE FROM optical_jobs');
+      return {
+        action,
+        purgedTables: ['sales_records', 'sales_returns', 'optical_jobs'],
+        message: 'POS invoices, job queue, and sales returns cleared.',
+      };
+    }
+    case 'procurement': {
+      await p.query('DELETE FROM purchase_orders');
+      await p.query('DELETE FROM goods_received_notes');
+      await p.query('DELETE FROM purchase_returns');
+      return {
+        action,
+        purgedTables: ['purchase_orders', 'goods_received_notes', 'purchase_returns'],
+        message: 'Purchase orders, GRNs, and purchase returns cleared.',
+      };
+    }
+    case 'dues-only': {
+      const sales = await p.query('SELECT id, data_json FROM sales_records');
+      let count = 0;
+      for (const row of sales.rows) {
+        try {
+          const sale = JSON.parse(row.data_json);
+          if (sale.dueAmount && sale.dueAmount > 0) {
+            sale.dueAmount = 0;
+            sale.status = 'Paid';
+            await p.query('UPDATE sales_records SET data_json = $1 WHERE id = $2', [JSON.stringify(sale), row.id]);
+            count++;
+          }
+        } catch {}
+      }
+      return { action, affectedCount: count, message: `Cleared customer dues on ${count} invoices.` };
+    }
+    case 'time-window': {
+      const hours = Number(params?.hours) || 24;
+      const sRes = await p.query(`DELETE FROM sales_records WHERE created_at >= NOW() - INTERVAL '${hours} hours'`);
+      const jRes = await p.query(`DELETE FROM optical_jobs WHERE created_at >= NOW() - INTERVAL '${hours} hours'`);
+      const eRes = await p.query(`DELETE FROM expenses WHERE created_at >= NOW() - INTERVAL '${hours} hours'`);
+      const fRes = await p.query(`DELETE FROM financial_collections WHERE created_at >= NOW() - INTERVAL '${hours} hours'`);
+      const total = (sRes.rowCount || 0) + (jRes.rowCount || 0) + (eRes.rowCount || 0) + (fRes.rowCount || 0);
+      return { action, affectedCount: total, message: `Removed ${total} records from the last ${hours} hours.` };
+    }
+    case 'inventory-stock-only': {
+      const items = await p.query('SELECT id, data_json FROM inventory_items');
+      let count = 0;
+      for (const row of items.rows) {
+        try {
+          const item = JSON.parse(row.data_json);
+          item.stockQty = 0;
+          item.status = 'low';
+          await p.query('UPDATE inventory_items SET stock = 0, data_json = $1 WHERE id = $2', [JSON.stringify(item), row.id]);
+          count++;
+        } catch {}
+      }
+      return { action, affectedCount: count, message: `Stock quantities set to 0 for ${count} catalog items.` };
+    }
+    case 'inventory-full': {
+      const res = await p.query('DELETE FROM inventory_items');
+      return { action, affectedCount: res.rowCount || 0, message: 'All inventory items and catalog wiped.' };
+    }
+    case 'loss-ledger': {
+      await p.query("DELETE FROM system_audit_logs WHERE action_type LIKE '%DAMAGE%' OR action_type LIKE '%LOSS%'");
+      return { action, message: 'Damaged item loss ledger purged.' };
+    }
+    case 'inventory-category': {
+      const category = params?.category;
+      if (!category) throw new Error('Category is required');
+      const res = await p.query('DELETE FROM inventory_items WHERE category = $1', [category]);
+      return { action, affectedCount: res.rowCount || 0, message: `Deleted ${res.rowCount || 0} items in category "${category}".` };
+    }
+    case 'prescriptions': {
+      const res = await p.query('DELETE FROM prescriptions');
+      return { action, affectedCount: res.rowCount || 0, message: 'All patient prescriptions cleared.' };
+    }
+    case 'expenses': {
+      const res = await p.query('DELETE FROM expenses');
+      return { action, affectedCount: res.rowCount || 0, message: 'All operational expenses cleared.' };
+    }
+    case 'salesmen': {
+      const res = await p.query('DELETE FROM salesmen');
+      return { action, affectedCount: res.rowCount || 0, message: 'Sales staff and commission records cleared.' };
+    }
+    case 'audit-logs': {
+      await p.query('DELETE FROM system_audit_logs');
+      await p.query('DELETE FROM sms_logs');
+      return { action, message: 'System audit logs and SMS dispatch logs cleared.' };
+    }
+    case 'branches-suppliers': {
+      await p.query('DELETE FROM hospital_branches');
+      await p.query('DELETE FROM suppliers');
+      return { action, message: 'Hospital branches and registered suppliers cleared.' };
+    }
+    default:
+      throw new Error(`Unknown purge action: ${action}`);
+  }
+}
+
+// ----------------- LIVE DATABASE METRICS COUNTER -----------------
+export async function dbGetDatabaseMetrics(): Promise<{
+  salesCount: number;
+  jobsCount: number;
+  inventoryCount: number;
+  inventoryStockSum: number;
+  purchaseOrdersCount: number;
+  grnsCount: number;
+  prescriptionsCount: number;
+  expensesCount: number;
+  auditLogsCount: number;
+  branchesCount: number;
+  suppliersCount: number;
+  salesmenCount: number;
+}> {
+  const p = getDbPool();
+  const safeCount = async (sql: string): Promise<number> => {
+    try {
+      const res = await p.query(sql);
+      return parseInt(res.rows[0]?.count || '0', 10);
+    } catch {
+      return 0;
+    }
+  };
+
+  const [
+    salesCount,
+    jobsCount,
+    inventoryCount,
+    purchaseOrdersCount,
+    grnsCount,
+    prescriptionsCount,
+    expensesCount,
+    auditLogsCount,
+    branchesCount,
+    suppliersCount,
+    salesmenCount,
+  ] = await Promise.all([
+    safeCount('SELECT COUNT(*) as count FROM sales_records'),
+    safeCount('SELECT COUNT(*) as count FROM optical_jobs'),
+    safeCount('SELECT COUNT(*) as count FROM inventory_items'),
+    safeCount('SELECT COUNT(*) as count FROM purchase_orders'),
+    safeCount('SELECT COUNT(*) as count FROM goods_received_notes'),
+    safeCount('SELECT COUNT(*) as count FROM prescriptions'),
+    safeCount('SELECT COUNT(*) as count FROM expenses'),
+    safeCount('SELECT COUNT(*) as count FROM system_audit_logs'),
+    safeCount('SELECT COUNT(*) as count FROM hospital_branches'),
+    safeCount('SELECT COUNT(*) as count FROM suppliers'),
+    safeCount('SELECT COUNT(*) as count FROM salesmen'),
+  ]);
+
+  let inventoryStockSum = 0;
+  try {
+    const res = await p.query('SELECT COALESCE(SUM(stock), 0) as total FROM inventory_items');
+    inventoryStockSum = parseInt(res.rows[0]?.total || '0', 10);
+  } catch {}
+
+  return {
+    salesCount,
+    jobsCount,
+    inventoryCount,
+    inventoryStockSum,
+    purchaseOrdersCount,
+    grnsCount,
+    prescriptionsCount,
+    expensesCount,
+    auditLogsCount,
+    branchesCount,
+    suppliersCount,
+    salesmenCount,
+  };
+}

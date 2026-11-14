@@ -791,8 +791,7 @@ export const InventoryRegistryTable: React.FC<InventoryRegistryTableProps> = ({
                     <div className="font-bold text-on-surface text-xs flex items-center gap-2 flex-wrap">
                       <span>{item.name}</span>
                       {item.branchName && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-700 dark:text-teal-300 bg-teal-500/10 px-1.5 py-0.5 rounded border border-teal-500/20">
-                          <span className="material-symbols-outlined text-[11px]">storefront</span>
+                        <span className="text-[10px] font-semibold text-teal-700 dark:text-teal-300">
                           {item.branchName}
                         </span>
                       )}

@@ -57,6 +57,7 @@ import { SupplierGrnView } from './components/SupplierGrnView';
 import { FinancialAccountingView } from './components/FinancialAccountingView';
 import { ReturnsRefundsView } from './components/ReturnsRefundsView';
 import { SettingsRolesView } from './components/SettingsRolesView';
+import { DatabaseControlPurgeCenter } from './components/DatabaseControlPurgeCenter';
 import { FefoAutoDispensingView } from './components/FefoAutoDispensingView';
 import { AIGlazingAssistantModal } from './components/AIGlazingAssistantModal';
 import { AIEyewearStudioModal } from './components/AIEyewearStudioModal';
@@ -1011,6 +1012,166 @@ export default function App() {
     setPurchaseOrders([]);
   };
 
+  // Targeted / Per-page Purge synchronization callback
+  const handleTargetedPurgeComplete = (action: string, params?: any) => {
+    switch (action) {
+      case 'transactions-only':
+        setSalesRecords([]);
+        setFinancialCollections([]);
+        localStorage.removeItem('madina_sales_records');
+        localStorage.removeItem('madina_financial_collections');
+        break;
+      case 'pos-only':
+        setSalesRecords([]);
+        setSalesReturns([]);
+        setJobs([]);
+        localStorage.removeItem('madina_sales_records');
+        localStorage.removeItem('madina_jobs');
+        localStorage.removeItem('madina_sales_returns');
+        break;
+      case 'procurement':
+        setPurchaseOrders([]);
+        setGrns([]);
+        setPurchaseReturns([]);
+        localStorage.removeItem('madina_purchase_orders');
+        localStorage.removeItem('madina_grns');
+        localStorage.removeItem('madina_purchase_returns');
+        break;
+      case 'dues-only':
+        setSalesRecords((prev) =>
+          prev.map((s) => ({ ...s, dueAmount: 0, status: 'Paid' }))
+        );
+        break;
+      case 'time-window': {
+        const hours = Number(params?.hours) || 24;
+        const cutoff = Date.now() - hours * 60 * 60 * 1000;
+        setSalesRecords((prev) =>
+          prev.filter((s) => new Date(s.date || (s as any).timestamp || 0).getTime() < cutoff)
+        );
+        setJobs((prev) =>
+          prev.filter((j) => new Date((j as any).createdAt || (j as any).timestamp || 0).getTime() < cutoff)
+        );
+        setExpenses((prev) =>
+          prev.filter((e) => new Date(e.date || 0).getTime() < cutoff)
+        );
+        break;
+      }
+      case 'inventory-stock-only':
+        setInventory((prev) =>
+          prev.map((item) => ({ ...item, stockQty: 0, status: 'low' }))
+        );
+        break;
+      case 'inventory-full':
+        setInventory([]);
+        localStorage.removeItem('madina_inventory');
+        break;
+      case 'loss-ledger':
+        setInventoryDamageRecords([]);
+        localStorage.removeItem('madina_inventory_damage_ledger');
+        break;
+      case 'inventory-category': {
+        const category = params?.category;
+        if (category) {
+          setInventory((prev) => prev.filter((item) => item.category !== category));
+        }
+        break;
+      }
+      case 'prescriptions':
+        setPrescriptions([]);
+        localStorage.removeItem('madina_prescriptions');
+        break;
+      case 'expenses':
+        setExpenses([]);
+        localStorage.removeItem('madina_expenses');
+        break;
+      case 'salesmen':
+        setSalesmen([]);
+        localStorage.removeItem('madina_salesmen');
+        break;
+      case 'audit-logs':
+        setAuditLogs([]);
+        setActivityLogs([]);
+        localStorage.removeItem('madina_audit_logs');
+        break;
+      case 'branches-suppliers':
+        setBranches([]);
+        setSuppliers([]);
+        localStorage.removeItem('madina_branches');
+        localStorage.removeItem('madina_suppliers');
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Full Database Factory Reset / Reboot state & clear handler
+  const handleFullResetSuccess = () => {
+    // Clear recorded operational inputs from browser localStorage (keep auth credentials)
+    const keysToRemove = [
+      'madina_jobs',
+      'madina_inventory',
+      'madina_inventory_damage_ledger',
+      'madina_inventory_movement_history',
+      'madina_sales_records',
+      'madina_grns',
+      'madina_prescriptions',
+      'madina_expenses',
+      'madina_financial_summary',
+      'madina_financial_collections',
+      'madina_due_collection_ids',
+      'madina_sales_returns',
+      'madina_purchase_returns',
+      'madina_drawer_reset_today',
+      'madina_drawer_balance_resets',
+      'madina_due_invoices',
+      'madina_due_audit_log',
+      'madina_optical_sms_logs',
+      'madina_salesmen',
+      'madina_branches',
+      'madina_suppliers',
+    ];
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+    // Reset application state to clean slate
+    setJobs([]);
+    setInventory([]);
+    setInventoryLoadError(null);
+    setInventoryLoading(false);
+    setSalesRecords([]);
+    setFinancialCollections([]);
+    setSalesmen([]);
+    setBranches([]);
+    setSuppliers([]);
+    setExpenses([]);
+    setSalesReturns([]);
+    setPurchaseReturns([]);
+    setPurchaseOrders([]);
+    setGrns([]);
+    setPrescriptions([]);
+    setIbtOrders([]);
+    setDispensations([]);
+    setAuditLogs([]);
+    setActivityLogs([]);
+    setInventoryDamageRecords([]);
+    setInventoryMovementRecords([]);
+    postedDueCollectionIds.current.clear();
+    setFinancialSummary({
+      grossOpticalRevenue: 0,
+      pharmacyRevenue: 0,
+      consultationRevenue: 0,
+      cogsOptical: 0,
+      cogsPharmacy: 0,
+      grossProfit: 0,
+      totalExpenses: 0,
+      netOperatingProfit: 0,
+      profitMarginPct: 0,
+      cashCollectedBDT: 0,
+      digitalPaymentsBDT: 0,
+      outstandingReceivablesBDT: 0,
+      dueCollectionsBDT: 0,
+    });
+  };
+
   // Full Database Factory Reset / Reboot (Admin / Superadmin only)
   const [isResetConfirmModalOpen, setIsResetConfirmModalOpen] = useState(false);
   const [isResettingDb, setIsResettingDb] = useState(false);
@@ -1091,70 +1252,8 @@ export default function App() {
         throw new Error(errMsg);
       }
 
-      // Clear recorded operational inputs from browser localStorage (keep auth credentials)
-      const keysToRemove = [
-        'madina_jobs',
-        'madina_inventory',
-        'madina_inventory_damage_ledger',
-        'madina_inventory_movement_history',
-        'madina_sales_records',
-        'madina_grns',
-        'madina_prescriptions',
-        'madina_expenses',
-        'madina_financial_summary',
-        'madina_financial_collections',
-        'madina_due_collection_ids',
-        'madina_sales_returns',
-        'madina_purchase_returns',
-        'madina_drawer_reset_today',
-        'madina_drawer_balance_resets',
-        'madina_due_invoices',
-        'madina_due_audit_log',
-        'madina_optical_sms_logs',
-        'madina_salesmen',
-        'madina_branches',
-        'madina_suppliers',
-      ];
-      keysToRemove.forEach((k) => localStorage.removeItem(k));
-
-      // Reset application state to clean slate
-      setJobs([]);
-      setInventory([]);
-      setInventoryLoadError(null);
-      setInventoryLoading(false);
-      setSalesRecords([]);
-      setFinancialCollections([]);
-      setSalesmen([]);
-      setBranches([]);
-      setSuppliers([]);
-      setExpenses([]);
-      setSalesReturns([]);
-      setPurchaseReturns([]);
-      setPurchaseOrders([]);
-      setGrns([]);
-      setPrescriptions([]);
-      setIbtOrders([]);
-      setDispensations([]);
-      setAuditLogs([]);
-      setActivityLogs([]);
-      setInventoryDamageRecords([]);
-      setInventoryMovementRecords([]);
-      postedDueCollectionIds.current.clear();
-      setFinancialSummary({
-        grossOpticalRevenue: 0,
-        pharmacyRevenue: 0,
-        consultationRevenue: 0,
-        cogsOptical: 0,
-        cogsPharmacy: 0,
-        grossProfit: 0,
-        totalExpenses: 0,
-        netOperatingProfit: 0,
-        profitMarginPct: 0,
-        cashCollectedBDT: 0,
-        digitalPaymentsBDT: 0,
-        outstandingReceivablesBDT: 0,
-        dueCollectionsBDT: 0,
-      });
+      // Clear recorded operational inputs & reset application state
+      handleFullResetSuccess();
 
       setIsResetConfirmModalOpen(false);
       setResetAdminPassword('');
@@ -2077,7 +2176,7 @@ export default function App() {
         currentUserRole={currentUserRole}
         authenticatedUser={authenticatedUser}
         onLogout={handleLogout}
-        onResetDatabase={() => setIsResetConfirmModalOpen(true)}
+        onResetDatabase={() => setCurrentView('database-purge-center')}
       />
 
       {/* 3. Main Dashboard Workspace (Pushed comfortably below fixed 64px header with clear gap from 256px sidebar on desktop) */}
@@ -2085,10 +2184,11 @@ export default function App() {
         currentView === 'financial-accounting'
           || currentView === 'returns-refunds'
           || currentView === 'settings-roles'
+          || currentView === 'database-purge-center'
           ? 'pt-16 sm:pt-20'
           : 'pt-20 sm:pt-24'
       } flex-1 flex flex-col ${
-        currentView === 'settings-roles'
+        currentView === 'settings-roles' || currentView === 'database-purge-center'
           ? 'px-3 sm:px-4 lg:px-6'
           : 'px-4 sm:px-6 lg:px-8'
       } pb-8 gap-6 bg-surface dark:bg-[#111317] min-h-screen overflow-x-hidden transition-[margin,width] duration-300 ease-in-out ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
@@ -2106,6 +2206,7 @@ export default function App() {
           && currentView !== 'salesmen'
           && currentView !== 'reports'
           && currentView !== 'settings-roles'
+          && currentView !== 'database-purge-center'
           && (
         <header
           className={`flex flex-col gap-3.5 pb-3.5 border-b ${
@@ -2749,6 +2850,51 @@ export default function App() {
             onClearHistory={handleClearHistory}
             onPurgeAllOperationalData={handlePurgeAllOperationalData}
           />
+        )}
+
+        {currentView === 'database-purge-center' && (
+          currentUserRole === 'admin' || isSuperAdmin ? (
+            <DatabaseControlPurgeCenter
+              language={language}
+              currentUserRole={currentUserRole}
+              authenticatedUser={authenticatedUser}
+              salesRecords={salesRecords}
+              jobs={jobs}
+              inventory={inventory}
+              purchaseOrders={purchaseOrders}
+              grns={grns}
+              prescriptions={prescriptions}
+              expenses={expenses}
+              auditLogs={auditLogs}
+              branches={branches}
+              suppliers={suppliers}
+              salesmen={salesmen}
+              damageRecords={inventoryDamageRecords}
+              movementRecords={inventoryMovementRecords}
+              onBackToDashboard={() => setCurrentView('executive-dashboard')}
+              onPurgeComplete={handleTargetedPurgeComplete}
+              onFullResetComplete={handleFullResetSuccess}
+            />
+          ) : (
+            <div className="p-8 text-center bg-white dark:bg-[#1a1f2c] border border-rose-300 dark:border-rose-900/60 rounded-2xl">
+              <span className="material-symbols-outlined text-4xl text-rose-500 mb-2">lock</span>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                {language === 'bn' ? 'অনুমতি নেই (Access Restricted)' : 'Access Restricted'}
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                {language === 'bn'
+                  ? 'ডাটাবেস কন্ট্রোল ও পার্জ সেন্টার শুধুমাত্র এডমিন ও সুপার এডমিনের জন্য সংরক্ষিত।'
+                  : 'Database Control & Purge Center is strictly restricted to Admin and Super Admin accounts.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setCurrentView('executive-dashboard')}
+                className="mt-4 px-4 py-2 bg-[#08745f] text-white text-xs font-bold rounded-xl cursor-pointer"
+              >
+                {language === 'bn' ? 'ড্যাশবোর্ডে ফিরুন' : 'Back to Dashboard'}
+              </button>
+            </div>
+          )
         )}
       </main>
 

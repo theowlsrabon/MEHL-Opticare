@@ -5,6 +5,7 @@ import {
   Boxes,
   Camera,
   ChevronRight,
+  Database,
   Factory,
   HandCoins,
   Lock,
@@ -125,6 +126,9 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
           return 'bg-teal-50 dark:bg-[#134e4a]/60 text-teal-700 dark:text-[#2dd4bf] border border-teal-200 dark:border-[#0d9488]/40';
         case 'indigo':
           return 'bg-slate-100 dark:bg-[#1e1b4b]/60 text-slate-700 dark:text-[#818cf8] border border-slate-200 dark:border-[#4338ca]/30';
+        case 'rose':
+        case 'danger':
+          return 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40';
         case 'green':
         case 'live':
         default:
@@ -333,6 +337,14 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               { text: 'RBAC', variant: 'indigo' }
             )}
 
+            {hasFullAccess && renderNavItem(
+              'database-purge-center',
+              <Database size={17} />,
+              'Database & Purge Center',
+              'ডাটাবেস ও পার্জ সেন্টার',
+              { text: 'ROOT', variant: 'rose' }
+            )}
+
             {/*{isSuperAdmin && (
               <button
                 type="button"
@@ -368,18 +380,20 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               type="button"
               onClick={onResetDatabase}
               className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-rose-600 dark:text-rose-400 bg-rose-50/80 hover:bg-rose-100/90 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/50 transition-all cursor-pointer shadow-xs ${
-                !isSidebarOpen ? 'justify-center' : ''
-              }`}
-              title={language === 'bn' ? 'ডাটাবেস রিসেট ও ফ্যাক্টরি রিবুট (এডমিন অনলি)' : 'Factory Reboot / Clear DB (Admin Only)'}
+                currentView === 'database-purge-center'
+                  ? 'ring-2 ring-rose-500 bg-rose-100 dark:bg-rose-950/70'
+                  : ''
+              } ${!isSidebarOpen ? 'justify-center' : ''}`}
+              title={language === 'bn' ? 'ডাটাবেস কন্ট্রোল ও পার্জ সেন্টার (এডমিন অনলি)' : 'Database Control & Purge Center (Admin Only)'}
             >
               <RefreshCcw size={15} className="shrink-0 transition-transform group-hover:rotate-180 duration-500 text-rose-600 dark:text-rose-400" />
               {isSidebarOpen && (
                 <div className="flex flex-col text-left leading-tight min-w-0 flex-1">
                   <span className="text-[11px] font-extrabold uppercase tracking-wide truncate">
-                    {language === 'bn' ? 'ডাটাবেস রিসেট / রিবুট' : 'Reset / Reboot DB'}
+                    {language === 'bn' ? 'ডাটাবেস ও পার্জ সেন্টার' : 'Database Purge Center'}
                   </span>
                   <span className="text-[9px] text-rose-500/90 dark:text-rose-400/80 font-mono truncate">
-                    {language === 'bn' ? 'টেস্টিং ডাটা মুছুন' : 'Purge Testing Input'}
+                    {language === 'bn' ? 'ফুল বা পেজ-ভিত্তিক রিসেট' : 'Full / Per-Page Reset'}
                   </span>
                 </div>
               )}

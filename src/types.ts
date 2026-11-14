@@ -14,6 +14,7 @@ export type ViewMode =
   | 'reports'
   | 'salesmen'
   | 'settings-roles'
+  | 'database-purge-center'
   | 'ai-glazing'
   | 'ai-eyewear';
 

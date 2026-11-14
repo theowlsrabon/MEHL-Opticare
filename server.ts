@@ -68,6 +68,8 @@ import {
   dbDeleteUser,
   dbClearDummyData,
   dbResetOperationalData,
+  dbTargetedPurge,
+  dbGetDatabaseMetrics,
 } from "./serverDb";
 
 dotenv.config();
@@ -318,6 +320,64 @@ app.post("/api/admin/clear-dummy-data", async (_req, res) => {
   }
 });
 
+async function verifyAdminAuth(
+  username: string,
+  role: string,
+  password: string
+): Promise<{ ok: boolean; error?: string; status?: number }> {
+  const isAuthorized =
+    role === "admin" ||
+    role === "super_admin" ||
+    username === "admin" ||
+    username === "srabon";
+
+  if (!isAuthorized) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Forbidden: Only Admin or Super Admin can perform database purge.",
+    };
+  }
+
+  if (!password || !password.trim()) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Admin security password is required to confirm database action.",
+    };
+  }
+
+  const cleanPass = password.trim();
+  const cleanUser = (username || "admin").trim();
+
+  if (cleanUser === "srabon" || role === "super_admin") {
+    if (cleanPass !== "vugichugi") {
+      return { ok: false, status: 401, error: "Incorrect Super Admin password." };
+    }
+  } else {
+    const user = await dbGetUserByUsername(cleanUser);
+    const isDbPassMatch = user && user.password && user.password.trim() === cleanPass;
+    const isDefaultAdminMatch =
+      cleanPass === "admin123" || cleanPass === "mehl123admin" || cleanPass === "vugichugi";
+
+    if (!isDbPassMatch && !isDefaultAdminMatch) {
+      return { ok: false, status: 401, error: "Incorrect Admin password." };
+    }
+  }
+
+  return { ok: true };
+}
+
+// Live database metrics for Purge Center
+app.get("/api/admin/db-metrics", async (_req, res) => {
+  try {
+    const metrics = await dbGetDatabaseMetrics();
+    res.json({ success: true, metrics });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Full operational data reset / reboot (Keeps Admin & Superadmin credentials intact)
 const resetOperationalDataHandler = async (req: any, res: any) => {
   try {
@@ -325,45 +385,9 @@ const resetOperationalDataHandler = async (req: any, res: any) => {
     const username = (req.body?.username || req.headers["x-username"] || "").toString().toLowerCase();
     const password = (req.body?.password || "").toString();
 
-    // Verify authorized roles: admin or super_admin
-    const isAuthorized =
-      role === "admin" ||
-      role === "super_admin" ||
-      username === "admin" ||
-      username === "srabon";
-
-    if (!isAuthorized) {
-      return res.status(403).json({
-        success: false,
-        error: "Forbidden: Only Admin or Super Admin can reboot operational database.",
-      });
-    }
-
-    // Verify password for security confirmation
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        error: "Admin security password is required to confirm database reset.",
-      });
-    }
-
-    // Super admin password check or DB user password check
-    const cleanPass = password.trim();
-    const cleanUser = (username || "admin").trim();
-
-    if (cleanUser === "srabon" || role === "super_admin") {
-      if (cleanPass !== "vugichugi") {
-        return res.status(401).json({ success: false, error: "Incorrect Super Admin password." });
-      }
-    } else {
-      // Check admin account from DB or allow default fallback credentials
-      const user = await dbGetUserByUsername(cleanUser);
-      const isDbPassMatch = user && user.password && user.password.trim() === cleanPass;
-      const isDefaultAdminMatch = cleanPass === "admin123" || cleanPass === "mehl123admin" || cleanPass === "vugichugi";
-
-      if (!isDbPassMatch && !isDefaultAdminMatch) {
-        return res.status(401).json({ success: false, error: "Incorrect Admin password." });
-      }
+    const auth = await verifyAdminAuth(username, role, password);
+    if (!auth.ok) {
+      return res.status(auth.status || 401).json({ success: false, error: auth.error });
     }
 
     const result = await dbResetOperationalData();
@@ -381,6 +405,36 @@ const resetOperationalDataHandler = async (req: any, res: any) => {
 app.post("/api/admin/reset-operational-data", resetOperationalDataHandler);
 // Alias for database reset / operational wipe (Accessible via /api/reset-database as well)
 app.post("/api/reset-database", resetOperationalDataHandler);
+
+// Targeted purge handler (Per-page, per-category, per-time-window, or full-wipe)
+app.post("/api/admin/targeted-purge", async (req: any, res: any) => {
+  try {
+    const role = (req.body?.role || req.headers["x-user-role"] || "").toString().toLowerCase();
+    const username = (req.body?.username || req.headers["x-username"] || "").toString().toLowerCase();
+    const password = (req.body?.password || "").toString();
+    const action = req.body?.action;
+    const params = req.body?.params;
+
+    if (!action) {
+      return res.status(400).json({ success: false, error: "Missing purge action." });
+    }
+
+    const auth = await verifyAdminAuth(username, role, password);
+    if (!auth.ok) {
+      return res.status(auth.status || 401).json({ success: false, error: auth.error });
+    }
+
+    const result = await dbTargetedPurge(action, params);
+    res.json({
+      success: true,
+      message: result.message,
+      result,
+    });
+  } catch (err: any) {
+    console.error("[targeted-purge error]:", err);
+    res.status(500).json({ success: false, error: err.message || "Targeted purge failed." });
+  }
+});
 
 // --- MySQL CRUD ENDPOINTS ---
 
