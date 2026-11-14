@@ -88,7 +88,8 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: currentUserName,
+          role: currentUserRole || 'admin',
+          username: currentUserName || 'admin',
           password,
           action: config.action,
           params: config.params || {},
