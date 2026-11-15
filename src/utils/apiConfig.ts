@@ -4,7 +4,11 @@
  * - In development (npm run dev): VITE_API_URL is empty → uses relative paths → Vite proxy or same-origin
  * - In production (Vercel): VITE_API_URL is set to the Render backend URL (e.g. https://mehl-api.onrender.com)
  */
-export const API_BASE = ((import.meta as any).env?.VITE_API_URL as string) || "";
+const rawApiUrl = (((import.meta as any).env?.VITE_API_URL as string) || "").trim();
+
+// If VITE_API_URL is unset, or points to dead/undeployed Render host (mehl-api.onrender.com),
+// fallback to same-origin relative path ("") so requests go to Vercel's serverless backend.
+export const API_BASE = rawApiUrl.includes("mehl-api.onrender.com") ? "" : rawApiUrl;
 
 export interface SafeJsonResult<T = any> {
   ok: boolean;

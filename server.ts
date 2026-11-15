@@ -80,6 +80,14 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
+// Normalize URL for Vercel serverless environment (handles both /api/... and stripped /...)
+app.use((req, _res, next) => {
+  if (req.url && !req.url.startsWith("/api") && !req.url.startsWith("/assets")) {
+    req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
+  }
+  next();
+});
+
 // CORS — allow requests from any origin in dev or production (reflect origin for credentials support)
 app.use(
   cors({
