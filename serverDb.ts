@@ -7,7 +7,7 @@ let pool: Pool | null = null;
 let isConnected = false;
 
 const NEON_DEFAULT_URL =
-  'postgresql://neondb_owner:npg_FEvqR0nWH3wp@ep-wild-flower-bdj0sbxp-pooler.c-8.us-east-2.aws.neon.tech/neondb?channel_binding=require&sslmode=require';
+  'postgresql://neondb_owner:npg_FEvqR0nWH3wp@ep-wild-flower-bdj0sbxp-pooler.c-8.us-east-2.aws.neon.tech/neondb?sslmode=require';
 
 export function getDbPool(): Pool {
   if (!pool) {

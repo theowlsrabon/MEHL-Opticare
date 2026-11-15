@@ -10,7 +10,7 @@ import dotenv from "dotenv";
 dotenv.config();
 var pool = null;
 var isConnected = false;
-var NEON_DEFAULT_URL = "postgresql://neondb_owner:npg_FEvqR0nWH3wp@ep-wild-flower-bdj0sbxp-pooler.c-8.us-east-2.aws.neon.tech/neondb?channel_binding=require&sslmode=require";
+var NEON_DEFAULT_URL = "postgresql://neondb_owner:npg_FEvqR0nWH3wp@ep-wild-flower-bdj0sbxp-pooler.c-8.us-east-2.aws.neon.tech/neondb?sslmode=require";
 function getDbPool() {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL || NEON_DEFAULT_URL;
