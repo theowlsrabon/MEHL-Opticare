@@ -49,10 +49,8 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
   onAddAuditLog,
   className = '',
 }) => {
-  const isAdmin =
-    currentUserRole === 'admin' ||
-    currentUserRole === 'super_admin' ||
-    currentUserName === 'srabon';
+  const normalizedRole = currentUserRole.trim().toLowerCase();
+  const isAdmin = normalizedRole === 'admin' || normalizedRole === 'super_admin';
 
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState('');
@@ -63,7 +61,7 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Computed password validity (client-side preview)
-  const isSuperAdmin = currentUserName === 'srabon' || currentUserRole === 'super_admin';
+  const isSuperAdmin = normalizedRole === 'super_admin';
   const pwValid = isSuperAdmin
     ? password === SUPER_ADMIN_PASS
     : ADMIN_FALLBACKS.includes(password);
@@ -268,4 +266,3 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
     </>
   );
 };
-

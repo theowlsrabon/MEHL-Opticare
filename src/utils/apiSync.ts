@@ -540,6 +540,14 @@ export async function fetchInitialDataFromDb(): Promise<{
   };
 }> {
   const result: any = {};
+  const fetchApiData = async (path: string, init?: RequestInit) => {
+    const response = await fetchJsonSafe(`${API_BASE}${path}`, init);
+    if (!response.ok || response.data === null) {
+      throw new Error(response.error || `API request failed (${response.status})`);
+    }
+    return response.data;
+  };
+
   try {
     const [
       jobsRes,
@@ -558,21 +566,21 @@ export async function fetchInitialDataFromDb(): Promise<{
       drugsRes,
       dispensationsRes,
     ] = await Promise.allSettled([
-      fetch(`${API_BASE}/api/jobs`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/inventory`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/sales`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/financial-collections`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/salesmen`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/drawer-balance`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/expenses`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/sales-returns`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/purchase-returns`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/purchase-orders`, { cache: 'no-store' }).then((r) => r.json()),
-      fetch(`${API_BASE}/api/grns`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/prescriptions`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/ibt-orders`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/pharmacy/drugs`).then((r) => r.json()),
-      fetch(`${API_BASE}/api/pharmacy/dispensations`).then((r) => r.json()),
+      fetchApiData('/api/jobs'),
+      fetchApiData('/api/inventory'),
+      fetchApiData('/api/sales'),
+      fetchApiData('/api/financial-collections'),
+      fetchApiData('/api/salesmen'),
+      fetchApiData('/api/drawer-balance'),
+      fetchApiData('/api/expenses'),
+      fetchApiData('/api/sales-returns'),
+      fetchApiData('/api/purchase-returns'),
+      fetchApiData('/api/purchase-orders', { cache: 'no-store' }),
+      fetchApiData('/api/grns'),
+      fetchApiData('/api/prescriptions'),
+      fetchApiData('/api/ibt-orders'),
+      fetchApiData('/api/pharmacy/drugs'),
+      fetchApiData('/api/pharmacy/dispensations'),
     ]);
 
     if (jobsRes.status === 'fulfilled' && jobsRes.value?.success && Array.isArray(jobsRes.value.data)) {

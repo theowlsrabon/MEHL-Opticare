@@ -1,14 +1,12 @@
 /**
  * Central API base URL configuration and resilient response parser.
  *
- * - In development (npm run dev): VITE_API_URL is empty → uses relative paths → Vite proxy or same-origin
- * - In production (Vercel): VITE_API_URL is set to the Render backend URL (e.g. https://mehl-api.onrender.com)
+ * - If VITE_API_URL is empty, use relative paths (Vite proxy or same-origin API).
+ * - If VITE_API_URL is set, send requests to that configured backend.
  */
-const rawApiUrl = (((import.meta as any).env?.VITE_API_URL as string) || "").trim();
-
-// If VITE_API_URL is unset, or points to dead/undeployed Render host (mehl-api.onrender.com),
-// fallback to same-origin relative path ("") so requests go to Vercel's serverless backend.
-export const API_BASE = rawApiUrl.includes("mehl-api.onrender.com") ? "" : rawApiUrl;
+const env = (import.meta as any).env || {};
+const rawApiUrl = (typeof env.VITE_API_URL === 'string' ? env.VITE_API_URL : '').trim();
+export const API_BASE = (rawApiUrl || (env.PROD ? 'https://mehl-api.onrender.com' : '')).replace(/\/+$/, '');
 
 export interface SafeJsonResult<T = any> {
   ok: boolean;
@@ -26,9 +24,10 @@ export interface SafeJsonResult<T = any> {
 export async function safeParseJsonResponse<T = any>(
   response: Response
 ): Promise<SafeJsonResult<T>> {
+  let rawText = '';
   try {
     const contentType = response.headers.get('content-type') || '';
-    const rawText = await response.text();
+    rawText = await response.text();
     const trimmed = rawText.trim();
 
     // Check if the response is HTML instead of JSON
@@ -63,7 +62,9 @@ export async function safeParseJsonResponse<T = any>(
       ok: false,
       status: response.status,
       data: null,
-      error: err?.message || 'Failed to parse server JSON response.',
+      error: rawText.trim()
+        ? `Server returned an invalid JSON response (${response.status}): ${rawText.trim().slice(0, 200)}`
+        : err?.message || 'Failed to parse server JSON response.',
       isHtml: false,
     };
   }
