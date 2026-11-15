@@ -3,11 +3,11 @@
   "rewrites": [
     {
       "source": "/api",
-      "destination": "/api/index"
+      "destination": "/api/handler"
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/index"
+      "destination": "/api/handler"
     },
     {
       "source": "/(.*)",

@@ -1,6 +1,6 @@
 import app from "../server";
 
-export default function handler(req: any, res: any) {
+export default function apiHandler(req: any, res: any) {
   try {
     return app(req, res, (err: any) => {
       if (err) {
@@ -21,4 +21,3 @@ export default function handler(req: any, res: any) {
     }
   }
 }
-
