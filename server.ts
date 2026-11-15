@@ -1687,8 +1687,21 @@ async function startServer() {
   });
 }
 
-// Only start standalone HTTP listener if run directly (not under Vercel Serverless Function)
-if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+// Only start standalone HTTP listener if run directly (NEVER when imported in serverless function)
+const isServerless =
+  Boolean(process.env.VERCEL) ||
+  Boolean(process.env.VERCEL_ENV) ||
+  Boolean(process.env.NOW_REGION) ||
+  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+  Boolean(process.env.LAMBDA_TASK_ROOT);
+
+const isDirectRun =
+  typeof process.argv[1] === "string" &&
+  (process.argv[1].endsWith("server.ts") ||
+    process.argv[1].endsWith("server.cjs") ||
+    process.argv[1].endsWith("server.js"));
+
+if (!isServerless && isDirectRun) {
   startServer();
 }
 
