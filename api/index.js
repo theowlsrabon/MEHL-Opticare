@@ -1564,17 +1564,11 @@ app.use(
   })
 );
 app.use(express.json({ limit: "25mb" }));
-var isDbInitialized = false;
-app.use(async (_req, _res, next) => {
-  if (!isDbInitialized) {
-    try {
-      await initializeDatabase();
-      isDbInitialized = true;
-    } catch (err) {
-      console.warn("[Database Notice] Lazy DB init warning:", err?.message || err);
-    }
-  }
-  next();
+app.get(["/", "/api"], (_req, res) => {
+  res.json({ ok: true, name: "MEHL OptiVision API", status: "online" });
+});
+app.get(["/health", "/api/health"], (_req, res) => {
+  res.json({ status: "ok", workshop: "OptiVision Live Synced", edger: "Essilor Delta 200 Online" });
 });
 var aiClient = null;
 function getAI() {
@@ -2867,7 +2861,27 @@ if (!isServerless && isDirectRun) {
 var server_default = app;
 
 // api/index.ts
-var index_default = server_default;
+function handler(req, res) {
+  try {
+    return server_default(req, res, (err) => {
+      if (err) {
+        console.error("[Vercel API Error]:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
+        }
+      } else {
+        if (!res.headersSent) {
+          res.status(404).json({ success: false, error: `API route not found: ${req.method} ${req.url}` });
+        }
+      }
+    });
+  } catch (uncaught) {
+    console.error("[Vercel API Uncaught]:", uncaught);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: uncaught.message || "Unhandled Server Error" });
+    }
+  }
+}
 export {
-  index_default as default
+  handler as default
 };

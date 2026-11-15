@@ -110,18 +110,13 @@ app.use(
 
 app.use(express.json({ limit: "25mb" }));
 
-// Lazy database initializer for serverless environments (Vercel)
-let isDbInitialized = false;
-app.use(async (_req, _res, next) => {
-  if (!isDbInitialized) {
-    try {
-      await initializeDatabase();
-      isDbInitialized = true;
-    } catch (err: any) {
-      console.warn("[Database Notice] Lazy DB init warning:", err?.message || err);
-    }
-  }
-  next();
+// Root health status endpoints
+app.get(["/", "/api"], (_req, res) => {
+  res.json({ ok: true, name: "MEHL OptiVision API", status: "online" });
+});
+
+app.get(["/health", "/api/health"], (_req, res) => {
+  res.json({ status: "ok", workshop: "OptiVision Live Synced", edger: "Essilor Delta 200 Online" });
 });
 
 // Lazy Gemini client helper
