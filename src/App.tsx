@@ -2796,7 +2796,7 @@ export default function App() {
               setBranches((prev) => prev.map((b) => (b.id === updatedBranch.id ? updatedBranch : b)));
               setBranchesLoadError(null);
             }}
-            onDeleteBranch={isSuperAdmin ? handleDeleteBranch : undefined}
+            onDeleteBranch={isAdmin ? handleDeleteBranch : undefined}
             currentUserRole={currentUserRole}
             currentUserName={authenticatedUser?.username || currentUser?.name || ''}
             onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
@@ -3463,5 +3463,4 @@ export default function App() {
     </div>
   );
 }
-
 

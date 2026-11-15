@@ -52,6 +52,7 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [branchActionError, setBranchActionError] = useState<string | null>(null);
   const [isSavingBranch, setIsSavingBranch] = useState(false);
+  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
   const [branchSearch, setBranchSearch] = useState('');
   const [selectedOrderToPrint, setSelectedOrderToPrint] = useState<InterBranchTransferOrder | null>(null);
 
@@ -369,14 +370,22 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
     }
   };
 
-  const handleDeleteBranch = async (branchId: string) => {
-    if (!onDeleteBranch) return;
+  const handleDeleteBranch = async (branchId: string): Promise<boolean> => {
+    if (!onDeleteBranch) return false;
     setBranchActionError(null);
+    setDeletingBranchId(branchId);
     try {
       await onDeleteBranch(branchId);
+      setEditingBranch((current) => current?.id === branchId ? null : current);
+      setToastMessage(text('Branch deleted.', 'শাখাটি মুছে ফেলা হয়েছে।'));
+      setTimeout(() => setToastMessage(null), 3500);
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setBranchActionError(`${text('Could not delete branch from database', 'ডেটাবেজ থেকে শাখা মুছে ফেলা যায়নি')}: ${message}`);
+      return false;
+    } finally {
+      setDeletingBranchId(null);
     }
   };
 
@@ -1700,23 +1709,44 @@ export const MultiBranchIbtView: React.FC<MultiBranchIbtViewProps> = ({
               </form>
             </div>
 
-            <div className="p-4 border-t border-outline-variant/60 dark:border-[#252a36] flex justify-end gap-2.5 bg-[#fbfcfe] dark:bg-[#181c25]">
-              <button
-                type="button"
-                onClick={() => setEditingBranch(null)}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-surface-container/80 dark:bg-[#202532] border border-outline-variant/70 text-on-surface hover:bg-surface-container cursor-pointer"
-              >
-                {text('Cancel', 'বাতিল')}
-              </button>
-              <button
-                type="submit"
-                form="editBranchForm"
-                disabled={isSavingBranch}
-                className="px-5 py-2 text-xs font-bold rounded-xl bg-teal-600 hover:bg-teal-700 text-white cursor-pointer shadow-md flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="material-symbols-outlined text-[16px]">save</span>
-                <span>{text('Save Changes', 'পরিবর্তন সংরক্ষণ')}</span>
-              </button>
+            <div className="p-4 border-t border-outline-variant/60 dark:border-[#252a36] flex items-center justify-between gap-2.5 bg-[#fbfcfe] dark:bg-[#181c25]">
+              {onDeleteBranch ? (
+                <button
+                  type="button"
+                  disabled={isSavingBranch || deletingBranchId === editingBranch.id}
+                  onClick={() => {
+                    if (window.confirm(text(
+                      `Permanently delete branch "${editingBranch.name}"?`,
+                      `আপনি কি "${editingBranch.banglaName || editingBranch.name}" শাখাটি স্থায়ীভাবে মুছে ফেলতে চান?`
+                    ))) {
+                      void handleDeleteBranch(editingBranch.id);
+                    }
+                  }}
+                  className="px-3 py-2 text-xs font-bold rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white transition-colors cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                  <span>{deletingBranchId === editingBranch.id ? text('Deleting…', 'মুছে ফেলা হচ্ছে…') : text('Delete Branch', 'শাখা মুছুন')}</span>
+                </button>
+              ) : <span />}
+              <div className="flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setEditingBranch(null)}
+                  disabled={isSavingBranch || deletingBranchId === editingBranch.id}
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-surface-container/80 dark:bg-[#202532] border border-outline-variant/70 text-on-surface hover:bg-surface-container cursor-pointer"
+                >
+                  {text('Cancel', 'বাতিল')}
+                </button>
+                <button
+                  type="submit"
+                  form="editBranchForm"
+                  disabled={isSavingBranch || deletingBranchId === editingBranch.id}
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-teal-600 hover:bg-teal-700 text-white cursor-pointer shadow-md flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="material-symbols-outlined text-[16px]">save</span>
+                  <span>{text('Save Changes', 'পরিবর্তন সংরক্ষণ')}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
