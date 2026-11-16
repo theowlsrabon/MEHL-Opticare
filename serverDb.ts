@@ -318,7 +318,7 @@ export async function initializeDatabase(): Promise<void> {
       INSERT INTO user_accounts (id, username, password, name, role, role_title, allowed_views, status)
       VALUES ('user-superadmin-01', 'srabon', 'vugichugi', 'Srabon Hassan', 'super_admin', 'Developer & Super Admin', $1, 'active')
       ON CONFLICT (username) DO UPDATE 
-        SET password = 'vugichugi', name = 'Srabon Hassan', role = 'super_admin', role_title = 'Developer & Super Admin', allowed_views = EXCLUDED.allowed_views, status = 'active';
+        SET name = 'Srabon Hassan', role = 'super_admin', role_title = 'Developer & Super Admin', allowed_views = EXCLUDED.allowed_views, status = 'active';
     `,
       [defaultViews]
     );
@@ -1429,8 +1429,8 @@ export async function dbResetOperationalData(): Promise<{
   preservedUsersCount: number;
 }> {
   const p = getDbPool();
+  const client = await p.connect();
 
-  // Tables storing recorded input/transactional operational data
   const tablesToClear = [
     'sales_records',
     'financial_collections',
@@ -1445,6 +1445,7 @@ export async function dbResetOperationalData(): Promise<{
     'purchase_orders',
     'prescriptions',
     'ibt_orders',
+    'pharmacy_drugs',
     'pharmacy_dispensations',
     'sms_logs',
     'system_audit_logs',
@@ -1453,31 +1454,25 @@ export async function dbResetOperationalData(): Promise<{
     'suppliers',
   ];
 
-  const purged: string[] = [];
-  for (const tbl of tablesToClear) {
-    try {
-      await p.query(`DELETE FROM ${tbl}`);
-      purged.push(tbl);
-    } catch (e: any) {
-      console.warn(`[dbResetOperationalData] Table ${tbl} clear skipped or not present: ${e.message}`);
-    }
-  }
-
-  // Delete non-admin custom staff accounts, preserve admin and super_admin
   try {
-    await p.query(`DELETE FROM user_accounts WHERE role NOT IN ('admin', 'super_admin') AND username NOT IN ('admin', 'srabon')`);
-  } catch (e: any) {
-    console.warn(`[dbResetOperationalData] Staff accounts cleanup error: ${e.message}`);
+    await client.query('BEGIN');
+    for (const tbl of tablesToClear) {
+      await client.query(`DELETE FROM ${tbl}`);
+    }
+    await client.query(`DELETE FROM user_accounts WHERE role NOT IN ('admin', 'super_admin') AND username NOT IN ('admin', 'srabon')`);
+    const adminRes = await client.query(`SELECT COUNT(*)::int as count FROM user_accounts`);
+    await client.query('COMMIT');
+
+    return {
+      purgedTables: tablesToClear,
+      preservedUsersCount: adminRes.rows[0]?.count || 0,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  // Count preserved admin & superadmin users
-  const adminRes = await p.query(`SELECT COUNT(*)::int as count FROM user_accounts`);
-  const preservedUsersCount = adminRes.rows[0]?.count || 0;
-
-  return {
-    purgedTables: purged,
-    preservedUsersCount,
-  };
 }
 
 // ----------------- TARGETED DATA PURGE BY SCOPE / CATEGORY / TIME -----------------

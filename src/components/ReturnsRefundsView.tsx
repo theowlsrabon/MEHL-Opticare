@@ -252,7 +252,7 @@ export const ReturnsRefundsView: React.FC<ReturnsRefundsViewProps> = ({
           {onPurgeComplete && onAddAuditLog && (
             <PageResetButton
               config={{
-                action: 'pos-only',
+                action: 'returns-refunds',
                 pageLabel: 'Returns & Refunds',
                 description: 'Delete all sales return (credit notes) and purchase return (debit notes) records.',
               }}

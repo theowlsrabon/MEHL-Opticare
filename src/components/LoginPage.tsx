@@ -88,42 +88,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    // Direct super admin developer authentication check
-    if (cleanUser === 'srabon' && cleanPass === 'vugichugi') {
-      const superAdminUser: UserAccount = {
-        id: 'user-superadmin-01',
-        username: 'srabon',
-        password: 'vugichugi',
-        name: 'Srabon Hassan',
-        role: 'super_admin',
-        roleTitle: 'Developer & Super Admin',
-        allowedViews: [
-          'executive-dashboard',
-          'modina-erp',
-          'lab-pipeline',
-          'stock-master',
-          'pos-terminal',
-          'prescriptions',
-          'pharmacy-command',
-          'multi-branch-ibt',
-          'supplier-grn',
-          'financial-accounting',
-          'returns-refunds',
-          'due-collections',
-          'reports',
-          'salesmen',
-          'settings-roles',
-          'ai-glazing',
-          'ai-eyewear',
-        ],
-        status: 'active',
-      };
-      sessionStorage.setItem('mehl_session_user', JSON.stringify(superAdminUser));
-      localStorage.setItem('mehl_session_user', JSON.stringify(superAdminUser));
-      onLoginSuccess(superAdminUser);
-      return;
-    }
-
     setIsLoading(true);
 
     try {
@@ -154,43 +118,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         return;
       }
     } catch (err: any) {
-      console.warn('Network or server offline, checking fallback admin...', err);
-      // Fallback for offline resilience
-      if (cleanUser === 'admin' && cleanPass === 'admin123') {
-        const fallbackAdmin: UserAccount = {
-          id: 'user-admin-01',
-          username: 'admin',
-          password: 'admin123',
-          name: 'TASFIQUR RAHMAN',
-          role: 'admin',
-          roleTitle: 'Hospital Director & Admin',
-          allowedViews: [
-            'executive-dashboard',
-            'modina-erp',
-            'lab-pipeline',
-            'stock-master',
-            'pos-terminal',
-            'prescriptions',
-            'pharmacy-command',
-            'multi-branch-ibt',
-            'supplier-grn',
-            'financial-accounting',
-            'returns-refunds',
-            'due-collections',
-            'reports',
-            'salesmen',
-            'settings-roles',
-            'ai-glazing',
-            'ai-eyewear',
-          ],
-          status: 'active',
-        };
-        sessionStorage.setItem('mehl_session_user', JSON.stringify(fallbackAdmin));
-        localStorage.setItem('mehl_session_user', JSON.stringify(fallbackAdmin));
-        onLoginSuccess(fallbackAdmin);
-        return;
-      }
-
+      console.warn('Could not reach the authentication server:', err);
       setErrorMsg(copy.networkError);
     } finally {
       setIsLoading(false);

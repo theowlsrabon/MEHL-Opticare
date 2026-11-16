@@ -160,38 +160,6 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ success: false, error: "Username and password are required." });
     }
 
-    // Direct Developer & Super Admin authentication check
-    if (username.trim() === "srabon" && password === "vugichugi") {
-      const superUser = {
-        id: "user-superadmin-01",
-        username: "srabon",
-        name: "Srabon Hassan",
-        role: "super_admin",
-        roleTitle: "Developer & Super Admin",
-        allowedViews: [
-          "executive-dashboard",
-          "modina-erp",
-          "lab-pipeline",
-          "stock-master",
-          "pos-terminal",
-          "prescriptions",
-          "pharmacy-command",
-          "multi-branch-ibt",
-          "supplier-grn",
-          "financial-accounting",
-          "returns-refunds",
-          "due-collections",
-          "reports",
-          "salesmen",
-          "settings-roles",
-          "ai-glazing",
-          "ai-eyewear",
-        ],
-        status: "active",
-      };
-      return res.json({ success: true, user: superUser });
-    }
-
     const user = await dbGetUserByUsername(username.trim());
     if (!user) {
       return res.status(401).json({ success: false, error: "Invalid username or password." });
@@ -328,47 +296,34 @@ app.post("/api/admin/clear-dummy-data", async (_req, res) => {
 
 async function verifyAdminAuth(
   username: string,
-  role: string,
   password: string
 ): Promise<{ ok: boolean; error?: string; status?: number }> {
-  const isAuthorized =
-    role === "admin" ||
-    role === "super_admin" ||
-    username === "admin" ||
-    username === "srabon";
-
-  if (!isAuthorized) {
+  if (!username?.trim()) {
     return {
-      ok: false,
-      status: 403,
-      error: "Forbidden: Only Admin or Super Admin can perform database purge.",
+      ok: false, status: 400, error: "Admin username is required.",
     };
   }
 
-  if (!password || !password.trim()) {
+  if (!password) {
     return {
       ok: false,
       status: 400,
-      error: "Admin security password is required to confirm database action.",
+      error: "Current account password is required to confirm this action.",
     };
   }
 
-  const cleanPass = password.trim();
-  const cleanUser = (username || "admin").trim();
+  const user = await dbGetUserByUsername(username.trim());
+  const userRole = user?.role?.toString().toLowerCase();
+  if (!user || user.status !== "active" || (userRole !== "admin" && userRole !== "super_admin")) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Forbidden: Only an active Admin or Super Admin account can perform this action.",
+    };
+  }
 
-  if (cleanUser === "srabon" || role === "super_admin") {
-    if (cleanPass !== "vugichugi") {
-      return { ok: false, status: 401, error: "Incorrect Super Admin password." };
-    }
-  } else {
-    const user = await dbGetUserByUsername(cleanUser);
-    const isDbPassMatch = user && user.password && user.password.trim() === cleanPass;
-    const isDefaultAdminMatch =
-      cleanPass === "admin123" || cleanPass === "mehl123admin" || cleanPass === "vugichugi";
-
-    if (!isDbPassMatch && !isDefaultAdminMatch) {
-      return { ok: false, status: 401, error: "Incorrect Admin password." };
-    }
+  if (user.password !== password) {
+    return { ok: false, status: 401, error: "Incorrect current account password." };
   }
 
   return { ok: true };
@@ -387,11 +342,10 @@ app.get("/api/admin/db-metrics", async (_req, res) => {
 // Full operational data reset / reboot (Keeps Admin & Superadmin credentials intact)
 const resetOperationalDataHandler = async (req: any, res: any) => {
   try {
-    const role = (req.body?.role || req.headers["x-user-role"] || "").toString().toLowerCase();
-    const username = (req.body?.username || req.headers["x-username"] || "").toString().toLowerCase();
+    const username = (req.body?.username || req.headers["x-username"] || "").toString().trim();
     const password = (req.body?.password || "").toString();
 
-    const auth = await verifyAdminAuth(username, role, password);
+    const auth = await verifyAdminAuth(username, password);
     if (!auth.ok) {
       return res.status(auth.status || 401).json({ success: false, error: auth.error });
     }
@@ -415,8 +369,7 @@ app.post("/api/reset-database", resetOperationalDataHandler);
 // Targeted purge handler (Per-page, per-category, per-time-window, or full-wipe)
 app.post("/api/admin/targeted-purge", async (req: any, res: any) => {
   try {
-    const role = (req.body?.role || req.headers["x-user-role"] || "").toString().toLowerCase();
-    const username = (req.body?.username || req.headers["x-username"] || "").toString().toLowerCase();
+    const username = (req.body?.username || req.headers["x-username"] || "").toString().trim();
     const password = (req.body?.password || "").toString();
     const action = req.body?.action;
     const params = req.body?.params;
@@ -425,7 +378,7 @@ app.post("/api/admin/targeted-purge", async (req: any, res: any) => {
       return res.status(400).json({ success: false, error: "Missing purge action." });
     }
 
-    const auth = await verifyAdminAuth(username, role, password);
+    const auth = await verifyAdminAuth(username, password);
     if (!auth.ok) {
       return res.status(auth.status || 401).json({ success: false, error: auth.error });
     }

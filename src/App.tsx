@@ -126,7 +126,7 @@ export default function App() {
         if (u.username === 'srabon') {
           u.role = 'super_admin';
           u.allowedViews = MADINA_STAFF_PROFILES.super_admin.allowedViews;
-        } else if (u.role === 'admin' || u.username === 'admin') {
+        } else if (u.username === 'admin') {
           u.role = 'admin';
           u.allowedViews = MADINA_STAFF_PROFILES.admin.allowedViews;
         }
@@ -138,7 +138,17 @@ export default function App() {
     }
   });
 
-  const [currentView, setCurrentView] = useState<ViewMode>('executive-dashboard');
+  const [currentView, setCurrentViewState] = useState<ViewMode>(() => {
+    const username = authenticatedUser?.username?.trim().toLowerCase();
+    const hasFullAccess =
+      username === 'admin' ||
+      username === 'srabon' ||
+      authenticatedUser?.role === 'super_admin';
+    const allowedViews = hasFullAccess
+      ? MADINA_STAFF_PROFILES.admin.allowedViews
+      : authenticatedUser?.allowedViews || [];
+    return allowedViews[0] || 'executive-dashboard';
+  });
   const [labViewMode, setLabViewMode] = useState<'conveyor' | 'telemetry'>('conveyor');
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(() => {
     try {
@@ -161,6 +171,29 @@ export default function App() {
       setCurrentUserRole(authenticatedUser.role as UserRole);
     }
   }, [authenticatedUser]);
+
+  const username = authenticatedUser?.username?.trim().toLowerCase();
+  const hasFullPageAccess =
+    username === 'admin' ||
+    username === 'srabon' ||
+    authenticatedUser?.role === 'super_admin';
+  const allowedPageViews = hasFullPageAccess
+    ? MADINA_STAFF_PROFILES[currentUserRole]?.allowedViews || MADINA_STAFF_PROFILES.admin.allowedViews
+    : authenticatedUser?.allowedViews || [];
+
+  const canAccessPage = (view: ViewMode) =>
+    hasFullPageAccess || allowedPageViews.includes(view);
+
+  const setCurrentView = (view: ViewMode) => {
+    if (canAccessPage(view)) setCurrentViewState(view);
+  };
+
+  useEffect(() => {
+    if (!authenticatedUser || hasFullPageAccess || allowedPageViews.length === 0) return;
+    if (!allowedPageViews.includes(currentView)) {
+      setCurrentViewState(allowedPageViews[0]);
+    }
+  }, [authenticatedUser, hasFullPageAccess, allowedPageViews, currentView]);
 
   // Branch scope: null = no restriction (admin/super_admin), or a branchId string for staff
   const userAssignedBranchId =
@@ -281,7 +314,8 @@ export default function App() {
       return initialFinancialSummary;
     }
   });
-  const isHydratedFromDb = useRef(false);
+  const jobsHydratedFromDb = useRef(false);
+  const inventoryHydratedFromDb = useRef(false);
   const postedDueCollectionIds = useRef<Set<string>>(new Set());
   const recordedSaleIds = useRef<Set<string>>(new Set());
   const [financialCollections, setFinancialCollections] = useState<DueCollectionRecord[]>(() => {
@@ -505,11 +539,14 @@ export default function App() {
     }));
   };
 
-  const handleDeleteExpense = (expenseId: string) => {
+  const handleDeleteExpense = async (expenseId: string) => {
     const expense = expenses.find((item) => item.id === expenseId);
     if (!expense) return;
+    if (!(await deleteExpenseFromDb(expenseId))) {
+      alert('Could not delete this expense from the database. Please try again.');
+      return;
+    }
     setExpenses((prev) => prev.filter((item) => item.id !== expenseId));
-    void deleteExpenseFromDb(expenseId);
     setFinancialSummary((prev) => ({
       ...prev,
       totalExpenses: Math.max(0, prev.totalExpenses - expense.amountBDT),
@@ -590,12 +627,14 @@ export default function App() {
     fetchInitialDataFromDb().then((dbData) => {
       // 1. Optical Jobs
       if (Array.isArray(dbData.jobs)) {
+        jobsHydratedFromDb.current = true;
         setJobs(dbData.jobs);
         localStorage.setItem('madina_jobs', JSON.stringify(dbData.jobs));
       }
 
       // 2. Inventory Items
       if (Array.isArray(dbData.inventory)) {
+        inventoryHydratedFromDb.current = true;
         setInventory(dbData.inventory);
         localStorage.setItem('madina_inventory', JSON.stringify(dbData.inventory));
         setInventoryLoadError(null);
@@ -723,7 +762,6 @@ export default function App() {
       });
 
       // Hydration done: allow future user modifications to sync to database
-      isHydratedFromDb.current = true;
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[Inventory] Could not load inventory from the database:', error);
@@ -779,7 +817,7 @@ export default function App() {
   // Persist state to localStorage and the application database
   useEffect(() => {
     localStorage.setItem('madina_jobs', JSON.stringify(jobs));
-    if (!isHydratedFromDb.current) return;
+    if (!jobsHydratedFromDb.current) return;
     const timer = setTimeout(() => {
       bulkSyncJobsToDb(jobs);
     }, 1500);
@@ -788,7 +826,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('madina_inventory', JSON.stringify(inventory));
-    if (!isHydratedFromDb.current) return;
+    if (!inventoryHydratedFromDb.current) return;
     const timer = setTimeout(() => {
       void bulkSyncInventoryToDb(inventory).then((synced) => setInventorySyncWarning(!synced));
     }, 2000);
@@ -839,7 +877,7 @@ export default function App() {
     if (user.username === 'srabon') {
       user.role = 'super_admin';
       user.allowedViews = MADINA_STAFF_PROFILES.super_admin.allowedViews;
-    } else if (user.role === 'admin' || user.username === 'admin') {
+    } else if (user.username === 'admin') {
       user.role = 'admin';
       user.allowedViews = MADINA_STAFF_PROFILES.admin.allowedViews;
     }
@@ -974,19 +1012,28 @@ export default function App() {
   const isSuperAdmin = currentUserRole === 'super_admin' || authenticatedUser?.username === 'srabon';
   const isAdmin = currentUserRole === 'admin' || isSuperAdmin;
 
-  const handleDeleteStockItem = (id: string) => {
+  const handleDeleteStockItem = async (id: string) => {
+    if (!(await deleteInventoryItemFromDb(id))) {
+      alert('Could not delete this inventory item from the database. Please try again.');
+      return;
+    }
     setInventory((prev) => prev.filter((item) => item.id !== id));
-    void deleteInventoryItemFromDb(id);
   };
 
-  const handleDeleteJob = (id: string) => {
+  const handleDeleteJob = async (id: string) => {
+    if (!(await deleteJobFromDb(id))) {
+      alert('Could not delete this job from the database. Please try again.');
+      return;
+    }
     setJobs((prev) => prev.filter((job) => job.id !== id));
-    void deleteJobFromDb(id);
   };
 
-  const handleDeleteSaleRecord = (invoiceId: string) => {
+  const handleDeleteSaleRecord = async (invoiceId: string) => {
+    if (!(await deleteSaleFromDb(invoiceId))) {
+      alert('Could not delete this sale from the database. Please try again.');
+      return;
+    }
     setSalesRecords((prev) => prev.filter((s) => s.id !== invoiceId && s.invoiceNumber !== invoiceId));
-    void deleteSaleFromDb(invoiceId);
   };
 
   const handleDeleteBranch = async (id: string) => {
@@ -995,9 +1042,12 @@ export default function App() {
     setBranchesLoadError(null);
   };
 
-  const handleDeletePurchaseOrder = (id: string) => {
+  const handleDeletePurchaseOrder = async (id: string) => {
+    if (!(await deletePurchaseOrderFromDb(id))) {
+      alert('Could not delete this purchase order from the database. Please try again.');
+      return;
+    }
     setPurchaseOrders((prev) => prev.filter((po) => po.id !== id));
-    void deletePurchaseOrderFromDb(id);
   };
 
   const handleClearHistory = (id?: string) => {
@@ -1010,14 +1060,25 @@ export default function App() {
     }
   };
 
-  const handlePurgeAllOperationalData = () => {
-    setSalesRecords([]);
-    setJobs([]);
-    setAuditLogs([]);
-    setActivityLogs([]);
-    setSalesReturns([]);
-    setPurchaseReturns([]);
-    setPurchaseOrders([]);
+  const handlePurgeAllOperationalData = async (): Promise<boolean> => {
+    const password = window.prompt('Enter your current Admin or Super Admin account password to confirm the database reset.');
+    if (!password) return false;
+
+    const response = await fetch(`${API_BASE}/api/reset-database`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: authenticatedUser?.username || '',
+        password,
+      }),
+    });
+    const parsed = await safeParseJsonResponse<{ success?: boolean; error?: string }>(response);
+    if (!response.ok || !parsed.data?.success) {
+      throw new Error(parsed.data?.error || `Database reset failed (${response.status}).`);
+    }
+
+    handleFullResetSuccess();
+    return true;
   };
 
   // Targeted / Per-page Purge synchronization callback
@@ -1156,6 +1217,7 @@ export default function App() {
     const keysToRemove = [
       'madina_jobs',
       'madina_inventory',
+      'madina_pharmacy_drugs',
       'madina_inventory_damage_ledger',
       'madina_inventory_movement_history',
       'madina_sales_records',
@@ -1194,6 +1256,7 @@ export default function App() {
     setPurchaseOrders([]);
     setGrns([]);
     setPrescriptions([]);
+    setDrugs([]);
     setIbtOrders([]);
     setDispensations([]);
     setAuditLogs([]);
@@ -1530,7 +1593,12 @@ export default function App() {
     );
   };
 
-  const handleHandoverClose = (jobId: string) => {
+  const handleHandoverClose = async (jobId: string) => {
+    const deleted = await deleteJobFromDb(jobId);
+    if (!deleted) {
+      alert('Could not archive this order because it was not deleted from the database. Please try again.');
+      return;
+    }
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
     if (selectedJobId === jobId) setSelectedJobId(null);
     alert('Eyewear handed over to patient and order archived successfully!');
@@ -1686,9 +1754,12 @@ export default function App() {
     );
   };
 
-  const handleRemoveSalesman = (id: string) => {
+  const handleRemoveSalesman = async (id: string) => {
+    if (!(await deleteSalesmanFromDb(id))) {
+      alert('Could not delete this salesman from the database. Please try again.');
+      return;
+    }
     setSalesmen((prev) => prev.filter((salesman) => salesman.id !== id));
-    void deleteSalesmanFromDb(id);
   };
 
   const handleInvoiceCreated = (invoice: any) => {
@@ -2142,6 +2213,29 @@ export default function App() {
   if (!authenticatedUser) {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
+  if (!hasFullPageAccess && allowedPageViews.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface px-4">
+        <div className="w-full max-w-md rounded-2xl border border-outline-variant bg-surface-container-lowest p-6 text-center shadow-lg">
+          <h1 className="text-lg font-bold text-on-surface">
+            {language === 'bn' ? 'কোনো পেজে প্রবেশাধিকার নেই' : 'No page access assigned'}
+          </h1>
+          <p className="mt-2 text-sm text-on-surface-variant">
+            {language === 'bn'
+              ? 'আপনার অ্যাকাউন্টে কোনো পেজের অনুমতি দেওয়া হয়নি। অ্যাডমিনের সাথে যোগাযোগ করুন।'
+              : 'Your account has no permitted pages. Please contact an administrator.'}
+          </p>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="mt-5 rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800"
+          >
+            {language === 'bn' ? 'লগ আউট' : 'Log out'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-surface-container-lowest text-on-surface flex flex-col font-sans antialiased selection:bg-primary-fixed selection:text-on-primary-fixed">
@@ -2187,18 +2281,22 @@ export default function App() {
       {/* 1. Fixed Top Application Bar */}
       <TopNavBar
         currentView={currentView}
+        allowedViews={allowedPageViews}
         activityLogs={unifiedActivityLogs}
         onSelectView={(v) => {
+          if (!canAccessPage(v)) return;
           if (v === 'ai-glazing') setIsGlazingAssistantOpen(true);
           else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
           else setCurrentView(v);
         }}
         onOpenPOS={() => {
+          const posView = canAccessPage('pos-terminal') ? 'pos-terminal' : 'modina-erp';
+          if (!canAccessPage(posView)) return;
           if (!currentUser.permissions.canProcessPOS) {
             alert(`Access Restricted (RBAC):\nRole "${currentUser.roleTitle}" cannot generate POS invoices.`);
             return;
           }
-          setCurrentView('pos-terminal');
+          setCurrentView(posView);
         }}
         onOpenQuickScan={(code) => {
           setCameraScannedCode(code || '');
@@ -2230,6 +2328,7 @@ export default function App() {
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         currentView={currentView}
         onSelectView={(v) => {
+          if (!canAccessPage(v)) return;
           if (v === 'ai-glazing') setIsGlazingAssistantOpen(true);
           else if (v === 'ai-eyewear') setIsEyewearStudioOpen(true);
           else setCurrentView(v);
@@ -2562,19 +2661,17 @@ export default function App() {
 
                   {/* Right Quick Filter Pills */}
                   <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
-                    {(isAdmin || isSuperAdmin) && (
-                      <PageResetButton
+                    <PageResetButton
                         config={{
                           action: 'lab-jobs',
                           pageLabel: 'Lab Glazing Conveyor',
                           description: 'Delete all active optical job cards, tray pipeline queues, and edging records.',
                         }}
                         currentUserRole={currentUserRole}
-                        currentUserName={authenticatedUser?.username || currentUser?.name || ''}
+                        currentUserName={authenticatedUser?.username || ''}
                         onPurgeComplete={handleTargetedPurgeComplete}
                         onAddAuditLog={handleAddPageResetAuditLog}
-                      />
-                    )}
+                    />
                     <div className="flex items-center p-1 bg-[#f1f4f9] dark:bg-[#202533] rounded-xl border border-outline-variant/60 dark:border-[#2b3346]">
                       <button
                       type="button"
@@ -2669,9 +2766,9 @@ export default function App() {
             initialScannedBarcode={posScannedBarcode}
             onDeleteSaleRecord={isSuperAdmin ? handleDeleteSaleRecord : undefined}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -2680,9 +2777,9 @@ export default function App() {
             prescriptions={prescriptions}
             onOpenGlazingAssistant={() => setIsGlazingAssistantOpen(true)}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -2710,9 +2807,9 @@ export default function App() {
             onViewItemWiseSales={() => setCurrentView('reports')}
             onDeleteStockItem={isSuperAdmin ? handleDeleteStockItem : undefined}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -2721,9 +2818,9 @@ export default function App() {
             onCollectionRecorded={handleDueCollectionRecorded}
             salesRecords={salesRecords}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -2759,9 +2856,9 @@ export default function App() {
             onRemoveSalesman={handleRemoveSalesman}
             onViewPerformanceReport={() => setCurrentView('reports')}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -2798,9 +2895,9 @@ export default function App() {
             }}
             onDeleteBranch={isAdmin ? handleDeleteBranch : undefined}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -2841,9 +2938,9 @@ export default function App() {
             onReceiveGrn={handleReceiveGrn}
             onDeletePurchaseOrder={isSuperAdmin ? handleDeletePurchaseOrder : undefined}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -2862,9 +2959,9 @@ export default function App() {
             onAddExpense={handleAddExpense}
             onDeleteExpense={isSuperAdmin ? handleDeleteExpense : undefined}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -2876,9 +2973,9 @@ export default function App() {
             onAddSalesReturn={handleAddSalesReturn}
             onAddPurchaseReturn={handleAddPurchaseReturn}
             currentUserRole={currentUserRole}
-            currentUserName={authenticatedUser?.username || currentUser?.name || ''}
-            onPurgeComplete={(isAdmin || isSuperAdmin) ? handleTargetedPurgeComplete : undefined}
-            onAddAuditLog={(isAdmin || isSuperAdmin) ? handleAddPageResetAuditLog : undefined}
+            currentUserName={authenticatedUser?.username || ''}
+            onPurgeComplete={handleTargetedPurgeComplete}
+            onAddAuditLog={handleAddPageResetAuditLog}
           />
         )}
 
@@ -3463,4 +3560,3 @@ export default function App() {
     </div>
   );
 }
-

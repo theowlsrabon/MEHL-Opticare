@@ -1,6 +1,6 @@
 /**
  * PageResetButton — reusable per-page data reset widget.
- * Visible only to admin / super_admin.
+ * Enabled only for admin / super_admin; other roles see it locked.
  * Shows a compact "Reset Page Data" button that opens an inline password modal.
  * On success → calls onPurgeComplete(action, params) + onAddAuditLog(entry).
  */
@@ -31,15 +31,10 @@ interface PageResetButtonProps {
   config: PageResetConfig;
   currentUserRole: string;
   currentUserName: string;
-  onPurgeComplete: (action: string, params?: any) => void;
-  onAddAuditLog: (entry: AuditLogPayload) => void;
-  /** Admin password (plain). Used for client-side live validation only; real auth done server-side. */
-  adminPassword?: string;
+  onPurgeComplete?: (action: string, params?: any) => void;
+  onAddAuditLog?: (entry: AuditLogPayload) => void;
   className?: string;
 }
-
-const SUPER_ADMIN_PASS = 'vugichugi';
-const ADMIN_FALLBACKS = ['admin123', 'mehl123admin', 'vugichugi'];
 
 export const PageResetButton: React.FC<PageResetButtonProps> = ({
   config,
@@ -60,12 +55,6 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
   const [success, setSuccess] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Computed password validity (client-side preview)
-  const isSuperAdmin = normalizedRole === 'super_admin';
-  const pwValid = isSuperAdmin
-    ? password === SUPER_ADMIN_PASS
-    : ADMIN_FALLBACKS.includes(password);
-
   useEffect(() => {
     if (open) {
       setPassword('');
@@ -75,9 +64,8 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
     }
   }, [open]);
 
-  if (!isAdmin) return null;
-
   const handleSubmit = async () => {
+    if (!isAdmin || !onPurgeComplete || !onAddAuditLog) return;
     if (!password) { setError('Password required.'); return; }
     setLoading(true);
     setError('');
@@ -86,8 +74,7 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          role: currentUserRole || 'admin',
-          username: currentUserName || 'admin',
+          username: currentUserName,
           password,
           action: config.action,
           params: config.params || {},
@@ -133,19 +120,22 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
     <>
       {/* Trigger button */}
       <button
+        type="button"
+        disabled={!isAdmin}
         onClick={() => setOpen(true)}
-        title={`Reset ${config.pageLabel} data`}
+        title={isAdmin ? `Reset ${config.pageLabel} data` : 'Only Admin or Super Admin can reset page data'}
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
           border border-rose-400/40 bg-rose-500/10 text-rose-500
           hover:bg-rose-500/20 hover:border-rose-400/70 transition-all duration-150
-          dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-400 ${className}`}
+          dark:border-rose-500/30 dark:bg-rose-900/20 dark:text-rose-400
+          disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-rose-500/10 disabled:hover:border-rose-400/40 ${className}`}
       >
-        <Trash2 size={13} />
+        {isAdmin ? <Trash2 size={13} /> : <Lock size={13} />}
         Reset Page Data
       </button>
 
       {/* Modal backdrop */}
-      {open && (
+      {open && isAdmin && (
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
@@ -182,7 +172,7 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
 
             {/* Password field */}
             <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">
-              Admin Password to Confirm
+              Current account password to confirm
             </label>
             <div className="relative mb-1">
               <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -192,14 +182,8 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(''); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
-                placeholder="Enter admin password"
-                className={`w-full pl-9 pr-10 py-2.5 rounded-xl text-sm border outline-none transition-all
-                  ${pwValid && password
-                    ? 'border-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 dark:border-emerald-600/60 text-emerald-700 dark:text-emerald-300'
-                    : password && !pwValid
-                    ? 'border-rose-400 bg-rose-50/60 dark:bg-rose-950/20 dark:border-rose-600/60 text-rose-700 dark:text-rose-300'
-                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#262c3b] text-gray-900 dark:text-white'
-                  }`}
+                placeholder="Enter your current account password"
+                className="w-full pl-9 pr-10 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#262c3b] text-gray-900 dark:text-white outline-none transition-all"
               />
               <button
                 type="button"
@@ -209,16 +193,6 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
                 {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             </div>
-
-            {/* Live password feedback */}
-            {password && (
-              <p className={`text-xs mb-3 font-medium flex items-center gap-1 ${pwValid ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>
-                {pwValid
-                  ? <><CheckCircle2 size={12} /> Password verified — button unlocked</>
-                  : <><Lock size={12} /> Wrong password — button locked</>
-                }
-              </p>
-            )}
 
             {/* API error */}
             {error && (
@@ -244,12 +218,8 @@ export const PageResetButton: React.FC<PageResetButtonProps> = ({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={loading || !pwValid || success}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2
-                  ${pwValid && !loading && !success
-                    ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/30'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                  }`}
+                disabled={loading || !password || !isAdmin || success || !onPurgeComplete || !onAddAuditLog}
+                className="flex-1 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-sm font-semibold text-white shadow-lg shadow-rose-500/30 transition-all flex items-center justify-center gap-2 disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none dark:disabled:bg-gray-700 cursor-pointer disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <span className="inline-block h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />

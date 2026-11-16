@@ -23,7 +23,7 @@ interface SuperAdminPurgeConsoleProps {
   onDeleteBranch: (id: string) => void;
   onDeletePO: (id: string) => void;
   onClearHistory: (id?: string) => void;
-  onPurgeAllOperationalData: () => void;
+  onPurgeAllOperationalData: () => Promise<boolean>;
 }
 
 export const SuperAdminPurgeConsole: React.FC<SuperAdminPurgeConsoleProps> = ({
@@ -46,9 +46,12 @@ export const SuperAdminPurgeConsole: React.FC<SuperAdminPurgeConsoleProps> = ({
   const [subTab, setSubTab] = useState<'invoices' | 'stock' | 'lab' | 'branches' | 'pos' | 'history'>('invoices');
   const [searchTerm, setSearchTerm] = useState('');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionNoticeIsError, setActionNoticeIsError] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
 
-  const notify = (msg: string) => {
+  const notify = (msg: string, isError = false) => {
     setActionNotice(msg);
+    setActionNoticeIsError(isError);
     setTimeout(() => setActionNotice(null), 3500);
   };
 
@@ -123,7 +126,8 @@ export const SuperAdminPurgeConsole: React.FC<SuperAdminPurgeConsoleProps> = ({
         <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
           <button
             type="button"
-            onClick={() => {
+            disabled={isPurging}
+            onClick={async () => {
               if (
                 window.confirm(
                   text(
@@ -132,21 +136,31 @@ export const SuperAdminPurgeConsole: React.FC<SuperAdminPurgeConsoleProps> = ({
                   )
                 )
               ) {
-                onPurgeAllOperationalData();
-                notify(text('All operational data purged successfully.', 'সমস্ত ডেটা সফলভাবে মুছে ফেলা হয়েছে।'));
+                setIsPurging(true);
+                try {
+                  const purged = await onPurgeAllOperationalData();
+                  if (purged) {
+                    notify(text('All operational data purged successfully.', 'সমস্ত ডেটা সফলভাবে মুছে ফেলা হয়েছে।'));
+                  }
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  notify(message, true);
+                } finally {
+                  setIsPurging(false);
+                }
               }
             }}
-            className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-rose-600/30 cursor-pointer transition-all"
+            className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-rose-600/30 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <span className="material-symbols-outlined text-[18px]">delete_sweep</span>
-            <span>{text('Purge All Operational Data', 'সমস্ত অপারেশনাল ডেটা মুছে ফেলুন')}</span>
+            <span className="material-symbols-outlined text-[18px]">{isPurging ? 'hourglass_top' : 'delete_sweep'}</span>
+            <span>{isPurging ? text('Purging…', 'মুছে ফেলা হচ্ছে…') : text('Purge All Operational Data', 'সমস্ত অপারেশনাল ডেটা মুছে ফেলুন')}</span>
           </button>
         </div>
       </div>
 
       {actionNotice && (
-        <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-2">
-          <span className="material-symbols-outlined text-[18px]">check_circle</span>
+        <div className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${actionNoticeIsError ? 'bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300'}`}>
+          <span className="material-symbols-outlined text-[18px]">{actionNoticeIsError ? 'error' : 'check_circle'}</span>
           <span>{actionNotice}</span>
         </div>
       )}
@@ -569,4 +583,3 @@ export const SuperAdminPurgeConsole: React.FC<SuperAdminPurgeConsoleProps> = ({
     </div>
   );
 };
-

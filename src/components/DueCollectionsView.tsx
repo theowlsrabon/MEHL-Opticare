@@ -192,9 +192,6 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
           invoice,
         ])
       );
-      const currentInvoiceNumbers = new Set(
-        posInvoices.map((invoice) => normalizeInvoiceSearchTerm(invoice.invoiceNumber))
-      );
       const syncedPosInvoices = posInvoices.map((invoice) => {
         const existing = previousByInvoice.get(normalizeInvoiceSearchTerm(invoice.invoiceNumber));
         if (!existing) return invoice;
@@ -214,10 +211,7 @@ export const DueCollectionsView: React.FC<DueCollectionsViewProps> = ({ onCollec
           payments: [...invoice.payments, ...collectedPayments],
         };
       });
-      const otherInvoices = previous.filter(
-        (invoice) => !currentInvoiceNumbers.has(normalizeInvoiceSearchTerm(invoice.invoiceNumber))
-      );
-      return [...syncedPosInvoices, ...otherInvoices];
+      return syncedPosInvoices;
     });
   }, [salesRecords]);
 

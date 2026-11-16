@@ -69,13 +69,16 @@ export async function bulkSyncJobsToDb(jobs: any[]): Promise<void> {
   }
 }
 
-export async function deleteJobFromDb(id: string): Promise<void> {
+export async function deleteJobFromDb(id: string): Promise<boolean> {
   try {
-    await fetch(`${API_BASE}/api/jobs/${encodeURIComponent(id)}`, {
+    const response = await fetch(`${API_BASE}/api/jobs/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+    const result = await response.json();
+    return response.ok && result?.success === true;
   } catch (err) {
-    console.warn('[Sync Warning] Job deletion pending on server:', err);
+    console.warn('[Sync Warning] Job deletion failed on server:', err);
+    return false;
   }
 }
 
@@ -541,7 +544,10 @@ export async function fetchInitialDataFromDb(): Promise<{
 }> {
   const result: any = {};
   const fetchApiData = async (path: string, init?: RequestInit) => {
-    const response = await fetchJsonSafe(`${API_BASE}${path}`, init);
+    const response = await fetchJsonSafe(`${API_BASE}${path}`, {
+      ...init,
+      cache: 'no-store',
+    });
     if (!response.ok || response.data === null) {
       throw new Error(response.error || `API request failed (${response.status})`);
     }

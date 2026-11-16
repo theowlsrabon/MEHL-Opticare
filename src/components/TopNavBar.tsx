@@ -34,6 +34,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface TopNavBarProps {
   currentView: ViewMode;
+  allowedViews: ViewMode[];
   onSelectView: (view: ViewMode) => void;
   onOpenPOS: () => void;
   onOpenQuickScan: (initialCode?: string) => void;
@@ -60,6 +61,7 @@ interface TopNavBarProps {
 
 export const TopNavBar: React.FC<TopNavBarProps> = ({
   currentView,
+  allowedViews,
   onSelectView,
   onOpenPOS,
   onOpenQuickScan,
@@ -102,6 +104,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   const searchRef = useRef<HTMLDivElement>(null);
 
   const isDevSuperAdmin = authenticatedUser?.role === 'super_admin' || authenticatedUser?.username === 'srabon' || currentUserRole === 'super_admin';
+  const isPrimaryAdmin = authenticatedUser?.username?.trim().toLowerCase() === 'admin';
+  const canOpenPOS = allowedViews.includes('pos-terminal') || allowedViews.includes('modina-erp');
   const currentUser = MADINA_STAFF_PROFILES[currentUserRole] || MADINA_STAFF_PROFILES.admin;
 
   const searchDestinations: Array<{
@@ -128,9 +132,10 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 
   const filteredDestinations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return searchDestinations.slice(0, 6);
+    const accessibleDestinations = searchDestinations.filter((destination) => allowedViews.includes(destination.view));
+    if (!query) return accessibleDestinations.slice(0, 6);
 
-    return searchDestinations
+    return accessibleDestinations
       .map((destination) => {
         const searchable = [
           destination.label,
@@ -148,7 +153,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
       .map(({ destination }) => destination);
-  }, [searchQuery]);
+  }, [searchQuery, allowedViews]);
 
   const navigateToDestination = (destination: (typeof searchDestinations)[number]) => {
     const isInventorySearch = destination.view === 'stock-master';
@@ -165,9 +170,12 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     // Check if query exactly matches a navigation destination:
     const exactNav = searchDestinations.find(
       (d) =>
-        d.keywords.some((k) => k.toLowerCase() === query.toLowerCase()) ||
-        d.label.toLowerCase() === query.toLowerCase() ||
-        d.labelBn === query
+        allowedViews.includes(d.view) &&
+        (
+          d.keywords.some((k) => k.toLowerCase() === query.toLowerCase()) ||
+          d.label.toLowerCase() === query.toLowerCase() ||
+          d.labelBn === query
+        )
     );
     if (exactNav) {
       navigateToDestination(exactNav);
@@ -354,9 +362,16 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         {/* Rounded Teal Action Button (+) */}
         <button
           type="button"
+          disabled={!canOpenPOS}
           onClick={onOpenPOS}
-          className="w-9 h-9 rounded-xl bg-[#00c49f] hover:bg-[#00af8e] active:scale-95 flex items-center justify-center text-white font-bold cursor-pointer transition-all shadow-sm shadow-[#00c49f]/20 shrink-0"
-          title={language === 'bn' ? 'POS পেজ খুলুন' : 'Open POS'}
+          className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold transition-all shadow-sm shadow-[#00c49f]/20 shrink-0 ${
+            canOpenPOS
+              ? 'bg-[#00c49f] hover:bg-[#00af8e] active:scale-95 cursor-pointer'
+              : 'bg-slate-400 opacity-50 cursor-not-allowed'
+          }`}
+          title={canOpenPOS
+            ? (language === 'bn' ? 'POS পেজ খুলুন' : 'Open POS')
+            : (language === 'bn' ? 'আপনার POS পেজে প্রবেশাধিকার নেই' : 'POS page access is not assigned')}
           aria-label={language === 'bn' ? 'POS পেজ খুলুন' : 'Open POS'}
         >
           <Plus size={18} strokeWidth={2.8} />
@@ -1307,7 +1322,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                     {authenticatedUser?.role === 'super_admin'
                       ? 'Root Developer & Super Admin'
                       : authenticatedUser?.role === 'admin'
-                      ? 'Primary Administrator'
+                      ? isPrimaryAdmin ? 'Primary Administrator' : 'Administrator'
                       : 'Staff Account'}
                   </div>
                   <div className="text-[10px] text-[#64748b] dark:text-[#7d91a3] font-mono">
@@ -1323,7 +1338,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                     {authenticatedUser?.role === 'super_admin'
                       ? 'Root Developer (Global Delete Access)'
                       : authenticatedUser?.role === 'admin'
-                      ? 'Full Authority (All Modules)'
+                      ? isPrimaryAdmin ? 'Full Authority (All Modules)' : 'Assigned Modules Only'
                       : 'Custom Access'}
                   </span>
                 </div>
@@ -1331,7 +1346,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                   <p className="text-[10px] text-rose-400 mt-1">
                     Srabon Hassan (Developer) has root authority to delete any stock, invoices, lab jobs, branches, and requisitions.
                   </p>
-                ) : authenticatedUser?.role === 'admin' ? (
+                ) : authenticatedUser?.role === 'admin' && isPrimaryAdmin ? (
                   <p className="text-[10px] text-slate-400 mt-1">
                     Only TASFIQUR RAHMAN (Admin) can create staff accounts and assign menu access in Settings &gt; User Accounts.
                   </p>

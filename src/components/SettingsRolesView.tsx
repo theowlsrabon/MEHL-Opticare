@@ -24,7 +24,7 @@ interface SettingsRolesViewProps {
   onDeleteBranch?: (id: string) => void;
   onDeletePO?: (id: string) => void;
   onClearHistory?: (id?: string) => void;
-  onPurgeAllOperationalData?: () => void;
+  onPurgeAllOperationalData?: () => Promise<boolean>;
 }
 
 export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
@@ -181,7 +181,7 @@ export const SettingsRolesView: React.FC<SettingsRolesViewProps> = ({
           onDeleteBranch={onDeleteBranch || (() => {})}
           onDeletePO={onDeletePO || (() => {})}
           onClearHistory={onClearHistory || (() => {})}
-          onPurgeAllOperationalData={onPurgeAllOperationalData || (() => {})}
+          onPurgeAllOperationalData={onPurgeAllOperationalData || (async () => false)}
         />
       )}
 

@@ -59,21 +59,22 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
 }) => {
   const { language } = useLanguage();
   const [showDeveloperInfo, setShowDeveloperInfo] = useState(false);
-  const isAdmin = currentUserRole === 'admin' || authenticatedUser?.role === 'admin' || authenticatedUser?.username === 'admin';
-  const isSuperAdmin = currentUserRole === 'super_admin' || authenticatedUser?.username === 'srabon' || authenticatedUser?.role === 'super_admin';
-  const hasFullAccess = isAdmin || isSuperAdmin;
+  const username = authenticatedUser?.username?.trim().toLowerCase();
+  const hasFullAccess =
+    username === 'admin' ||
+    username === 'srabon' ||
+    authenticatedUser?.role === 'super_admin';
   const profile = MADINA_STAFF_PROFILES[currentUserRole] || MADINA_STAFF_PROFILES.admin;
   const allowedViews = hasFullAccess
     ? MADINA_STAFF_PROFILES.admin.allowedViews
-    : (authenticatedUser?.allowedViews || profile.allowedViews);
+    : authenticatedUser
+      ? authenticatedUser.allowedViews || []
+      : profile.allowedViews;
   const displayName = authenticatedUser?.name || profile.name;
   const displayRoleTitle = authenticatedUser?.roleTitle || profile.roleTitle;
 
   const handleNavClick = (view: ViewMode) => {
-    if (!hasFullAccess && !allowedViews.includes(view)) {
-      alert(`Access Restricted (RBAC):\nYour active account does not have permission to access "${view}".\nPlease contact the administrator to grant access to this module.`);
-      return;
-    }
+    if (!hasFullAccess && !allowedViews.includes(view)) return;
     onSelectView(view);
     onCloseMobile?.();
   };
@@ -140,13 +141,15 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
       <button
         key={view}
         type="button"
+        disabled={locked}
+        aria-disabled={locked}
         onClick={() => handleNavClick(view)}
-        className={`w-full rounded-lg px-3 py-2 flex items-center justify-between gap-2.5 cursor-pointer transition-all duration-150 text-left group ${
+        className={`w-full rounded-lg px-3 py-2 flex items-center justify-between gap-2.5 transition-all duration-150 text-left group ${
           isActive
-            ? 'bg-[#08745f] text-white font-bold shadow-sm shadow-[#08745f]/30'
+            ? 'bg-[#08745f] text-white font-bold shadow-sm shadow-[#08745f]/30 cursor-pointer'
             : locked
-            ? 'text-slate-400/50 hover:bg-slate-100/40 dark:hover:bg-slate-800/40 opacity-50'
-            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+            ? 'text-slate-400/50 opacity-50 cursor-not-allowed'
+            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer'
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
